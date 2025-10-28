@@ -1,0 +1,360 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>3</storyId>
+    <title>Video File Import with Drag & Drop</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-27</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-3-video-file-import-with-drag-drop.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to import video files by dragging them into the app or using a file picker</iWant>
+    <soThat>I can load videos to edit</soThat>
+    <tasks>
+- Set up Rust backend data structures and FFmpeg integration
+  - Add ffmpeg-sidecar = "2.1.0" to src-tauri/Cargo.toml dependencies
+  - Create src-tauri/src/models/media.rs with MediaFile struct
+  - Create src-tauri/src/commands/media.rs with cmd_import_media command stub
+  - Update src-tauri/src/commands/mod.rs to export media module
+  - Register cmd_import_media in src-tauri/src/lib.rs
+  - Write cargo test for MediaFile serialization/deserialization
+
+- Implement metadata extraction with FFmpeg
+  - Create FFmpeg wrapper function to extract duration, resolution, codec
+  - Handle FFmpeg errors gracefully
+  - Parse FFmpeg output to populate MediaFile struct fields
+  - Validate file path exists before processing
+  - Write cargo test for metadata extraction
+
+- Implement file format validation
+  - Validate file extension (.mp4, .mov) before calling FFmpeg
+  - Return clear error message for unsupported formats
+  - Test validation with various file extensions
+  - Write cargo test for format validation edge cases
+
+- Create TypeScript types and Tauri command wrappers
+  - Create src/types/media.ts with MediaFile interface
+  - Create src/lib/tauri/media.ts with importMedia() function
+  - Add error handling with try/catch
+  - Write unit test for type consistency
+
+- Build Zustand media library store
+  - Create src/stores/mediaLibraryStore.ts with Zustand store
+  - Add state: mediaFiles (MediaFile[])
+  - Add actions: addMediaFile, removeMediaFile, getMediaFile
+  - Enable devtools middleware for debugging
+  - Write Vitest tests for store actions
+
+- Create drag-and-drop zone component
+  - Create src/components/media-library/MediaImport.tsx
+  - Implement drop zone using Tauri drag-drop event listeners
+  - Add visual feedback on drag-over
+  - Filter dropped files to only MP4/MOV
+  - Call importMedia() for each valid dropped file
+  - Add Upload icon from lucide-react
+  - Implement keyboard accessibility
+
+- Implement native file picker dialog
+  - Add "Import Video" button in MediaImport component
+  - Use Tauri dialog plugin to open native macOS file picker
+  - Filter file picker to show only .mp4 and .mov files
+  - Handle multiple file selection
+  - Call importMedia() for selected files
+  - Show loading indicator during import
+
+- Create basic media item display component
+  - Create src/components/media-library/MediaItem.tsx
+  - Display filename, duration, resolution, file size
+  - Use Film icon from lucide-react as placeholder
+  - Apply Tailwind styling consistent with Story 1.2
+  - Add hover state for future interactivity
+
+- Update MediaLibraryPanel to display imported files
+  - Update src/components/media-library/MediaLibraryPanel.tsx from Story 1.2
+  - Replace empty state with MediaImport component
+  - Map mediaFiles from store to MediaItem components
+  - Show empty state message only when no files imported
+  - Add vertical scrolling for many imported files
+
+- Implement error handling and user feedback
+  - Display toast notification on successful import
+  - Display toast notification on error
+  - Show format validation errors immediately
+  - Handle network/filesystem errors gracefully
+  - Test error scenarios
+
+- Write comprehensive component tests
+  - Write Vitest test for MediaImport: renders drop zone and button
+  - Write Vitest test for MediaImport: drag-drop calls importMedia
+  - Write Vitest test for MediaImport: button click opens file picker
+  - Write Vitest test for MediaItem: displays file metadata correctly
+  - Write Vitest test for MediaLibraryPanel: shows empty state when no files
+  - Write Vitest test for MediaLibraryPanel: displays imported files
+  - Verify all tests pass with npm run test
+
+- Write Rust backend tests
+  - Write cargo test for cmd_import_media: valid MP4 file
+  - Write cargo test for cmd_import_media: valid MOV file
+  - Write cargo test for cmd_import_media: rejects unsupported format
+  - Write cargo test for cmd_import_media: handles missing file
+  - Verify all tests pass with cargo test</tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Drag & drop zone in media library area accepts MP4 and MOV files
+2. File picker dialog (native macOS) allows selecting video files
+3. Imported files are stored in application state
+4. File validation rejects unsupported formats with clear error message
+5. Tauri command in Rust backend handles file path and metadata extraction</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Tauri Command Patterns</section>
+        <snippet>Standard command structure for Rust backend with Result&lt;T, String&gt; return type for user-friendly errors. Commands use tauri::command macro, validate input, check permissions, execute business logic, log success, and return results. Frontend invokes via invoke() from @tauri-apps/api/core.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Media Library Model (Data Architecture)</section>
+        <snippet>MediaFile interface defines: id (UUID), filePath (absolute), filename (display name), duration (milliseconds), resolution (width/height), fileSize (bytes), codec (e.g., h264, hevc), thumbnail (base64/path), importedAt (ISO 8601 timestamp).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Error Handling Patterns</section>
+        <snippet>Rust errors use anyhow::Result with .context() for error propagation. Custom errors with thiserror::Error. All Tauri commands return Result&lt;T, String&gt; where String is user-friendly message ready for UI display.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Testing Patterns</section>
+        <snippet>Rust unit tests in #[cfg(test)] mod tests with #[test] attribute. TypeScript tests use Vitest with describe/it/expect pattern. Run tests with: cargo test (Rust), npm run test (TypeScript).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>FFmpeg Integration</section>
+        <snippet>Use ffmpeg-sidecar 2.1.0 for Rust wrapper with auto-download. FFmpeg used for metadata extraction (duration, resolution, codec), real-time encoding during recording, and video export with composition.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Technology Stack Details</section>
+        <snippet>Frontend: React 18 + TypeScript + Zustand state management. Backend: Rust with Tauri 2.x commands, serde for serialization. Tauri plugins: fs, dialog, notification, shell, os for native file/dialog/notification support.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Complete Project Structure</section>
+        <snippet>Component location: src/components/media-library/ for MediaLibrary.tsx, MediaItem.tsx, MediaImport.tsx. Tauri commands: src-tauri/src/commands/media.rs. Zustand stores: src/stores/mediaLibraryStore.ts. Types: src/types/media.ts. Tauri wrappers: src/lib/tauri/media.ts.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR001: Video File Import and Management</section>
+        <snippet>System shall support drag-and-drop and file picker import of video files in MP4, MOV, and WebM formats. Phase 1 (Epic 1) focuses on MP4 and MOV only.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>User Interaction Patterns</section>
+        <snippet>Drag &amp; Drop is the primary method for importing files and arranging clips on timeline. Prioritize keyboard shortcuts, drag-drop interactions, and snap-to-grid precision for fast, professional-feeling editing workflows.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/components/layout/MediaLibraryPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>MediaLibraryPanel</symbol>
+        <lines>1-24</lines>
+        <reason>Existing panel component from Story 1.2 that needs to be updated to integrate MediaImport component and display imported files. Currently shows empty state only.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/utils.ts</path>
+        <kind>utility</kind>
+        <symbol>cn</symbol>
+        <lines>all</lines>
+        <reason>Tailwind CSS class merging utility (clsx + tailwind-merge) used throughout components for consistent styling.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/lib.rs</path>
+        <kind>rust-lib</kind>
+        <symbol>run</symbol>
+        <lines>56-133</lines>
+        <reason>Main Tauri app setup with logging initialization, command registration (line 70), and native menu bar. Need to register new cmd_import_media command here.</reason>
+      </artifact>
+      <artifact>
+        <path>src/test/setup.ts</path>
+        <kind>test-setup</kind>
+        <symbol>N/A</symbol>
+        <lines>1-2</lines>
+        <reason>Vitest test setup imports jest-dom for component testing matchers. Used as setupFiles in vitest.config.ts.</reason>
+      </artifact>
+      <artifact>
+        <path>vitest.config.ts</path>
+        <kind>test-config</kind>
+        <symbol>N/A</symbol>
+        <lines>1-18</lines>
+        <reason>Vitest configuration with jsdom environment, globals enabled, and path alias @ pointing to src/. Pattern to follow for new tests.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package name="@tauri-apps/api" version="^2" usage="Core Tauri API for invoke() and event listeners" />
+        <package name="@tauri-apps/plugin-dialog" version="^2" usage="Native macOS file picker dialog" />
+        <package name="@tauri-apps/plugin-fs" version="^2" usage="File system operations" />
+        <package name="@tauri-apps/plugin-notification" version="^2" usage="Toast notifications for import success/errors" />
+        <package name="lucide-react" version="^0.548.0" usage="Upload and Film icons for UI" />
+        <package name="zustand" version="^4" usage="Media library state management" />
+        <package name="react" version="^19.1.0" usage="Component framework" />
+        <package name="react-dom" version="^19.1.0" usage="React rendering" />
+        <package name="class-variance-authority" version="^0.7.1" usage="Component variant utilities" />
+        <package name="clsx" version="^2.1.1" usage="Conditional CSS classes" />
+        <package name="tailwind-merge" version="^3.3.1" usage="Tailwind class merging (via cn utility)" />
+        <package name="vitest" version="^2" usage="Test framework for component tests" />
+        <package name="@testing-library/react" version="^16" usage="React component testing utilities" />
+        <package name="@testing-library/jest-dom" version="^6" usage="DOM matchers for tests" />
+        <package name="jsdom" version="^25" usage="DOM environment for Vitest" />
+      </frontend>
+      <backend>
+        <package name="tauri" version="2" usage="Core Tauri framework for desktop app" />
+        <package name="tauri-plugin-dialog" version="2" usage="File dialog backend support" />
+        <package name="tauri-plugin-fs" version="2" usage="File system backend support" />
+        <package name="tauri-plugin-notification" version="2" usage="Notification backend support" />
+        <package name="ffmpeg-sidecar" version="2.1" usage="FFmpeg wrapper for video metadata extraction" />
+        <package name="serde" version="1" usage="Serialization for MediaFile struct" />
+        <package name="serde_json" version="1" usage="JSON serialization for Tauri commands" />
+        <package name="uuid" version="1" usage="Generate unique IDs for MediaFile" />
+        <package name="chrono" version="0.4" usage="ISO 8601 timestamp for importedAt field" />
+        <package name="anyhow" version="1" usage="Error handling with context" />
+        <package name="thiserror" version="1" usage="Custom error types" />
+        <package name="tracing" version="0.1" usage="Structured logging for import operations" />
+        <package name="tokio" version="1" usage="Async runtime for Tauri commands" />
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Use Tauri IPC pattern: Frontend calls Tauri commands via invoke(), Rust backend processes with validation/metadata extraction, returns structured data to frontend</constraint>
+    <constraint>File format support: MP4 and MOV only for this story (defer WebM to future stories)</constraint>
+    <constraint>Defer thumbnail generation to Story 1.5 (Media Library Panel with Thumbnails) - use placeholder icon for now</constraint>
+    <constraint>Follow existing patterns from Story 1.2: lucide-react icons, Tailwind CSS exclusively, keyboard accessibility, @/ path alias</constraint>
+    <constraint>Component location: src/components/media-library/ (per architecture.md line 128)</constraint>
+    <constraint>Naming conventions: Rust uses snake_case for functions/commands (cmd_import_media), PascalCase for structs (MediaFile); TypeScript uses PascalCase for components, camelCase for functions</constraint>
+    <constraint>Error messages must be user-friendly strings, not stack traces or technical error codes</constraint>
+    <constraint>All Tauri commands must return Result&lt;T, String&gt; for consistent error handling</constraint>
+    <constraint>Use structured logging with tracing crate (log to ~/Library/Logs/clippy/app.log)</constraint>
+    <constraint>Testing requirement: Write both Rust (cargo test) and TypeScript (Vitest) tests before marking story done</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>cmd_import_media</name>
+      <kind>Tauri command (Rust)</kind>
+      <signature>#[tauri::command] pub async fn cmd_import_media(file_path: String) -&gt; Result&lt;MediaFile, String&gt;</signature>
+      <path>src-tauri/src/commands/media.rs</path>
+    </interface>
+    <interface>
+      <name>MediaFile (Rust)</name>
+      <kind>Rust struct</kind>
+      <signature>pub struct MediaFile { id: String, file_path: String, filename: String, duration: u64, resolution: Resolution, file_size: u64, codec: String, thumbnail: Option&lt;String&gt;, imported_at: String }</signature>
+      <path>src-tauri/src/models/media.rs</path>
+    </interface>
+    <interface>
+      <name>MediaFile (TypeScript)</name>
+      <kind>TypeScript interface</kind>
+      <signature>interface MediaFile { id: string; filePath: string; filename: string; duration: number; resolution: { width: number; height: number }; fileSize: number; codec: string; thumbnail?: string; importedAt: string; }</signature>
+      <path>src/types/media.ts</path>
+    </interface>
+    <interface>
+      <name>importMedia</name>
+      <kind>TypeScript function</kind>
+      <signature>async function importMedia(filePath: string): Promise&lt;MediaFile&gt;</signature>
+      <path>src/lib/tauri/media.ts</path>
+    </interface>
+    <interface>
+      <name>mediaLibraryStore</name>
+      <kind>Zustand store</kind>
+      <signature>interface MediaLibraryStore { mediaFiles: MediaFile[]; addMediaFile: (file: MediaFile) =&gt; void; removeMediaFile: (id: string) =&gt; void; getMediaFile: (id: string) =&gt; MediaFile | undefined; }</signature>
+      <path>src/stores/mediaLibraryStore.ts</path>
+    </interface>
+    <interface>
+      <name>Tauri dialog.open</name>
+      <kind>Tauri dialog API</kind>
+      <signature>import { open } from '@tauri-apps/plugin-dialog'; const selected = await open({ multiple: true, filters: [{ name: 'Video', extensions: ['mp4', 'mov'] }] });</signature>
+      <path>@tauri-apps/plugin-dialog</path>
+    </interface>
+    <interface>
+      <name>Tauri drag-drop events</name>
+      <kind>Tauri event API</kind>
+      <signature>import { listen } from '@tauri-apps/api/event'; const unlisten = await listen('tauri://drag-drop', (event) =&gt; { const files = event.payload as string[]; });</signature>
+      <path>@tauri-apps/api/event</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Testing standards per architecture.md:
+
+**Frontend Testing (Vitest + React Testing Library):**
+- Use describe/it/expect pattern for test organization
+- Test files colocated with components: ComponentName.test.tsx
+- Mock Tauri invoke() calls to test component behavior in isolation
+- Use @testing-library/react for component rendering and queries
+- Test accessibility (keyboard navigation, ARIA labels)
+- Run tests with: npm run test
+
+**Backend Testing (Rust cargo test):**
+- Unit tests in #[cfg(test)] mod tests blocks within source files
+- Use #[test] attribute for test functions
+- Test MediaFile struct serialization/deserialization with serde
+- Mock FFmpeg output for metadata extraction tests
+- Test error cases (missing file, invalid format, corrupted metadata)
+- Run tests with: cargo test
+
+**Test Coverage Requirements:**
+- All Tauri commands must have Rust tests (happy path + error cases)
+- All React components must have Vitest tests (rendering + interactions)
+- Test accessibility features (keyboard navigation, focus indicators)
+- Verify error handling (toast notifications, user-friendly messages)
+    </standards>
+    <locations>
+      <location>src/components/**/*.test.tsx - Frontend component tests</location>
+      <location>src/lib/**/*.test.ts - Frontend utility/library tests</location>
+      <location>src/stores/**/*.test.ts - Zustand store tests</location>
+      <location>src-tauri/src/**/*.rs - Rust unit tests in #[cfg(test)] modules</location>
+    </locations>
+    <ideas>
+      <idea ac="AC1">Test MediaImport renders drop zone with Upload icon and appropriate styling</idea>
+      <idea ac="AC1">Test drag-over event adds visual feedback (border highlight)</idea>
+      <idea ac="AC1">Test drop event with valid MP4/MOV files calls importMedia()</idea>
+      <idea ac="AC1">Test drop event with unsupported format shows error toast</idea>
+      <idea ac="AC2">Test button click opens file picker (mock Tauri dialog)</idea>
+      <idea ac="AC2">Test file picker filters show only .mp4 and .mov files</idea>
+      <idea ac="AC2">Test file picker handles multiple file selection</idea>
+      <idea ac="AC3">Test mediaLibraryStore.addMediaFile adds file to state</idea>
+      <idea ac="AC3">Test mediaLibraryStore.getMediaFile retrieves file by ID</idea>
+      <idea ac="AC3">Test mediaLibraryStore.removeMediaFile removes file from state</idea>
+      <idea ac="AC3">Test MediaLibraryPanel displays imported files from store</idea>
+      <idea ac="AC3">Test MediaLibraryPanel shows empty state when no files imported</idea>
+      <idea ac="AC4">Test MediaItem displays filename, duration (MM:SS format), resolution, file size (MB format)</idea>
+      <idea ac="AC4">Test format validation rejects .avi, .wmv, .webm with clear error message</idea>
+      <idea ac="AC4">Test frontend validates format before calling backend (no unnecessary Tauri calls)</idea>
+      <idea ac="AC5">Test cmd_import_media Rust command with valid MP4 file returns MediaFile struct</idea>
+      <idea ac="AC5">Test cmd_import_media with valid MOV file returns MediaFile struct</idea>
+      <idea ac="AC5">Test cmd_import_media with missing file returns user-friendly error</idea>
+      <idea ac="AC5">Test cmd_import_media with unsupported format returns "Unsupported file format" error</idea>
+      <idea ac="AC5">Test MediaFile struct serialization to JSON matches TypeScript interface (camelCase fields)</idea>
+      <idea ac="AC5">Test FFmpeg metadata extraction parses duration, resolution, codec correctly</idea>
+      <idea ac="AC5">Test FFmpeg error handling when video file is corrupted</idea>
+      <idea ac="general">Test keyboard accessibility: Enter key on drop zone triggers file picker</idea>
+      <idea ac="general">Test focus indicators visible on drop zone and import button</idea>
+      <idea ac="general">Test toast notifications display on successful import with filename</idea>
+      <idea ac="general">Test toast notifications display on error with user-friendly message</idea>
+    </ideas>
+  </tests>
+</story-context>

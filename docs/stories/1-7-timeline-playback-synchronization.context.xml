@@ -1,0 +1,168 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>7</storyId>
+    <title>Timeline Playback Synchronization</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-27</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-7-timeline-playback-synchronization.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>the preview player to sync with the timeline playhead position</iWant>
+    <soThat>I can see exactly what's at any point on the timeline</soThat>
+    <tasks>
+      - Implement playhead drag interaction (AC: 1)
+      - Implement click-to-seek on timeline (AC: 2)
+      - Implement play/pause synchronization (AC: 3, 4)
+      - Optimize scrubbing responsiveness (AC: 5)
+      - Add unit tests for playback synchronization
+      - Add component tests for Timeline integration
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. Dragging playhead updates preview player to that frame
+    2. Clicking anywhere on timeline moves playhead to that position
+    3. Play button plays video and advances playhead in sync
+    4. Pause stops both playback and playhead movement
+    5. Scrubbing feels responsive (< 100ms latency)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc path="docs/PRD.md" title="Product Requirements Document" section="FR006: Real-Time Video Preview and Playback">
+        System shall provide playback controls (play/pause, stop, skip forward/backward, scrubbing, speed control) with synchronized audio at 30+ FPS. Real-time preview window renders multi-track composition.
+      </doc>
+      <doc path="docs/PRD.md" title="Product Requirements Document" section="NFR001: Performance">
+        Video playback shall maintain 30+ FPS for 1080p content with smooth timeline rendering. Real-time video preview synchronization with timeline scrubbing.
+      </doc>
+      <doc path="docs/architecture.md" title="Technical Architecture" section="ADR-002: Konva.js for Timeline">
+        Konva.js selected for interactive 60 FPS timeline editing - lighter weight with better React integration than Fabric.js. Supports dirty region detection and virtualization.
+      </doc>
+      <doc path="docs/architecture.md" title="Technical Architecture" section="ADR-003: Zustand State Management">
+        Zustand for state management - optimized re-renders with selector-based subscriptions, simple API, perfect for complex timeline state.
+      </doc>
+      <doc path="docs/architecture.md" title="Technical Architecture" section="ADR-005: Milliseconds for Timestamps">
+        All timeline timestamps stored in milliseconds (ms). Video.js uses seconds (convert on display), FFmpeg uses seconds (convert for commands).
+      </doc>
+      <doc path="docs/architecture.md" title="Technical Architecture" section="Performance Optimization">
+        60 FPS target: Konva.js dirty region detection, virtualize off-screen clips, debounce playhead updates during scrubbing.
+      </doc>
+    </docs>
+    <code>
+      <artifact path="src/stores/playerStore.ts" kind="store" symbol="PlayerStore" lines="9-36" reason="Core state interface for video playback - needs extension for playhead position and play/pause actions">
+        Current interface includes: currentVideo, isPlaying, currentTime, duration, togglePlayPause, setCurrentTime, seek. Story requires adding: playheadPosition (ms), play(), pause(), setPlayheadPosition().
+      </artifact>
+      <artifact path="src/components/player/VideoPlayer.tsx" kind="component" symbol="VideoPlayer" lines="35-135" reason="Video.js wrapper component - needs synchronization logic for playhead-driven seeking and playback-driven playhead updates">
+        Currently handles Video.js lifecycle, syncs isPlaying state. Needs: subscribe to playheadPosition changes, implement requestAnimationFrame loop during playback.
+      </artifact>
+      <artifact path="src/lib/utils/timeUtils.ts" kind="utility" symbol="formatTime, parseTime" lines="17-52" reason="Time conversion utilities - currently only handles seconds format. Need to add milliseconds conversion functions (pixelsToMs, msToPixels)">
+        Existing: formatTime(seconds), parseTime(timeString). Will add: pixelsToMs(pixels, timelineWidth, totalDuration), msToPixels(ms, timelineWidth, totalDuration).
+      </artifact>
+      <artifact path="src/types/media.ts" kind="types" symbol="MediaFile" lines="15-42" reason="Media metadata interface - duration is already in milliseconds (consistent with ADR-005)">
+        MediaFile.duration is in milliseconds, aligns with story's time unit requirements.
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="video.js" version="8.16.1" purpose="HTML5 video player with professional controls" />
+        <package name="zustand" version="4.x" purpose="State management for playerStore" />
+        <package name="react-konva" version="latest" purpose="React wrapper for Konva.js timeline canvas (to be used for timeline components)" />
+        <package name="konva" version="latest" purpose="Canvas-based timeline rendering with drag interactions" />
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - **Primary sync direction:** Video player drives playhead during playback (use requestAnimationFrame loop to sync playhead with video.currentTime)
+    - **Secondary sync direction:** Playhead/timeline drives video player during scrubbing (user interaction)
+    - **Time units:** All timeline timestamps in milliseconds (ADR-005). Video.js uses seconds - convert on display/interaction.
+    - **Performance target:** Scrubbing latency < 100ms (AC 5, NFR001)
+    - **Debouncing:** Playhead drag updates at 16ms (60fps) using requestAnimationFrame
+    - **State management:** Use Zustand selectors to prevent unnecessary re-renders (ADR-003)
+    - **Canvas rendering:** Konva.js for timeline (ADR-002) - supports drag events and smooth rendering
+    - **No new files:** Update existing components (Timeline.tsx, Playhead.tsx, VideoPlayer.tsx) and stores (playerStore.ts)
+  </constraints>
+  <interfaces>
+    <interface name="PlayerStore" kind="zustand-store" path="src/stores/playerStore.ts">
+      <signature>
+        interface PlayerStore {
+          currentVideo: MediaFile | null;
+          isPlaying: boolean;
+          currentTime: number;  // seconds (Video.js format)
+          duration: number;     // seconds
+          // NEW: Story 1.7 additions
+          playheadPosition: number;  // milliseconds (timeline format)
+          play: () => void;
+          pause: () => void;
+          seek: (time: number) => void;  // seconds
+          setPlayheadPosition: (position: number) => void;  // milliseconds
+        }
+      </signature>
+    </interface>
+    <interface name="VideoPlayerProps" kind="react-component-props" path="src/components/player/VideoPlayer.tsx">
+      <signature>
+        interface VideoPlayerProps {
+          src: string;
+          onReady?: (player: Player) => void;
+          onTimeUpdate?: (currentTime: number) => void;
+          onEnded?: () => void;
+        }
+      </signature>
+    </interface>
+    <interface name="Video.js Player API" kind="external-library">
+      <signature>
+        // Key methods for synchronization
+        player.currentTime(): number;          // Get current time (seconds)
+        player.currentTime(seconds: number);   // Seek to time (seconds)
+        player.play(): Promise&lt;void&gt;;
+        player.pause(): void;
+        player.on('timeupdate', callback);
+      </signature>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Project uses Vitest with jsdom environment for unit and component tests. Test setup includes @testing-library/jest-dom for DOM assertions and React Testing Library for component testing. All tests use globals: true (no import statements needed for describe/it/expect). Existing test patterns show strong coverage of utility functions, store logic, and component behavior with clear describe blocks and comprehensive edge case testing.
+    </standards>
+    <locations>
+      - Unit tests: src/lib/**/*.test.ts (utility functions, time conversions)
+      - Store tests: src/stores/**/*.test.ts (Zustand store logic)
+      - Component tests: src/components/**/*.test.tsx (React Testing Library)
+      - Test setup: src/test/setup.ts (global test configuration)
+    </locations>
+    <ideas>
+      <test id="AC1" criteria="Dragging playhead updates preview player to that frame">
+        - Unit: Test pixelsToMs conversion accuracy (various timeline widths, durations)
+        - Component: Mock Konva drag event, verify playerStore.seek() called with correct time
+        - Integration: Verify video.currentTime updated when playhead dragged
+      </test>
+      <test id="AC2" criteria="Clicking anywhere on timeline moves playhead to that position">
+        - Unit: Test click coordinate to milliseconds conversion
+        - Component: Mock Timeline click event, verify playhead position and video seek
+        - Edge case: Clicks at timeline boundaries (0, max duration)
+      </test>
+      <test id="AC3-4" criteria="Play/pause synchronization">
+        - Store: Test play() sets isPlaying=true, pause() sets isPlaying=false
+        - Component: Verify video.play() called when playerStore.play() invoked
+        - Component: Verify video.pause() called when playerStore.pause() invoked
+        - Component: Test requestAnimationFrame loop during playback updates playheadPosition
+      </test>
+      <test id="AC5" criteria="Scrubbing responsiveness &lt; 100ms">
+        - Performance: Mock high-frequency drag events, measure time delta between input and video seek
+        - Performance: Verify debouncing at 16ms intervals (60fps target)
+        - Integration: Test requestAnimationFrame usage for smooth rendering
+      </test>
+      <test id="utils" criteria="Time conversion utilities">
+        - Unit: pixelsToMs(0, width, duration) === 0
+        - Unit: pixelsToMs(width, width, duration) === duration
+        - Unit: msToPixels(0, width, duration) === 0
+        - Unit: msToPixels(duration, width, duration) === width
+        - Unit: Round-trip: msToPixels(ms) |&gt; pixelsToMs() === original ms
+      </test>
+    </ideas>
+  </tests>
+</story-context>

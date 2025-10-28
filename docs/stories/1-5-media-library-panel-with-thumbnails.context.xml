@@ -1,0 +1,335 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>5</storyId>
+    <title>Media Library Panel with Thumbnails</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-27</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-5-media-library-panel-with-thumbnails.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to see thumbnails and metadata for all imported clips</iWant>
+    <soThat>I can identify and manage my video files</soThat>
+    <tasks>
+      <task id="1" ac="1">
+        <description>Implement thumbnail generation backend</description>
+        <subtasks>
+          - Create Rust command cmd_generate_thumbnail in src-tauri/src/commands/media.rs
+          - Use FFmpeg via ffmpeg-sidecar to extract frame at 1 second mark
+          - Save thumbnail as temporary PNG file in app data directory
+          - Return thumbnail file path or Base64 data URL to frontend
+          - Add error handling for videos shorter than 1 second (use first frame)
+          - Write Rust test for thumbnail generation with sample video
+        </subtasks>
+      </task>
+      <task id="2" ac="1">
+        <description>Update MediaFile type to include thumbnail</description>
+        <subtasks>
+          - Add thumbnail: string field to MediaFile interface in src/types/media.ts
+          - Update cmd_import_media in src-tauri/src/commands/media.rs to generate thumbnail
+          - Call generate_thumbnail after metadata extraction
+          - Include thumbnail data in returned MediaFile struct
+          - Update Rust MediaFile struct in src-tauri/src/models/media.rs to include thumbnail field
+        </subtasks>
+      </task>
+      <task id="3" ac="1,2">
+        <description>Update MediaItem component to display thumbnails</description>
+        <subtasks>
+          - Replace Film icon placeholder with actual thumbnail image in MediaItem.tsx
+          - Use img element with src={mediaFile.thumbnail}
+          - Add fallback to Film icon if thumbnail fails to load
+          - Ensure thumbnail maintains 16:9 aspect ratio with object-fit: cover
+          - Add loading state for thumbnail image
+          - Update MediaItem.test.tsx to verify thumbnail rendering
+        </subtasks>
+      </task>
+      <task id="4" ac="1,2,4">
+        <description>Create MediaLibrary Panel component</description>
+        <subtasks>
+          - Create src/components/media-library/MediaLibrary.tsx component
+          - Subscribe to useMediaLibraryStore to get mediaFiles array
+          - Map over mediaFiles and render MediaItem for each
+          - Display empty state when no files imported
+          - Add scrollable container for multiple items (max-height with overflow-y-auto)
+          - Apply grid or list layout for media items
+        </subtasks>
+      </task>
+      <task id="5" ac="5">
+        <description>Add delete functionality to MediaItem</description>
+        <subtasks>
+          - Add delete button (Trash2 icon from lucide-react) to MediaItem component
+          - Position delete button in top-right corner of thumbnail overlay (appears on hover)
+          - Call useMediaLibraryStore().removeMediaFile(mediaFile.id) on click
+          - Show confirmation dialog before deleting (use shadcn/ui AlertDialog)
+          - Clear current video from playerStore if deleted file is currently playing
+          - Add keyboard shortcut: Delete key removes selected item
+        </subtasks>
+      </task>
+      <task id="6" ac="2">
+        <description>Verify metadata display completeness</description>
+        <subtasks>
+          - Confirm MediaItem displays: filename, duration, resolution, file size
+          - Verify codec display (already present in MediaItem.tsx)
+          - Ensure all metadata formats correctly (duration MM:SS, fileSize in MB)
+          - Test with various video files to verify metadata accuracy
+        </subtasks>
+      </task>
+      <task id="7" ac="3">
+        <description>Verify player integration</description>
+        <subtasks>
+          - Confirm clicking MediaItem loads video in preview player
+          - Test selection visual feedback (blue border when selected)
+          - Verify keyboard navigation (Enter/Space to select)
+          - Test with multiple videos to ensure selection switches correctly
+        </subtasks>
+      </task>
+      <task id="8" ac="4">
+        <description>Test multiple clips workflow</description>
+        <subtasks>
+          - Import 3-5 test videos to media library
+          - Verify all thumbnails generate correctly
+          - Test scrolling behavior with many items
+          - Verify performance with 10+ videos (thumbnail loading)
+          - Test deleting individual items maintains library state
+        </subtasks>
+      </task>
+      <task id="9" ac="1,2,4">
+        <description>Integration with App layout</description>
+        <subtasks>
+          - Update src/App.tsx to render MediaLibrary panel in sidebar area
+          - Position MediaLibrary in sidebar area from Story 1.2 layout
+          - Ensure MediaLibrary has appropriate width and height constraints
+          - Verify MediaLibrary panel scrolls independently from preview/timeline areas
+          - Test responsive behavior when window resizes
+        </subtasks>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="AC1">Media library displays thumbnail preview for each imported clip</criterion>
+    <criterion id="AC2">Metadata shown: filename, duration, resolution, file size</criterion>
+    <criterion id="AC3">Clicking a clip loads it in the preview player</criterion>
+    <criterion id="AC4">Multiple clips can be imported and displayed in library</criterion>
+    <criterion id="AC5">Delete button removes clip from library</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - Technology Stack</title>
+        <section>Technology Stack Details</section>
+        <snippet>FFmpeg Integration via ffmpeg-sidecar 2.1.0 for video processing including thumbnail generation. Auto-download binary with proven performance for Epic 1, 2, 4, 5.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - Project Structure</title>
+        <section>Complete Project Structure</section>
+        <snippet>Media library components located in src/components/media-library/ including MediaLibrary.tsx (library panel), MediaItem.tsx (thumbnail + metadata display), and MediaImport.tsx (drag-drop import zone).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - FFmpeg Integration</title>
+        <section>FFmpeg Integration Strategy</section>
+        <snippet>FFmpeg used for thumbnail extraction, PiP composition, audio extraction for Whisper API, and caption burning (subtitles filter). Integrated via ffmpeg-sidecar crate.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - State Management</title>
+        <section>State Management Patterns (Zustand)</section>
+        <snippet>Zustand store structure with mediaLibraryStore for managing imported media files. Store provides actions for adding and removing media files with immutable updates.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - Data Models</title>
+        <section>Media Library Model</section>
+        <snippet>MediaFile interface includes: id (UUID), filePath, filename, duration (ms), resolution {width, height}, fileSize (bytes), codec, thumbnail (Base64 or file path), importedAt (ISO 8601 timestamp).</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>PRD - Functional Requirements</title>
+        <section>FR001: Video File Import and Management</section>
+        <snippet>System shall maintain a media library with thumbnail previews, metadata (duration, resolution, file size, codec), search/filter, and organizational capabilities.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/media.ts</path>
+        <kind>interface</kind>
+        <symbol>MediaFile</symbol>
+        <lines>15-42</lines>
+        <reason>Core type definition - includes thumbnail?: string field (optional, needs to be populated)</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/mediaLibraryStore.ts</path>
+        <kind>store</kind>
+        <symbol>useMediaLibraryStore</symbol>
+        <lines>33-87</lines>
+        <reason>Zustand store managing media files - includes removeMediaFile action needed for delete functionality</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>usePlayerStore</symbol>
+        <lines>45-74</lines>
+        <reason>Player state management - setCurrentVideo(null) needed when deleting currently playing video</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/media-library/MediaItem.tsx</path>
+        <kind>component</kind>
+        <symbol>MediaItem</symbol>
+        <lines>35-85</lines>
+        <reason>Existing component that displays media metadata with Film icon placeholder - needs thumbnail display and delete button</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/models/media.rs</path>
+        <kind>model</kind>
+        <symbol>MediaFile</symbol>
+        <lines>14-43</lines>
+        <reason>Rust backend model with thumbnail: Option&lt;String&gt; field already defined</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/media.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_import_media</symbol>
+        <lines>16-78</lines>
+        <reason>Existing import command that needs to be extended to generate thumbnails after metadata extraction</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="zustand" version="^4" purpose="State management" />
+        <package name="lucide-react" version="^0.548.0" purpose="Icons (Film, Trash2)" />
+        <package name="tailwind-merge" version="^3.3.1" purpose="Utility for className merging" />
+        <package name="class-variance-authority" version="^0.7.1" purpose="shadcn/ui variant styles" />
+        <package name="sonner" version="^2.0.7" purpose="Toast notifications" />
+      </frontend>
+      <frontend-dev>
+        <package name="vitest" version="^2" purpose="Testing framework" />
+        <package name="@testing-library/react" version="^16" purpose="React component testing" />
+        <package name="@testing-library/jest-dom" version="^6" purpose="DOM matchers" />
+        <package name="@testing-library/user-event" version="^14.6.1" purpose="User interaction simulation" />
+        <package name="jsdom" version="^25" purpose="DOM environment for tests" />
+        <package name="typescript" version="~5.8.3" />
+      </frontend-dev>
+      <backend>
+        <package name="tauri" version="2" purpose="Desktop app framework" />
+        <package name="ffmpeg-sidecar" version="2.1" purpose="FFmpeg integration for thumbnail generation" />
+        <package name="serde" version="1" features="derive" purpose="Serialization" />
+        <package name="serde_json" version="1" purpose="JSON serialization" />
+        <package name="tokio" version="1" features="full" purpose="Async runtime" />
+        <package name="anyhow" version="1" purpose="Error handling" />
+        <package name="thiserror" version="1" purpose="Custom error types" />
+        <package name="tracing" version="0.1" purpose="Structured logging" />
+        <package name="chrono" version="0.4" features="serde" purpose="Date/time handling" />
+        <package name="uuid" version="1" features="v4,serde" purpose="ID generation" />
+        <package name="base64" version="latest" purpose="Base64 encoding for thumbnails" />
+        <package name="dirs" version="6" purpose="App data directory resolution" />
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Component location: src/components/media-library/ (architecture.md line 130)
+    - Use FFmpeg via ffmpeg-sidecar for thumbnail generation (architecture.md line 97)
+    - Maintain immutable update patterns in Zustand stores (architecture.md State Management)
+    - Use shadcn/ui components for UI elements (AlertDialog for delete confirmation)
+    - Thumbnail should be Base64 data URL or file path (architecture.md line 1388)
+    - Maintain 16:9 aspect ratio for thumbnails with object-fit: cover
+    - Error handling: graceful fallback to Film icon if thumbnail fails
+    - Backend commands in src-tauri/src/commands/media.rs (architecture.md line 188)
+    - Testing required: Vitest for React components, Rust tests for backend commands
+    - macOS design aesthetics: spacing, colors, borders per Story 1.2 layout
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>cmd_generate_thumbnail</name>
+      <kind>Tauri command</kind>
+      <signature>async fn cmd_generate_thumbnail(video_path: String, app_handle: tauri::AppHandle) -&gt; Result&lt;String, String&gt;</signature>
+      <path>src-tauri/src/commands/media.rs</path>
+      <description>New command to generate thumbnail from video file at 1 second mark, returns Base64 data URL</description>
+    </interface>
+    <interface>
+      <name>MediaFile.thumbnail</name>
+      <kind>Interface field</kind>
+      <signature>thumbnail?: string (TypeScript), thumbnail: Option&lt;String&gt; (Rust)</signature>
+      <path>src/types/media.ts, src-tauri/src/models/media.rs</path>
+      <description>Optional thumbnail field already exists in both frontend and backend models</description>
+    </interface>
+    <interface>
+      <name>useMediaLibraryStore.removeMediaFile</name>
+      <kind>Zustand action</kind>
+      <signature>removeMediaFile: (id: string) =&gt; void</signature>
+      <path>src/stores/mediaLibraryStore.ts</path>
+      <description>Existing action to remove media file by ID</description>
+    </interface>
+    <interface>
+      <name>usePlayerStore.setCurrentVideo</name>
+      <kind>Zustand action</kind>
+      <signature>setCurrentVideo: (video: MediaFile | null) =&gt; void</signature>
+      <path>src/stores/playerStore.ts</path>
+      <description>Existing action to set or clear current video in player</description>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Frontend testing uses Vitest with @testing-library/react. Test files are co-located with components (*.test.tsx).
+      Use userEvent for interaction simulation, cleanup() in beforeEach, and mock Zustand stores with setState().
+      Backend Rust tests use #[tokio::test] for async commands and #[cfg(test)] modules. Test file validation, error handling, and success paths.
+      Follow existing patterns: arrange-act-assert structure, descriptive test names starting with "should".
+    </standards>
+    <locations>
+      - Frontend: src/components/**/*.test.tsx (co-located with components)
+      - Backend: src-tauri/src/commands/**/*.rs (inline #[cfg(test)] modules)
+      - Test command: npm run test (runs Vitest suite)
+    </locations>
+    <ideas>
+      <test-idea ac="AC1">
+        <description>MediaItem displays thumbnail when available</description>
+        <approach>Render MediaItem with thumbnail URL, verify img element src attribute matches thumbnail</approach>
+      </test-idea>
+      <test-idea ac="AC1">
+        <description>MediaItem falls back to Film icon when thumbnail missing or fails to load</description>
+        <approach>Test with thumbnail=undefined and with onError trigger, verify Film icon is rendered</approach>
+      </test-idea>
+      <test-idea ac="AC1">
+        <description>Thumbnail generation backend command succeeds with valid video</description>
+        <approach>Rust test: call cmd_generate_thumbnail with test MP4, verify Base64 data URL returned</approach>
+      </test-idea>
+      <test-idea ac="AC1">
+        <description>Thumbnail generation handles short videos (fallback to first frame)</description>
+        <approach>Rust test: use video shorter than 1 second, verify thumbnail still generated at 00:00:00</approach>
+      </test-idea>
+      <test-idea ac="AC2,AC4">
+        <description>MediaLibrary renders all media items from store</description>
+        <approach>Mock mediaLibraryStore with 3 files, verify 3 MediaItem components rendered</approach>
+      </test-idea>
+      <test-idea ac="AC2,AC4">
+        <description>MediaLibrary shows empty state when no files imported</description>
+        <approach>Mock empty mediaFiles array, verify empty state message displayed</approach>
+      </test-idea>
+      <test-idea ac="AC5">
+        <description>Delete button calls removeMediaFile with correct ID</description>
+        <approach>Click delete button, verify useMediaLibraryStore().removeMediaFile called with mediaFile.id</approach>
+      </test-idea>
+      <test-idea ac="AC5">
+        <description>Delete confirmation dialog appears before deletion</description>
+        <approach>Click delete button, verify AlertDialog opens with confirmation message</approach>
+      </test-idea>
+      <test-idea ac="AC5">
+        <description>Deleting current video clears player</description>
+        <approach>Set currentVideo in playerStore, delete that video, verify setCurrentVideo(null) called</approach>
+      </test-idea>
+      <test-idea ac="AC3">
+        <description>Clicking MediaItem updates playerStore.currentVideo</description>
+        <approach>Already covered in existing MediaItem.test.tsx - verify still works with thumbnail changes</approach>
+      </test-idea>
+    </ideas>
+  </tests>
+</story-context>

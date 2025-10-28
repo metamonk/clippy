@@ -1,0 +1,203 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>8</storyId>
+    <title>Basic Trim Functionality with In/Out Points</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-27</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-8-basic-trim-functionality-with-in-out-points.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to set in/out points on a clip to trim unwanted portions</iWant>
+    <soThat>I can remove content from the beginning or end</soThat>
+    <tasks>
+- Implement trim handle UI components on timeline clips (AC: 1)
+  - Add visual trim handles (left and right edges) to TimelineClip component
+  - Position handles at clip boundaries with appropriate hover states
+  - Style handles to be visually distinct and grabbable (macOS-style resize handles)
+- Implement drag-to-trim interaction logic (AC: 2, 3)
+  - Add drag event handlers to trim handles using Konva drag events
+  - Update clip trimIn/trimOut values in timelineStore as handles move
+  - Constrain trim handles within clip boundaries (trimIn < trimOut)
+  - Add visual feedback during drag (dimmed/grayed trimmed regions)
+  - Display trimmed region with different opacity or color overlay
+- Integrate trim state with timeline data model (AC: 5)
+  - Update Clip interface in types/timeline.ts to include trimIn/trimOut milliseconds
+  - Update timelineStore actions to handle trim updates (updateClip action)
+  - Ensure trim state persists when clips are moved or modified
+- Synchronize preview player with trim points (AC: 4)
+  - Modify playback logic to respect trimIn/trimOut boundaries
+  - Update playerStore to clamp playback to trimmed range
+  - Ensure playhead doesn't enter trimmed regions during scrubbing
+  - Update video player src with trimmed time range (if supported by Video.js)
+- Add trim reset functionality (AC: 6)
+  - Create "Reset Trim" button or context menu option for selected clip
+  - Reset trimIn to 0 and trimOut to original clip duration
+  - Update UI to reflect reset state
+- Write unit tests for trim operations
+  - Test trim handle constraints (trimIn < trimOut, within clip bounds)
+  - Test trim state updates in timelineStore
+  - Test playback respects trim boundaries
+  - Test trim reset functionality
+</tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Clip on timeline shows trim handles at start and end
+2. Dragging trim handles adjusts clip in/out points
+3. Visual feedback shows trimmed portion
+4. Preview player respects trim points during playback
+5. Trim state stored in timeline data model
+6. Can reset trim to original clip length
+</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Core Data Models - Timeline Model</section>
+        <snippet>Defines Clip interface with trimIn/trimOut (milliseconds), startTime, duration. Clips belong to Tracks which compose Timeline.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Implementation Patterns - State Management Patterns (Zustand)</section>
+        <snippet>timelineStore implements updateClip action for immutable updates. Includes selectedClipId for tracking active clip.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Implementation Patterns - React Component Structure</section>
+        <snippet>Timeline components use Konva.js (react-konva) for 60 FPS canvas rendering. Components use Zustand selectors for performance.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Testing Patterns</section>
+        <snippet>Frontend uses Vitest + React Testing Library. Tests live in same directory as source with .test.ts/.test.tsx suffix.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>interface</kind>
+        <symbol>Clip</symbol>
+        <lines>5-12</lines>
+        <reason>Core Clip interface already includes trimIn/trimOut fields. Story will leverage existing structure.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>TimelineState</symbol>
+        <lines>6-36</lines>
+        <reason>Provides updateClip action for updating trim values. Contains timeline state management logic.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>28-66</lines>
+        <reason>Existing timeline clip component that needs trim handle UI added. Already calculates visual duration using trimOut - trimIn.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/player/VideoPlayer.tsx</path>
+        <kind>component</kind>
+        <symbol>VideoPlayer</symbol>
+        <lines>34-134</lines>
+        <reason>Player component that needs to respect trim boundaries during playback and scrubbing.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>PlayerStore</symbol>
+        <lines>n/a</lines>
+        <reason>Player state management that will enforce playback within trim boundaries.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="konva" version="^9.3.22" />
+        <package name="react-konva" version="^18.2.14" />
+        <package name="zustand" version="^4" />
+        <package name="video.js" version="8.16.1" />
+        <package name="uuid" version="^13.0.0" />
+        <package name="vitest" version="^2" dev="true" />
+        <package name="@testing-library/react" version="^16" dev="true" />
+        <package name="@testing-library/user-event" version="^14.6.1" dev="true" />
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+- Use Konva.js drag events for trim handles (smooth 60 FPS interaction)
+- Update state immutably in Zustand stores (timelineStore, playerStore)
+- Time values in milliseconds (trimIn, trimOut are ms offsets from clip start)
+- Trim handles must have visual hover feedback (macOS design language)
+- Trimmed regions should be visually distinguishable (opacity, overlay, or dimming)
+- Dragging should feel smooth - consider debouncing if performance issues arise
+- Preview player must immediately reflect trim changes
+- Constraint: trimIn &lt; trimOut, both within [0, clip.duration]
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>Clip</name>
+      <kind>TypeScript interface</kind>
+      <signature>interface Clip { id: string; filePath: string; startTime: number; duration: number; trimIn: number; trimOut: number; }</signature>
+      <path>src/types/timeline.ts:5-12</path>
+    </interface>
+    <interface>
+      <name>TimelineState.updateClip</name>
+      <kind>Zustand store action</kind>
+      <signature>updateClip: (clipId: string, updates: Partial&lt;Omit&lt;Clip, 'id'&gt;&gt;) =&gt; void</signature>
+      <path>src/stores/timelineStore.ts:17</path>
+    </interface>
+    <interface>
+      <name>TimelineClipProps</name>
+      <kind>React component props</kind>
+      <signature>interface TimelineClipProps { clip: Clip; trackHeight?: number; pixelsPerSecond?: number; yPosition: number; onSelect?: (id: string) =&gt; void; isSelected?: boolean; }</signature>
+      <path>src/components/timeline/TimelineClip.tsx</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>Frontend tests use Vitest + React Testing Library. Test files are colocated with source files using .test.ts or .test.tsx suffix. Store tests go in src/stores/*.test.ts, component tests in src/components/**/*.test.tsx. Run tests with `npm run test`. Focus on behavior testing, not implementation details.</standards>
+    <locations>
+- src/stores/timelineStore.test.ts (existing - extend for trim operations)
+- src/components/timeline/TimelineClip.test.tsx (create new)
+- src/components/player/VideoPlayer.test.tsx (existing - extend for trim boundaries)
+- src/lib/timeline/*.test.ts (if utility functions needed)
+    </locations>
+    <ideas>
+**AC1 - Trim handles visible:**
+- Test: TimelineClip renders with trim handles at start/end edges when clip selected
+- Test: Trim handles have hover state styling
+
+**AC2 - Dragging adjusts trim points:**
+- Test: Dragging left handle updates clip.trimIn value in store
+- Test: Dragging right handle updates clip.trimOut value in store
+- Test: Trim handle drag respects constraints (trimIn &lt; trimOut, within [0, duration])
+
+**AC3 - Visual feedback:**
+- Test: Trimmed regions rendered with reduced opacity or overlay
+- Test: Clip width reflects visual duration (trimOut - trimIn)
+
+**AC4 - Player respects trim:**
+- Test: Player playback stops at trimOut boundary
+- Test: Player playback starts at trimIn when playing trimmed clip
+- Test: Scrubbing constrained to [trimIn, trimOut] range
+
+**AC5 - Trim state persisted:**
+- Test: updateClip action updates trimIn/trimOut in timelineStore
+- Test: Trim values persist after clip is moved on timeline
+
+**AC6 - Reset trim:**
+- Test: Reset action sets trimIn=0, trimOut=duration
+- Test: UI updates to reflect full clip after reset
+    </ideas>
+  </tests>
+</story-context>

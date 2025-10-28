@@ -1,0 +1,263 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>4</storyId>
+    <title>Video Preview Player with Basic Controls</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-27</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-4-video-preview-player-with-basic-controls.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to preview imported videos with play/pause controls</iWant>
+    <soThat>I can see video content before editing</soThat>
+    <tasks>
+- Set up Video.js player library (AC: 1, 3, 6)
+- Create VideoPlayer React component wrapper (AC: 1, 4, 5)
+- Create PlayerControls component (AC: 3, 6)
+- Create player state management store (AC: 2, 3)
+- Integrate VideoPlayer into PreviewPanel (AC: 1, 2)
+- Implement media library item selection (AC: 2)
+- Wire play/pause controls to player (AC: 3)
+- Implement time tracking and display (AC: 6)
+- Handle video resolution and scaling (AC: 4)
+- Test audio synchronization (AC: 5)
+- Write comprehensive component tests (AC: testing standard)
+- Manual testing and polish (AC: all)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. HTML5 video element renders in preview area
+2. Video plays when selected from media library
+3. Play/pause button controls playback
+4. Video displays at appropriate resolution within preview window
+5. Audio plays synchronized with video
+6. Current time and duration displayed
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR006: Real-Time Video Preview and Playback</section>
+        <snippet>System shall render multi-track composition with PiP overlays in real-time preview window. System shall provide playback controls (play/pause, stop, skip forward/backward, scrubbing, speed control) with synchronized audio at 30+ FPS.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Video playback shall maintain 30+ FPS for 1080p content with smooth timeline rendering. Application shall launch in under 3 seconds.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>User Interface Design Goals - Core Screens/Views</section>
+        <snippet>Main Editing View: Split layout with preview window (top), timeline editor (bottom), media library panel (side). Preview window shows video player updates immediately as playhead moves or clips are adjusted.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Technology Stack Details - Video Player</section>
+        <snippet>Video.js 8.16.1 - HTML5 video player with professional controls. Component Location: src/components/player/VideoPlayer.tsx, src/components/player/PlayerControls.tsx. State Store: stores/playerStore.ts for playback state.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Complete Project Structure - Player Components</section>
+        <snippet>src/components/player/ contains VideoPlayer.tsx (Video.js wrapper), PlayerControls.tsx (play/pause controls). src/stores/playerStore.ts for playback state. src/lib/utils/timeUtils.ts for time formatting.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>React Component Structure</section>
+        <snippet>Standard React 18 component pattern with hooks, state management via Zustand, proper cleanup in useEffect. Video.js requires careful lifecycle management: create instance after DOM mount, store in ref, dispose on unmount.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>State Management Patterns (Zustand)</section>
+        <snippet>Zustand store structure with state and actions. Use selectors for performance (component only re-renders when selected state changes). Enable devtools middleware for debugging.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Testing Patterns</section>
+        <snippet>Frontend testing with Vitest + React Testing Library. Test component rendering, event handlers, state updates. Run tests with npm run test.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Naming Conventions - TypeScript</section>
+        <snippet>Components: PascalCase.tsx (VideoPlayer.tsx). Stores: camelCase.ts (playerStore.ts). Utilities: camelCase.ts (timeUtils.ts). Functions: camelCase (formatTime, togglePlayPause).</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Story 1.4: Video Preview Player with Basic Controls</section>
+        <snippet>As a user, I want to preview imported videos with play/pause controls, so that I can see video content before editing. Prerequisites: Story 1.3 (Video File Import with Drag & Drop).</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/components/layout/PreviewPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>PreviewPanel</symbol>
+        <lines>1-28</lines>
+        <reason>This component will be updated to conditionally render VideoPlayer when a video is selected. Currently shows empty state with Play icon.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/media-library/MediaItem.tsx</path>
+        <kind>component</kind>
+        <symbol>MediaItem</symbol>
+        <lines>1-64</lines>
+        <reason>This component will be updated to add onClick handler that calls playerStore.setCurrentVideo to load video into preview player.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/media.ts</path>
+        <kind>interface</kind>
+        <symbol>MediaFile</symbol>
+        <lines>15-42</lines>
+        <reason>Existing interface that will be used by playerStore.currentVideo. Contains filePath, duration, and other metadata needed for player.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/mediaLibraryStore.ts</path>
+        <kind>store</kind>
+        <symbol>useMediaLibraryStore</symbol>
+        <lines></lines>
+        <reason>Existing Zustand store for media library. Pattern to follow for playerStore implementation.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="video.js" version="8.16.1" />
+        <package name="@videojs/themes" version="^1" />
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="zustand" version="^4" />
+        <package name="lucide-react" version="^0.548.0" />
+        <package name="tailwind-merge" version="^3.3.1" />
+        <package name="clsx" version="^2.1.1" />
+      </node>
+      <devDependencies>
+        <package name="vitest" version="^2" />
+        <package name="@testing-library/react" version="^16" />
+        <package name="@testing-library/jest-dom" version="^6" />
+        <package name="@testing-library/user-event" version="^14.6.1" />
+        <package name="jsdom" version="^25" />
+      </devDependencies>
+      <notes>
+- video.js and @videojs/themes already installed in package.json
+- No new dependencies needed for this story
+- All testing frameworks already configured
+      </notes>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+- Use Video.js 8.16.1 for video playback (architecture.md line 96, 293)
+- Follow React 18 component patterns with hooks and proper cleanup
+- Video.js requires careful lifecycle management: create instance after DOM mount, store in ref, dispose on unmount to prevent memory leaks
+- Use Zustand for state management with selectors for performance
+- Apply Tailwind CSS exclusively for styling (no custom CSS files)
+- Use lucide-react icons (Play, Pause) for controls
+- Implement keyboard accessibility (Space bar for play/pause, Tab navigation)
+- Component files use PascalCase.tsx naming (VideoPlayer.tsx, PlayerControls.tsx)
+- Store files use camelCase.ts naming (playerStore.ts)
+- Utility files use camelCase.ts naming (timeUtils.ts)
+- All time values in milliseconds (consistent with MediaFile.duration)
+- Video playback must maintain 30+ FPS for 1080p content (NFR001)
+- Scrubbing must feel responsive with less than 100ms latency (NFR001)
+- Write comprehensive Vitest tests for all components and stores
+- Use @/ path alias for imports
+- Add ARIA labels for accessibility
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>MediaFile</name>
+      <kind>TypeScript interface</kind>
+      <signature>interface MediaFile {
+  id: string;
+  filePath: string;
+  filename: string;
+  duration: number;
+  resolution: { width: number; height: number };
+  fileSize: number;
+  codec: string;
+  thumbnail?: string;
+  importedAt: string;
+}</signature>
+      <path>src/types/media.ts</path>
+    </interface>
+    <interface>
+      <name>PlayerStore (to be created)</name>
+      <kind>Zustand store interface</kind>
+      <signature>interface PlayerStore {
+  currentVideo: MediaFile | null;
+  isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+  setCurrentVideo: (video: MediaFile | null) => void;
+  togglePlayPause: () => void;
+  setCurrentTime: (time: number) => void;
+  setDuration: (duration: number) => void;
+  seek: (time: number) => void;
+}</signature>
+      <path>src/stores/playerStore.ts</path>
+    </interface>
+    <interface>
+      <name>VideoPlayerProps (to be created)</name>
+      <kind>React component props</kind>
+      <signature>interface VideoPlayerProps {
+  src: string;
+  onReady?: (player: VideoJS.Player) => void;
+  onTimeUpdate?: (currentTime: number) => void;
+  onEnded?: () => void;
+}</signature>
+      <path>src/components/player/VideoPlayer.tsx</path>
+    </interface>
+    <interface>
+      <name>formatTime utility (to be created)</name>
+      <kind>utility function</kind>
+      <signature>function formatTime(milliseconds: number): string
+function parseTime(timeString: string): number</signature>
+      <path>src/lib/utils/timeUtils.ts</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>Frontend testing with Vitest + React Testing Library. Test files colocated with components using .test.tsx suffix. Test component rendering, user interactions, state updates, and cleanup. Store tests in separate .test.ts files. Run with 'npm run test'. Use @testing-library/user-event for simulating user interactions. Mock Video.js instance for unit tests to avoid actual video loading. Test ARIA labels and keyboard accessibility.</standards>
+    <locations>
+src/components/player/VideoPlayer.test.tsx
+src/components/player/PlayerControls.test.tsx
+src/stores/playerStore.test.ts
+src/lib/utils/timeUtils.test.ts
+src/components/layout/PreviewPanel.test.tsx (update existing)
+src/components/media-library/MediaItem.test.tsx (update existing)
+    </locations>
+    <ideas>
+AC1: Test VideoPlayer renders video element with correct class names
+AC1: Test VideoPlayer initializes Video.js instance on mount
+AC1: Test VideoPlayer disposes Video.js instance on unmount
+AC2: Test MediaItem onClick calls playerStore.setCurrentVideo
+AC2: Test PreviewPanel subscribes to playerStore and renders VideoPlayer when currentVideo is set
+AC3: Test PlayerControls play button triggers play() method
+AC3: Test PlayerControls pause button triggers pause() method
+AC3: Test Space bar keyboard shortcut toggles play/pause
+AC4: Test VideoPlayer configures Video.js with fluid:true and responsive:true
+AC5: Test Video.js audio tracks are enabled (html5.nativeAudioTracks: true)
+AC6: Test PlayerControls displays formatted current time (MM:SS format)
+AC6: Test PlayerControls displays formatted duration (MM:SS format)
+AC6: Test timeupdate event updates playerStore.currentTime
+Store: Test playerStore.setCurrentVideo resets isPlaying, currentTime, duration
+Store: Test playerStore.togglePlayPause flips isPlaying state
+Store: Test playerStore.setCurrentTime updates currentTime
+Store: Test playerStore.setDuration updates duration
+Utils: Test formatTime converts milliseconds to MM:SS correctly
+Utils: Test formatTime handles hours (HH:MM:SS) for videos over 60 minutes
+Utils: Test parseTime converts MM:SS string back to milliseconds
+    </ideas>
+  </tests>
+</story-context>

@@ -1,0 +1,264 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>9</storyId>
+    <title>FFmpeg Integration & Video Export</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-27</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-9-ffmpeg-integration-video-export.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to export my edited timeline as an MP4 file</iWant>
+    <soThat>I can save and share my edited video</soThat>
+    <tasks>
+      - Task 1: Integrate ffmpeg-sidecar in Rust backend
+        - Subtask 1.1: Add ffmpeg-sidecar dependency to Cargo.toml
+        - Subtask 1.2: Create services/ffmpeg/exporter.rs module
+        - Subtask 1.3: Verify FFmpeg binary auto-download works on first run
+        - Subtask 1.4: Write unit test for FFmpeg availability check
+
+      - Task 2: Create export command interface
+        - Subtask 2.1: Define ExportConfig model in models/export.rs
+        - Subtask 2.2: Implement cmd_start_export in commands/export.rs
+        - Subtask 2.3: Integrate native macOS save dialog via @tauri-apps/plugin-dialog
+        - Subtask 2.4: Add export button to UI (components/export/ExportDialog.tsx)
+        - Subtask 2.5: Write test for export command invocation
+
+      - Task 3: Implement timeline-to-FFmpeg conversion
+        - Subtask 3.1: Build FFmpeg filter_complex command from timeline clips
+        - Subtask 3.2: Apply trim points (trimIn/trimOut) to FFmpeg input seeking
+        - Subtask 3.3: Generate single-track MP4 with H.264 video and AAC audio
+        - Subtask 3.4: Write integration test with sample timeline data
+
+      - Task 4: Add progress tracking and cancellation
+        - Subtask 4.1: Parse FFmpeg stderr output for progress (time, percentage)
+        - Subtask 4.2: Implement cmd_get_export_progress command
+        - Subtask 4.3: Create ExportProgress UI component with percentage and ETA
+        - Subtask 4.4: Implement cmd_cancel_export to terminate FFmpeg process
+        - Subtask 4.5: Write test for cancellation cleanup
+
+      - Task 5: Add success notification and error handling
+        - Subtask 5.1: Display native macOS notification on export complete
+        - Subtask 5.2: Handle FFmpeg errors gracefully with user-friendly messages
+        - Subtask 5.3: Validate output file exists and is playable
+        - Subtask 5.4: Write test for notification and error paths
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. FFmpeg integrated in Tauri Rust backend (ffmpeg-next or bindings)
+    2. Export button triggers timeline export
+    3. Native macOS save dialog allows choosing output location
+    4. Progress indicator shows export percentage and ETA
+    5. Export produces valid MP4 file (H.264 codec, AAC audio)
+    6. Exported video respects trim points from timeline
+    7. Can cancel export in progress
+    8. Success notification when export completes
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture - ADR-001: FFmpeg Integration</title>
+        <section>ADR-001: Use ffmpeg-sidecar Instead of Rust FFmpeg Bindings</section>
+        <snippet>Decision: ffmpeg-sidecar. Rationale: Performance-first (CLI overhead negligible), auto-downloads binary (~100MB), zero build complexity, battle-tested, easier debugging. Uses CLI wrapper around FFmpeg binary.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture - Technology Stack</title>
+        <section>Decision Summary - FFmpeg Integration</section>
+        <snippet>ffmpeg-sidecar 2.1.0 - Auto-download binary, proven performance. Affects Epic 1, 2, 4, 5.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture - API Contracts</title>
+        <section>Export Commands</section>
+        <snippet>cmd_start_export(timeline: Timeline, config: ExportConfig) -> Result&lt;String&gt;. Returns export ID. cmd_get_export_progress(export_id: String) -> Result&lt;ExportProgress&gt;. ExportProgress includes percentage, ETA, status.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture - ADR-005: Timeline Timestamps</title>
+        <section>ADR-005: Store Timeline Timestamps in Milliseconds</section>
+        <snippet>Always use milliseconds (u64 in Rust, number in TypeScript). FFmpeg uses seconds - convert for commands. Millisecond precision sufficient for video editing (frame-level at 60fps = 16ms).</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements - Video Export</title>
+        <section>FR011: Video Export</section>
+        <snippet>System shall export timeline to MP4 (H.264 codec) with configurable resolution (720p, 1080p, source), quality/bitrate settings, audio track inclusion/exclusion, and caption options. Progress indicator with percentage/ETA and cancel option.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements - Performance</title>
+        <section>NFR001: Performance</section>
+        <snippet>Video export shall complete near real-time (1 minute video exports in 60-90 seconds).</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic 1 Stories - Story 1.9</title>
+        <section>Story 1.9: FFmpeg Integration &amp; Video Export</section>
+        <snippet>Full story definition with 8 acceptance criteria covering FFmpeg integration, export dialog, progress tracking, MP4 output with H.264/AAC, trim point handling, cancellation, and success notification.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/src/utils/ffmpeg.rs</path>
+        <kind>service</kind>
+        <symbol>extract_metadata</symbol>
+        <lines>17-145</lines>
+        <reason>Existing FFmpeg wrapper for metadata extraction. Pattern to follow for export implementation: uses Command::new("ffmpeg") to spawn process, parses output, handles errors with context.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/utils/ffmpeg.rs</path>
+        <kind>service</kind>
+        <symbol>generate_thumbnail</symbol>
+        <lines>158-256</lines>
+        <reason>Shows FFmpeg command construction pattern: uses -ss for seek, -i for input, handles process output/errors. Similar pattern needed for export with progress parsing.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/models/media.rs</path>
+        <kind>model</kind>
+        <symbol>MediaFile</symbol>
+        <lines>14-43</lines>
+        <reason>Existing media model with duration in milliseconds (u64). Timeline clips reference file_path field. Export will use MediaFile.file_path to locate source videos.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/media.rs</path>
+        <kind>controller</kind>
+        <symbol>cmd_import_media</symbol>
+        <lines>1-50</lines>
+        <reason>Pattern for Tauri commands: #[tauri::command], async fn, Result&lt;T, String&gt; for error handling. Export commands should follow same pattern.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>model</kind>
+        <symbol>Timeline, Clip, Track</symbol>
+        <lines>1-45</lines>
+        <reason>Timeline data structures with millisecond timestamps. Export command will accept Timeline, iterate tracks/clips, use trimIn/trimOut for FFmpeg seek/duration flags.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/media.ts</path>
+        <kind>controller</kind>
+        <symbol>importMedia</symbol>
+        <lines>14-30</lines>
+        <reason>Pattern for frontend Tauri invoke wrappers: invoke&lt;Type&gt;("cmd_name", params), error handling. Export invocation should follow same pattern.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <package name="ffmpeg-sidecar" version="2.1" reason="CLI-based FFmpeg integration for export pipeline" />
+        <package name="tauri-plugin-dialog" version="2" reason="Native macOS save dialog for export location selection" />
+        <package name="tauri-plugin-notification" version="2" reason="Native macOS notification for export completion" />
+        <package name="tokio" version="1" reason="Async runtime for FFmpeg process management and progress polling" />
+        <package name="anyhow" version="1" reason="Context-rich error handling" />
+        <package name="uuid" version="1" reason="Export ID generation" />
+      </rust>
+      <typescript>
+        <package name="@tauri-apps/api" reason="invoke() for backend communication, dialog plugin integration" />
+        <package name="@tauri-apps/plugin-dialog" reason="Native save dialog integration" />
+      </typescript>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Use ffmpeg-sidecar crate exclusively (ADR-001) - NOT ffmpeg-next or rsmpeg
+    - All timestamps MUST be in milliseconds (ADR-005) - convert to seconds for FFmpeg commands
+    - Export commands must follow Tauri pattern: #[tauri::command], async, Result&lt;T, String&gt;
+    - Follow existing project structure: services/ffmpeg/exporter.rs, commands/export.rs, models/export.rs
+    - Store FFmpeg child process handle in AppState for cancellation capability
+    - Parse FFmpeg stderr for progress (time=00:01:23.45 format)
+    - Use FFmpeg -ss (seek) and -t (duration) flags to respect Clip.trimIn and Clip.trimOut
+    - Export format: MP4 container, H.264 video codec, AAC audio codec (per AC #5 and FR011)
+    - Error handling: user-friendly messages, structured logging with tracing crate
+    - Test coverage required: unit tests for models, integration tests for export pipeline
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>cmd_start_export</name>
+      <kind>Tauri Command</kind>
+      <signature>pub async fn cmd_start_export(timeline: Timeline, config: ExportConfig, state: State&lt;'_, AppState&gt;) -&gt; Result&lt;String, String&gt;</signature>
+      <path>src-tauri/src/commands/export.rs</path>
+      <description>Initiates timeline export. Returns export ID for progress tracking. Converts timeline clips to FFmpeg filter_complex command, applies trim points, spawns FFmpeg process.</description>
+    </interface>
+    <interface>
+      <name>cmd_get_export_progress</name>
+      <kind>Tauri Command</kind>
+      <signature>pub async fn cmd_get_export_progress(export_id: String, state: State&lt;'_, AppState&gt;) -&gt; Result&lt;ExportProgress, String&gt;</signature>
+      <path>src-tauri/src/commands/export.rs</path>
+      <description>Returns current export progress. ExportProgress includes percentage (0-100), ETA, status (running/completed/failed).</description>
+    </interface>
+    <interface>
+      <name>cmd_cancel_export</name>
+      <kind>Tauri Command</kind>
+      <signature>pub async fn cmd_cancel_export(export_id: String, state: State&lt;'_, AppState&gt;) -&gt; Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/export.rs</path>
+      <description>Terminates running FFmpeg process for given export ID. Cleans up partial output file.</description>
+    </interface>
+    <interface>
+      <name>ExportConfig</name>
+      <kind>Rust Model</kind>
+      <signature>pub struct ExportConfig { pub output_path: String, pub resolution: Option&lt;(u32, u32)&gt;, pub codec: Option&lt;String&gt; }</signature>
+      <path>src-tauri/src/models/export.rs</path>
+      <description>Configuration for export operation. output_path from native save dialog, optional resolution override (defaults to source), optional codec override (defaults to H.264).</description>
+    </interface>
+    <interface>
+      <name>Timeline</name>
+      <kind>TypeScript Interface</kind>
+      <signature>interface Timeline { tracks: Track[]; totalDuration: number; }</signature>
+      <path>src/types/timeline.ts</path>
+      <description>Timeline structure passed from frontend to export command. Contains tracks with clips. All timestamps in milliseconds.</description>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Frontend: Vitest with React Testing Library, jsdom environment, globals enabled. Tests colocated with source files (.test.tsx/.test.ts). Pattern: describe blocks, expect assertions, mock Tauri invoke with vi.mock().
+
+      Backend: cargo test for Rust unit/integration tests. Tests in #[cfg(test)] mod tests blocks within source files or separate tests/ directory. Use #[tokio::test] for async tests. Pattern: assert! macros, Result-based error testing.
+
+      Project uses structured logging with tracing crate - test should verify log events are emitted at appropriate levels (info, debug, error).
+    </standards>
+    <locations>
+      - Frontend tests: src/**/*.test.ts, src/**/*.test.tsx (colocated with components/stores)
+      - Frontend test setup: src/test/setup.ts
+      - Backend tests: inline #[cfg(test)] mod tests in src-tauri/src/**/*.rs files
+      - Run frontend: npm run test
+      - Run backend: cargo test (from src-tauri directory)
+    </locations>
+    <ideas>
+      <test criteria="AC1" description="FFmpeg Integration">
+        - Unit test: Verify ffmpeg-sidecar dependency is available and FFmpeg binary auto-downloads on first use
+        - Unit test: Test ExportConfig model serialization/deserialization
+        - Integration test: Verify services/ffmpeg/exporter.rs can construct valid FFmpeg command for simple timeline
+      </test>
+      <test criteria="AC2,AC3" description="Export Button &amp; Save Dialog">
+        - Component test: ExportDialog renders with export button, triggers save dialog on click
+        - Integration test: Mock @tauri-apps/plugin-dialog, verify save dialog opens with .mp4 filter
+        - Component test: Export button disabled when timeline is empty
+      </test>
+      <test criteria="AC4" description="Progress Indicator">
+        - Unit test: Parse FFmpeg stderr output (time=00:01:23.45) to calculate percentage
+        - Component test: ExportProgress component displays percentage and ETA from mock progress data
+        - Integration test: cmd_get_export_progress returns correct ExportProgress struct
+      </test>
+      <test criteria="AC5,AC6" description="MP4 Output &amp; Trim Points">
+        - Integration test: Export produces valid MP4 file with H.264 video and AAC audio codecs (verify with ffprobe)
+        - Unit test: FFmpeg command construction applies -ss and -t flags from Clip.trimIn/trimOut
+        - Integration test: Exported video duration matches timeline duration with trim points applied
+      </test>
+      <test criteria="AC7" description="Cancellation">
+        - Unit test: cmd_cancel_export terminates FFmpeg process and cleans up partial file
+        - Integration test: Cancellation mid-export leaves no orphaned FFmpeg processes
+        - Component test: Export progress UI shows cancel button, invokes cancel command
+      </test>
+      <test criteria="AC8" description="Success Notification">
+        - Integration test: Native notification appears on export completion (mock tauri-plugin-notification)
+        - Unit test: Export completion triggers notification with correct title/body
+        - Error path test: Failed export shows error notification instead of success
+      </test>
+    </ideas>
+  </tests>
+</story-context>

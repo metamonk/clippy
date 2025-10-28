@@ -41,16 +41,16 @@ story_location: "{project-root}/docs/stories"
 development_status:
   # Epic 1: Foundation & TRUE MVP
   epic-1: backlog
-  1-1-tauri-project-setup-application-foundation: in-progress
-  1-2-frontend-ui-shell-layout-structure: drafted
-  1-3-video-file-import-with-drag-drop: backlog
-  1-4-video-preview-player-with-basic-controls: backlog
-  1-5-media-library-panel-with-thumbnails: backlog
-  1-6-single-track-timeline-foundation: backlog
-  1-7-timeline-playback-synchronization: backlog
-  1-8-basic-trim-functionality-with-in-out-points: backlog
-  1-9-ffmpeg-integration-video-export: backlog
-  1-10-production-build-app-packaging: backlog
+  1-1-tauri-project-setup-application-foundation: done
+  1-2-frontend-ui-shell-layout-structure: done
+  1-3-video-file-import-with-drag-drop: done
+  1-4-video-preview-player-with-basic-controls: done
+  1-5-media-library-panel-with-thumbnails: done
+  1-6-single-track-timeline-foundation: done
+  1-7-timeline-playback-synchronization: done
+  1-8-basic-trim-functionality-with-in-out-points: done
+  1-9-ffmpeg-integration-video-export: done
+  1-10-production-build-app-packaging: done
   epic-1-retrospective: optional
 
   # Epic 2: Recording Foundation

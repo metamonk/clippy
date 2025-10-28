@@ -1,0 +1,11 @@
+# Build output
+dist
+dist-ssr
+*.local
+
+# Dependencies
+node_modules
+
+# Generated files
+coverage
+.nyc_output

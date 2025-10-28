@@ -1,0 +1,239 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>6</storyId>
+    <title>Single-Track Timeline Foundation</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-27</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-6-single-track-timeline-foundation.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to drag clips from the media library onto a timeline</iWant>
+    <soThat>I can arrange them for editing</soThat>
+    <tasks>
+- Implement Konva.js canvas-based timeline component (AC: 1)
+  - Create Timeline.tsx component with Konva Stage/Layer
+  - Set up timeline canvas dimensions and positioning
+  - Add empty state placeholder when no clips on timeline
+- Implement time ruler with second markers (AC: 2)
+  - Create TimeRuler.tsx component
+  - Calculate and render time markers based on timeline duration
+  - Display time labels (00:00, 00:10, 00:20, etc.)
+- Implement playhead indicator (AC: 3)
+  - Create Playhead.tsx component
+  - Render playhead line at current position
+  - Connect playhead position to player store state
+- Implement drag-drop from media library to timeline (AC: 4)
+  - Add drag handlers to MediaItem component
+  - Detect drop zone on timeline canvas
+  - Calculate drop position on timeline
+- Implement clip visualization on timeline (AC: 5)
+  - Create TimelineClip.tsx component
+  - Render clip as rectangle or thumbnail strip
+  - Display clip duration and filename
+- Implement timeline state management (AC: 6)
+  - Create timelineStore.ts with Zustand
+  - Define Clip, Track, Timeline interfaces in types/timeline.ts
+  - Implement addClip action
+  - Test state persistence across component re-renders
+- Add unit tests for timeline utilities
+  - Test time conversion functions (ms to pixels, pixels to ms)
+  - Test clip positioning calculations
+- Add component tests for Timeline
+  - Test timeline renders correctly
+  - Test drag-drop interaction
+  - Test clip visualization
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Canvas-based or DOM-based timeline component renders below preview
+2. Timeline shows time ruler with markers (seconds)
+3. Playhead indicator shows current position
+4. Can drag clip from media library onto timeline track
+5. Clip appears on timeline with visual representation (thumbnail strip or solid block)
+6. Timeline state maintained in frontend
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR005: Multi-Track Timeline Editor</section>
+        <snippet>System shall provide visual timeline with playhead, multiple tracks (minimum 2, expandable to 4+), time ruler, zoom/scroll capabilities. System shall support drag-drop clip arrangement, trimming, splitting, deletion, track movement, and snap-to-grid editing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Video playback shall maintain 30+ FPS for 1080p content with smooth timeline rendering. Timeline editing shall target 60 FPS interactive performance.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-002: Use Konva.js Instead of Fabric.js for Timeline</section>
+        <snippet>Decision to use Konva.js for canvas-based timeline rendering. Better performance with dirty region detection, optimized for 60 FPS target, smaller bundle size, game engine heritage.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-003: Use Zustand for State Management</section>
+        <snippet>Zustand chosen for state management. Optimized re-renders via selectors (85ms vs 220ms for Context API), simple API, devtools integration.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-005: Store Timeline Timestamps in Milliseconds</section>
+        <snippet>Timeline timestamps ALWAYS in milliseconds (u64 in Rust, number in TypeScript). Timestamps are relative to clip/timeline start, not wall-clock time.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Complete Project Structure - Timeline Components</section>
+        <snippet>Timeline structure: src/components/timeline/ with Timeline.tsx (main Konva canvas), TimelineTrack.tsx, TimelineClip.tsx, Playhead.tsx, TimeRuler.tsx. State in src/stores/timelineStore.ts. Types in src/types/timeline.ts. Utilities in src/lib/timeline/timeUtils.ts.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Story 1.6: Single-Track Timeline Foundation</section>
+        <snippet>User story and acceptance criteria. Foundation for multi-track timeline (Epic 3). Canvas-based timeline with time ruler, playhead, drag-drop from media library, clip visualization, and frontend state management.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/stores/mediaLibraryStore.ts</path>
+        <kind>store</kind>
+        <symbol>MediaLibraryState</symbol>
+        <lines>4-22</lines>
+        <reason>Existing Zustand store pattern to follow for timelineStore. Provides addMediaFile, removeMediaFile, getMediaFile methods as reference.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>PlayerStore</symbol>
+        <lines>9-36</lines>
+        <reason>Playhead position will sync with playerStore.currentTime. Timeline playback should update this store's state.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/media.ts</path>
+        <kind>types</kind>
+        <symbol>MediaFile</symbol>
+        <lines>15-42</lines>
+        <reason>Timeline clips will reference MediaFile via filePath. Contains duration (ms), resolution, codec metadata needed for timeline visualization.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/media-library/MediaItem.tsx</path>
+        <kind>component</kind>
+        <symbol>MediaItem</symbol>
+        <lines>34-59</lines>
+        <reason>Drag handlers will be added to this component to enable drag-drop to timeline. Uses usePlayerStore for current selection.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/layout/TimelinePanel.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelinePanel</symbol>
+        <lines>1-20</lines>
+        <reason>Empty placeholder panel where Timeline.tsx component will be rendered. Provides layout container and dimensions.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="zustand" version="^4" />
+        <package name="konva" version="^9" />
+        <package name="react-konva" version="^18" />
+        <package name="video.js" version="8.16.1" />
+        <package name="@videojs/themes" version="^1" />
+        <package name="@tauri-apps/api" version="^2" />
+        <package name="lucide-react" version="^0.548.0" />
+        <package name="tailwind-merge" version="^3.3.1" />
+        <package name="class-variance-authority" version="^0.7.1" />
+      </node>
+      <devNode>
+        <package name="vitest" version="^2" />
+        <package name="@testing-library/react" version="^16" />
+        <package name="@testing-library/jest-dom" version="^6" />
+        <package name="@testing-library/user-event" version="^14.6.1" />
+        <package name="typescript" version="~5.8.3" />
+      </devNode>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Use Konva.js for canvas-based timeline rendering (ADR-002). Target 60 FPS interactive editing with dirty region detection.</constraint>
+    <constraint>Use Zustand for timeline state management (ADR-003). Follow pattern from mediaLibraryStore.ts with devtools integration.</constraint>
+    <constraint>All timeline timestamps in MILLISECONDS (ADR-005). Never use seconds. Convert for display only.</constraint>
+    <constraint>Timeline component structure: Timeline.tsx (main Konva Stage), TimelineTrack.tsx, TimelineClip.tsx, Playhead.tsx, TimeRuler.tsx in src/components/timeline/</constraint>
+    <constraint>Timeline state in src/stores/timelineStore.ts. Types in src/types/timeline.ts. Utilities in src/lib/timeline/timeUtils.ts</constraint>
+    <constraint>Playhead position syncs with playerStore.currentTime. Timeline must update player state during scrubbing.</constraint>
+    <constraint>MediaItem component drag handlers enable drag-drop to timeline. No changes to existing MediaFile interface.</constraint>
+    <constraint>Component naming: PascalCase for components, camelCase for utilities/stores, interfaces in PascalCase</constraint>
+    <constraint>All tests with Vitest. Component tests use @testing-library/react. Unit tests for utilities.</constraint>
+    <constraint>Follow existing code style: ESLint configured, Prettier formatting, TypeScript strict mode</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>MediaFile</name>
+      <kind>TypeScript Interface</kind>
+      <signature>interface MediaFile { id: string; filePath: string; filename: string; duration: number; resolution: Resolution; fileSize: number; codec: string; thumbnail?: string; importedAt: string; }</signature>
+      <path>src/types/media.ts</path>
+    </interface>
+    <interface>
+      <name>PlayerStore</name>
+      <kind>Zustand Store Interface</kind>
+      <signature>interface PlayerStore { currentVideo: MediaFile | null; isPlaying: boolean; currentTime: number; duration: number; setCurrentVideo: (video: MediaFile | null) => void; togglePlayPause: () => void; setCurrentTime: (time: number) => void; setDuration: (duration: number) => void; seek: (time: number) => void; }</signature>
+      <path>src/stores/playerStore.ts</path>
+    </interface>
+    <interface>
+      <name>Clip (to be created)</name>
+      <kind>TypeScript Interface</kind>
+      <signature>interface Clip { id: string; filePath: string; startTime: number; duration: number; trimIn: number; trimOut: number; }</signature>
+      <path>src/types/timeline.ts (new file)</path>
+    </interface>
+    <interface>
+      <name>Track (to be created)</name>
+      <kind>TypeScript Interface</kind>
+      <signature>interface Track { id: string; clips: Clip[]; trackType: 'video' | 'audio'; }</signature>
+      <path>src/types/timeline.ts (new file)</path>
+    </interface>
+    <interface>
+      <name>Timeline (to be created)</name>
+      <kind>TypeScript Interface</kind>
+      <signature>interface Timeline { tracks: Track[]; totalDuration: number; }</signature>
+      <path>src/types/timeline.ts (new file)</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>Vitest with jsdom environment for all tests. Store tests use direct state access via getState(). Component tests use @testing-library/react with render, screen, fireEvent. Utility tests use describe/it/expect pattern. Mock data follows existing patterns (mockMediaFile structure). Setup file at src/test/setup.ts. All test files colocated with source files using .test.ts/.test.tsx extension.</standards>
+    <locations>
+      <location>src/lib/timeline/*.test.ts - Timeline utility tests (time conversions, clip positioning)</location>
+      <location>src/components/timeline/*.test.tsx - Timeline component tests</location>
+      <location>src/stores/timelineStore.test.ts - Timeline state management tests</location>
+    </locations>
+    <ideas>
+      <idea ac="1">Test Timeline component renders Konva Stage with correct dimensions</idea>
+      <idea ac="1">Test empty state placeholder shows when no clips on timeline</idea>
+      <idea ac="2">Test TimeRuler renders correct time markers based on duration</idea>
+      <idea ac="2">Test time labels display in MM:SS format (00:00, 00:10, 00:20)</idea>
+      <idea ac="3">Test Playhead renders at correct pixel position based on currentTime</idea>
+      <idea ac="3">Test Playhead syncs with playerStore.currentTime updates</idea>
+      <idea ac="4">Test drag handlers on MediaItem component fire correctly</idea>
+      <idea ac="4">Test drop zone detection on timeline canvas</idea>
+      <idea ac="4">Test drop position calculation converts pixels to timeline milliseconds</idea>
+      <idea ac="5">Test TimelineClip renders as Konva Rectangle with correct dimensions</idea>
+      <idea ac="5">Test clip displays filename and duration text</idea>
+      <idea ac="6">Test timelineStore.addClip adds clip to track</idea>
+      <idea ac="6">Test timeline state persists across component re-renders</idea>
+      <idea ac="6">Test timelineStore devtools integration enabled</idea>
+      <idea>Unit test: msToPixels conversion with various zoom levels</idea>
+      <idea>Unit test: pixelsToMs conversion accuracy</idea>
+      <idea>Unit test: formatTimelineTime formats milliseconds to MM:SS.ms</idea>
+      <idea>Unit test: calculateClipPosition determines correct x,y coordinates</idea>
+    </ideas>
+  </tests>
+</story-context>

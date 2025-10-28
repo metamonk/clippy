@@ -7,10 +7,17 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build outputs
 dist
 dist-ssr
 *.local
+
+# Rust
+src-tauri/target
+src-tauri/Cargo.lock
 
 # Editor directories and files
 .vscode/*
@@ -23,6 +30,51 @@ dist-ssr
 *.sln
 *.sw?
 
-# setup
-bmad/
-.claude
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+
+# ==========================================
+# Additional entries for clippy project
+# ==========================================
+
+# Environment files (CRITICAL - API keys!)
+.env
+.env.local
+.env.production.local
+.env.development.local
+.env.*.local
+
+# Cache directories
+.cache/
+.vite/
+.pnpm-store/
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# Tauri build artifacts
+*.app
+*.dmg
+src-tauri/WixTools/
+
+# User-generated content (VIDEO FILES!)
+recordings/
+exports/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Clippy project files (user's video editing projects)
+*.clippy
+
+# Temporary files
+*.tmp
+*.temp

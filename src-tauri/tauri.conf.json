@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "clippy-temp",
+  "productName": "clippy",
   "version": "0.1.0",
-  "identifier": "com.zeno.clippy-temp",
+  "identifier": "com.zeno.clippy",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "clippy-temp",
-        "width": 800,
-        "height": 600
+        "title": "clippy",
+        "width": 1280,
+        "height": 720,
+        "minWidth": 1280,
+        "minHeight": 720,
+        "decorations": true,
+        "titleBarStyle": "Visible"
       }
     ],
     "security": {
@@ -30,6 +34,11 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "exceptionDomain": "",
+      "signingIdentity": "Apple Development: Zeno Shin (S7M5YJ56Y3)"
+    }
   }
 }

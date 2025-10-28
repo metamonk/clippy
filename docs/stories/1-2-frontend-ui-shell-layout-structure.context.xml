@@ -1,0 +1,179 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>2</storyId>
+    <title>Frontend UI Shell & Layout Structure</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-27</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-2-frontend-ui-shell-layout-structure.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to see a professional layout when I launch the app</iWant>
+    <soThat>I understand where video preview, timeline, and media library will be</soThat>
+    <tasks>
+      - Create main layout component structure (AC: 1, 3)
+      - Build individual panel components with empty states (AC: 1, 4)
+      - Apply macOS-style Tailwind CSS styling (AC: 2)
+      - Integrate layout into App.tsx (AC: 1)
+      - Configure native macOS menu bar (AC: 5)
+      - Implement keyboard navigation (AC: 6)
+      - Enforce minimum window size (AC: 7)
+      - Write component tests (AC: testing standard)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. Main layout divided into three areas: preview (top), timeline (bottom), media library (sidebar)
+    2. Styled with Tailwind CSS following macOS design aesthetics
+    3. Responsive layout adjusts to window resizing
+    4. Empty states show placeholders for each area with helpful text
+    5. Basic navigation menu in native macOS menu bar (non-functional stubs for this story)
+    6. All UI controls accessible via keyboard navigation (Tab, Arrow keys, Enter)
+    7. Application enforces minimum window size of 1280x720 for timeline usability
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>Complete Project Structure</section>
+        <snippet>Defines the complete component structure including layout components (src/components/layout/) with MainLayout, PreviewPanel, TimelinePanel, and MediaLibraryPanel. Also specifies React component patterns with Tailwind CSS styling and TypeScript.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>React Component Structure</section>
+        <snippet>Provides standard React component pattern using TypeScript, hooks-first approach, and Tailwind CSS className utilities. Shows proper import organization and component structure with props interfaces.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>clippy Product Requirements Document</title>
+        <section>UX Design Principles</section>
+        <snippet>Native macOS Experience - Follow macOS Human Interface Guidelines for menus, window chrome, keyboard shortcuts, and interactions. Transparent Workflow with real-time feedback.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>clippy Product Requirements Document</title>
+        <section>User Interface Design Goals - Core Screens/Views</section>
+        <snippet>Main Editing View: Split layout with preview window (top), timeline editor (bottom), media library panel (side). Uses React 18+ with Tailwind CSS for rapid styling.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/App.tsx</path>
+        <kind>component</kind>
+        <symbol>App</symbol>
+        <lines>1-12</lines>
+        <reason>Main application entry point - will be modified to integrate MainLayout component replacing current placeholder content</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/utils.ts</path>
+        <kind>utility</kind>
+        <symbol>cn</symbol>
+        <lines>1-7</lines>
+        <reason>Utility function for merging Tailwind CSS classes - should be used for all className composition in layout components</reason>
+      </artifact>
+      <artifact>
+        <path>src/App.test.tsx</path>
+        <kind>test</kind>
+        <symbol>App test suite</symbol>
+        <lines>1-16</lines>
+        <reason>Example test structure showing Vitest + React Testing Library pattern - template for layout component tests</reason>
+      </artifact>
+      <artifact>
+        <path>vitest.config.ts</path>
+        <kind>config</kind>
+        <symbol>vitest config</symbol>
+        <lines>1-17</lines>
+        <reason>Test configuration with jsdom environment, setup file, and path alias (@/) for imports</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <react>19.1.0</react>
+        <react-dom>19.1.0</react-dom>
+        <tailwindcss>^3</tailwindcss>
+        <lucide-react>^0.548.0</lucide-react>
+        <clsx>^2.1.1</clsx>
+        <tailwind-merge>^3.3.1</tailwind-merge>
+        <class-variance-authority>^0.7.1</class-variance-authority>
+      </node>
+      <node-dev>
+        <vitest>^2</vitest>
+        <testing-library-react>^16</testing-library-react>
+        <testing-library-jest-dom>^6</testing-library-jest-dom>
+        <jsdom>^25</jsdom>
+        <typescript>~5.8.3</typescript>
+      </node-dev>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Must use Tailwind CSS for all styling (utility-first approach, no custom CSS files)
+    - Must follow macOS Human Interface Guidelines for keyboard navigation and visual design
+    - Must ensure keyboard accessibility: tabIndex=0 on focusable panels, visible focus indicators (ring-2 ring-blue-500)
+    - Component structure must follow architecture.md patterns: functional components with TypeScript, hooks-first approach
+    - Must use cn() utility from @/lib/utils for className composition to properly merge Tailwind classes
+    - Must create directory structure: src/components/layout/ for layout components
+    - Window configuration in src-tauri/tauri.conf.json needs minWidth: 1280, minHeight: 720 added
+    - Must use lucide-react for empty state icons (already installed in package.json)
+    - Empty states must be centered with helpful text and subtle icons
+    - Color palette: neutral grays (bg-gray-50, bg-gray-100, bg-gray-200) for macOS aesthetic
+    - Responsive layout must use flexbox with proportional sizing (preview 40%, timeline 60%, sidebar 20%)
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>MainLayout</name>
+      <kind>React component</kind>
+      <signature>export function MainLayout(): JSX.Element</signature>
+      <path>src/components/layout/MainLayout.tsx</path>
+      <notes>Main three-panel flex container, no props, renders PreviewPanel, TimelinePanel, and MediaLibraryPanel</notes>
+    </interface>
+    <interface>
+      <name>PreviewPanel</name>
+      <kind>React component</kind>
+      <signature>export function PreviewPanel(): JSX.Element</signature>
+      <path>src/components/layout/PreviewPanel.tsx</path>
+      <notes>Top panel (40% height) with empty state, keyboard focusable</notes>
+    </interface>
+    <interface>
+      <name>TimelinePanel</name>
+      <kind>React component</kind>
+      <signature>export function TimelinePanel(): JSX.Element</signature>
+      <path>src/components/layout/TimelinePanel.tsx</path>
+      <notes>Bottom panel (60% height) with empty state, keyboard focusable</notes>
+    </interface>
+    <interface>
+      <name>MediaLibraryPanel</name>
+      <kind>React component</kind>
+      <signature>export function MediaLibraryPanel(): JSX.Element</signature>
+      <path>src/components/layout/MediaLibraryPanel.tsx</path>
+      <notes>Right sidebar (20% width) with empty state, keyboard focusable</notes>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>Vitest 2 with React Testing Library 16 and @testing-library/jest-dom 6. Tests use jsdom environment for DOM testing. Test files use .test.tsx extension and follow describe/it/expect pattern. Setup file at src/test/setup.ts imports jest-dom matchers. Use render() from @testing-library/react and screen queries. Path alias @/ resolves to ./src/.</standards>
+    <locations>
+      - src/components/layout/MainLayout.test.tsx
+      - src/components/layout/PreviewPanel.test.tsx
+      - src/components/layout/TimelinePanel.test.tsx
+      - src/components/layout/MediaLibraryPanel.test.tsx
+    </locations>
+    <ideas>
+      - AC1, AC3: Test MainLayout renders all three child panels (PreviewPanel, TimelinePanel, MediaLibraryPanel)
+      - AC1, AC3: Test MainLayout has correct Tailwind classes (h-screen, w-screen, flex)
+      - AC4: Test PreviewPanel displays correct empty state text
+      - AC4: Test TimelinePanel displays correct empty state text
+      - AC4: Test MediaLibraryPanel displays correct empty state text
+      - AC6: Test all panels are keyboard focusable (have tabIndex attribute)
+      - AC2: Test panels have correct Tailwind styling classes (bg-gray-50, rounded-lg, shadow-sm)
+      - AC3: Test responsive sizing classes (h-2/5, h-3/5, w-1/5) are applied correctly
+    </ideas>
+  </tests>
+</story-context>
