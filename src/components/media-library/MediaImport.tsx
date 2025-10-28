@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Upload } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -23,7 +23,7 @@ export function MediaImport() {
   const addMediaFile = useMediaLibraryStore((state) => state.addMediaFile);
   const hasMediaFile = useMediaLibraryStore((state) => state.hasMediaFile);
 
-  const supportedFormats = ["mp4", "mov"];
+  const supportedFormats = ["mp4", "mov", "webm"];
 
   /**
    * Validate if a file has a supported extension
@@ -43,7 +43,7 @@ export function MediaImport() {
         filters: [
           {
             name: "Video",
-            extensions: ["mp4", "mov"],
+            extensions: ["mp4", "mov", "webm"],
           },
         ],
       });
@@ -85,7 +85,7 @@ export function MediaImport() {
       // Frontend validation - check format before calling backend
       if (!isValidFormat(filename)) {
         errors.push(
-          `${filename}: Unsupported format (MP4 and MOV only)`
+          `${filename}: Unsupported format (MP4, MOV, and WebM only)`
         );
         continue;
       }
@@ -211,7 +211,7 @@ export function MediaImport() {
             : "Drag & drop video files here"}
         </p>
 
-        <p className="text-xs text-gray-500 mb-4">Supports MP4 and MOV files</p>
+        <p className="text-xs text-gray-500 mb-4">Supports MP4, MOV, and WebM files</p>
 
         <button
           onClick={handleFilePickerClick}

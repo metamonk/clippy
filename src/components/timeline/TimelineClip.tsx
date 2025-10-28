@@ -66,12 +66,12 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   // Calculate visual duration (trimmed duration)
   const visualDuration = clip.trimOut - clip.trimIn;
 
-  // Calculate position and width
-  const { x, width } = calculateClipPosition(clip.startTime, visualDuration, pixelsPerSecond);
+  // When trimming from the left, the visible portion should start later on the timeline
+  // Adjust the timeline position by the trimIn amount
+  const adjustedStartTime = clip.startTime + clip.trimIn;
 
-  // Calculate trimmed region widths
-  const leftTrimWidth = (clip.trimIn * pixelsPerSecond) / 1000;
-  const rightTrimWidth = ((clip.duration - clip.trimOut) * pixelsPerSecond) / 1000;
+  // Calculate position and width based on the VISIBLE portion
+  const { x, width } = calculateClipPosition(adjustedStartTime, visualDuration, pixelsPerSecond);
 
   // Extract filename from path
   const filename = clip.filePath.split('/').pop() || 'Unknown';
@@ -87,11 +87,12 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   const fillColor = isSelected ? '#5588ff' : '#4a4a4a';
   const strokeColor = isSelected ? '#ffffff' : '#666666';
   const textColor = '#ffffff';
-  const trimmedRegionColor = '#2a2a2a';
+  // const trimmedRegionColor = '#2a2a2a'; // TODO: Use for visual trim regions
 
-  // Drag handlers for left trim handle
-  const handleLeftTrimDragStart = (e: any) => {
+  // Mouse event handlers for trim handles (using window-level tracking)
+  const handleLeftTrimMouseDown = (e: any) => {
     e.cancelBubble = true;
+
     dragStateRef.current = {
       isDragging: true,
       handle: 'left',
@@ -99,31 +100,37 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
       startTrimIn: clip.trimIn,
       startTrimOut: clip.trimOut,
     };
+
+    // Add window-level mouse move and mouse up listeners
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!dragStateRef.current.isDragging || dragStateRef.current.handle !== 'left') return;
+
+      const deltaX = moveEvent.clientX - dragStateRef.current.startX;
+      const deltaTime = (deltaX / pixelsPerSecond) * 1000; // Convert pixels to milliseconds
+
+      let newTrimIn = dragStateRef.current.startTrimIn + deltaTime;
+
+      // Constrain: trimIn must be >= 0 and < trimOut (leave at least 100ms)
+      newTrimIn = Math.max(0, newTrimIn);
+      newTrimIn = Math.min(dragStateRef.current.startTrimOut - 100, newTrimIn);
+
+      updateClip(clip.id, { trimIn: newTrimIn });
+    };
+
+    const handleMouseUp = () => {
+      dragStateRef.current.isDragging = false;
+      dragStateRef.current.handle = null;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
   };
 
-  const handleLeftTrimDragMove = (e: any) => {
-    if (!dragStateRef.current.isDragging || dragStateRef.current.handle !== 'left') return;
-
-    const deltaX = e.evt.clientX - dragStateRef.current.startX;
-    const deltaTime = (deltaX / pixelsPerSecond) * 1000; // Convert pixels to milliseconds
-
-    let newTrimIn = dragStateRef.current.startTrimIn + deltaTime;
-
-    // Constrain: trimIn must be >= 0 and < trimOut (leave at least 100ms)
-    newTrimIn = Math.max(0, newTrimIn);
-    newTrimIn = Math.min(clip.trimOut - 100, newTrimIn);
-
-    updateClip(clip.id, { trimIn: newTrimIn });
-  };
-
-  const handleLeftTrimDragEnd = () => {
-    dragStateRef.current.isDragging = false;
-    dragStateRef.current.handle = null;
-  };
-
-  // Drag handlers for right trim handle
-  const handleRightTrimDragStart = (e: any) => {
+  const handleRightTrimMouseDown = (e: any) => {
     e.cancelBubble = true;
+
     dragStateRef.current = {
       isDragging: true,
       handle: 'right',
@@ -131,45 +138,39 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
       startTrimIn: clip.trimIn,
       startTrimOut: clip.trimOut,
     };
-  };
 
-  const handleRightTrimDragMove = (e: any) => {
-    if (!dragStateRef.current.isDragging || dragStateRef.current.handle !== 'right') return;
+    // Add window-level mouse move and mouse up listeners
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!dragStateRef.current.isDragging || dragStateRef.current.handle !== 'right') return;
 
-    const deltaX = e.evt.clientX - dragStateRef.current.startX;
-    const deltaTime = (deltaX / pixelsPerSecond) * 1000; // Convert pixels to milliseconds
+      const deltaX = moveEvent.clientX - dragStateRef.current.startX;
+      const deltaTime = (deltaX / pixelsPerSecond) * 1000; // Convert pixels to milliseconds
 
-    let newTrimOut = dragStateRef.current.startTrimOut + deltaTime;
+      let newTrimOut = dragStateRef.current.startTrimOut + deltaTime;
 
-    // Constrain: trimOut must be <= duration and > trimIn (leave at least 100ms)
-    newTrimOut = Math.min(clip.duration, newTrimOut);
-    newTrimOut = Math.max(clip.trimIn + 100, newTrimOut);
+      // Constrain: trimOut must be <= duration and > trimIn (leave at least 100ms)
+      newTrimOut = Math.min(clip.duration, newTrimOut);
+      newTrimOut = Math.max(dragStateRef.current.startTrimIn + 100, newTrimOut);
 
-    updateClip(clip.id, { trimOut: newTrimOut });
-  };
+      updateClip(clip.id, { trimOut: newTrimOut });
+    };
 
-  const handleRightTrimDragEnd = () => {
-    dragStateRef.current.isDragging = false;
-    dragStateRef.current.handle = null;
+    const handleMouseUp = () => {
+      dragStateRef.current.isDragging = false;
+      dragStateRef.current.handle = null;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
   };
 
   return (
-    <Group x={x - leftTrimWidth} y={yPosition}>
-      {/* Left trimmed region overlay (if trimmed) */}
-      {clip.trimIn > 0 && (
-        <Rect
-          x={0}
-          y={clipPadding}
-          width={leftTrimWidth}
-          height={clipInnerHeight}
-          fill={trimmedRegionColor}
-          opacity={0.6}
-        />
-      )}
-
-      {/* Clip background rectangle (visible/active portion) */}
+    <Group x={x} y={yPosition}>
+      {/* Clip background rectangle (visible portion only) */}
       <Rect
-        x={leftTrimWidth}
+        x={0}
         y={clipPadding}
         width={width}
         height={clipInnerHeight}
@@ -181,31 +182,16 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
         onTap={handleClipClick}
       />
 
-      {/* Right trimmed region overlay (if trimmed) */}
-      {clip.trimOut < clip.duration && (
-        <Rect
-          x={leftTrimWidth + width}
-          y={clipPadding}
-          width={rightTrimWidth}
-          height={clipInnerHeight}
-          fill={trimmedRegionColor}
-          opacity={0.6}
-        />
-      )}
-
       {/* Left trim handle (only show when selected) */}
       {isSelected && (
         <Rect
-          x={leftTrimWidth}
+          x={0}
           y={clipPadding}
           width={handleWidth}
           height={clipInnerHeight}
           fill={leftHandleHover ? handleHoverColor : handleColor}
           cornerRadius={[4, 0, 0, 4]}
-          draggable
-          onDragStart={handleLeftTrimDragStart}
-          onDragMove={handleLeftTrimDragMove}
-          onDragEnd={handleLeftTrimDragEnd}
+          onMouseDown={handleLeftTrimMouseDown}
           onMouseEnter={() => setLeftHandleHover(true)}
           onMouseLeave={() => setLeftHandleHover(false)}
           cursor="ew-resize"
@@ -215,16 +201,13 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
       {/* Right trim handle (only show when selected) */}
       {isSelected && (
         <Rect
-          x={leftTrimWidth + width - handleWidth}
+          x={width - handleWidth}
           y={clipPadding}
           width={handleWidth}
           height={clipInnerHeight}
           fill={rightHandleHover ? handleHoverColor : handleColor}
           cornerRadius={[0, 4, 4, 0]}
-          draggable
-          onDragStart={handleRightTrimDragStart}
-          onDragMove={handleRightTrimDragMove}
-          onDragEnd={handleRightTrimDragEnd}
+          onMouseDown={handleRightTrimMouseDown}
           onMouseEnter={() => setRightHandleHover(true)}
           onMouseLeave={() => setRightHandleHover(false)}
           cursor="ew-resize"
@@ -234,7 +217,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
       {/* Filename text (only show if width is sufficient) */}
       {width > 60 && (
         <Text
-          x={leftTrimWidth + 8}
+          x={8}
           y={clipPadding + 8}
           text={filename}
           fontSize={12}
@@ -242,19 +225,21 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
           fontFamily="Arial"
           width={width - 16}
           ellipsis={true}
+          listening={false}
         />
       )}
 
       {/* Duration text (only show if width is sufficient) */}
       {width > 60 && (
         <Text
-          x={leftTrimWidth + 8}
+          x={8}
           y={clipPadding + clipInnerHeight - 20}
           text={formatTimeSimple(visualDuration)}
           fontSize={10}
           fill={textColor}
           fontFamily="monospace"
           opacity={0.8}
+          listening={false}
         />
       )}
     </Group>

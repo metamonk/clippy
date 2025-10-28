@@ -23,6 +23,12 @@ interface PlayerStore {
   /** Playhead position on timeline in milliseconds (for timeline synchronization) */
   playheadPosition: number;
 
+  /** Playback mode: 'preview' for independent playback, 'timeline' for timeline-synchronized playback */
+  mode: 'preview' | 'timeline';
+
+  /** Target time for seek operation (triggers MPV seek in VideoPlayer) */
+  seekTarget: number | null;
+
   /** Set the current video and reset playback state */
   setCurrentVideo: (video: MediaFile | null) => void;
 
@@ -41,11 +47,17 @@ interface PlayerStore {
   /** Update video duration */
   setDuration: (duration: number) => void;
 
-  /** Seek to a specific time in seconds */
+  /** Seek to a specific time in seconds (triggers MPV seek) */
   seek: (time: number) => void;
+
+  /** Clear seek target after seek operation completes */
+  clearSeekTarget: () => void;
 
   /** Set playhead position on timeline in milliseconds */
   setPlayheadPosition: (position: number) => void;
+
+  /** Set playback mode */
+  setMode: (mode: 'preview' | 'timeline') => void;
 }
 
 /**
@@ -62,6 +74,8 @@ export const usePlayerStore = create<PlayerStore>()(
       currentTime: 0,
       duration: 0,
       playheadPosition: 0,
+      mode: 'preview',
+      seekTarget: null,
 
       setCurrentVideo: (video) =>
         set({
@@ -70,6 +84,7 @@ export const usePlayerStore = create<PlayerStore>()(
           currentTime: 0,
           duration: 0,
           playheadPosition: 0,
+          seekTarget: null,
         }),
 
       togglePlayPause: () =>
@@ -85,9 +100,13 @@ export const usePlayerStore = create<PlayerStore>()(
 
       setDuration: (duration) => set({ duration }),
 
-      seek: (time) => set({ currentTime: time }),
+      seek: (time) => set({ seekTarget: time, currentTime: time }),
+
+      clearSeekTarget: () => set({ seekTarget: null }),
 
       setPlayheadPosition: (position) => set({ playheadPosition: position }),
+
+      setMode: (mode) => set({ mode }),
     }),
     { name: "PlayerStore" }
   )

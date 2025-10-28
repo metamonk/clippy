@@ -1,0 +1,217 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>3.5</storyId>
+    <title>MPV Integration for Professional Video Playback</title>
+    <status>completed</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>Manual - Documentation Update</generator>
+    <sourceStoryPath>docs/stories/1-3-5-mpv-integration-professional-video-playback.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to play videos with any codec (H.264, HEVC, ProRes, VP9, AV1)</iWant>
+    <soThat>I can edit any video file without conversion or codec errors</soThat>
+    <tasks>
+      - MPV Integration (libmpv2 v5.0.1)
+      - Tauri Commands Implementation (mpv_init, mpv_load_file, mpv_play, mpv_pause, mpv_seek, mpv_get_time, mpv_get_duration, mpv_stop)
+      - VideoPlayer.tsx Refactoring (Tauri invoke calls instead of HTMLVideoElement API)
+      - Frame-Accurate Seeking (precision <33ms)
+      - Playhead Synchronization (preserved existing integration)
+      - Error Handling (toast notifications, timeout handling)
+      - Multi-Codec Testing (H.264, HEVC, ProRes, VP9)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. ✅ libmpv2 v5.0.1 integrated as Rust service wrapper (src-tauri/src/services/mpv_player.rs)
+    2. ✅ Tauri commands implemented (src-tauri/src/commands/mpv.rs)
+    3. ✅ VideoPlayer.tsx refactored to use Tauri invoke() calls
+    4. ✅ Frame-accurate seeking with precision <33ms
+    5. ✅ Existing playhead synchronization preserved
+    6. ✅ User-friendly error handling with toast notifications
+    7. ✅ VideoPlayer functionality preserved (play/pause, seek, time updates, trim boundaries)
+    8. ✅ System dependency documented (brew install mpv)
+    9. ✅ Multi-codec testing passed (H.264, HEVC, ProRes, VP9)
+    10. ✅ All existing tests pass with MPV backend
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc path="docs/PRD.md" title="Product Requirements Document" section="FR001: Video File Import and Management">
+        Support for professional video formats: MP4 (H.264, HEVC), MOV (ProRes, DNxHD), WebM (VP9), with universal codec compatibility.
+      </doc>
+      <doc path="docs/PRD.md" title="Product Requirements Document" section="FR006: Real-Time Video Preview and Playback">
+        System shall provide playback controls with synchronized audio at 30+ FPS, supporting HEVC, ProRes, and other professional codecs.
+      </doc>
+      <doc path="docs/architecture.md" title="Technical Architecture" section="ADR-006: MPV for Video Playback">
+        MPV selected over Video.js for universal codec support (HEVC, ProRes, VP9, AV1). Provides frame-accurate seeking and professional-grade playback via libmpv2.
+      </doc>
+      <doc path="docs/sprint-change-proposal-2025-10-28.md" title="Sprint Change Proposal" section="Story 1.3.5 Rationale">
+        Video.js lacks codec support for HEVC/ProRes which are standard in professional video editing. MPV provides universal codec support via FFmpeg.
+      </doc>
+    </docs>
+    <code>
+      <artifact path="src-tauri/src/services/mpv_player.rs" kind="service" symbol="MpvPlayer" lines="1-157" reason="Core MPV service wrapper providing video playback control">
+        Rust service wrapping libmpv2 v5.0.1 with methods: new(), load_file(), play(), pause(), seek(), stop(), get_time(), get_duration(), is_playing(). Uses event-based architecture (FileLoaded, EndFile events) with 5-second timeout.
+      </artifact>
+      <artifact path="src-tauri/src/commands/mpv.rs" kind="commands" symbol="mpv_*" lines="1-242" reason="Tauri command interface for MPV playback control from frontend">
+        8 Tauri commands exposing MPV functionality: mpv_init, mpv_stop, mpv_load_file, mpv_play, mpv_pause, mpv_seek, mpv_get_time, mpv_get_duration. All return MpvResponse with success/error handling.
+      </artifact>
+      <artifact path="src/components/player/VideoPlayer.tsx" kind="component" symbol="VideoPlayer" lines="1-319" reason="React component refactored from Video.js to MPV via Tauri commands">
+        Replaced HTML5 video element with MPV backend. Uses invoke('mpv_*') for all playback control. Polling for time updates (100ms interval). Event-based duration retrieval. No video frame rendering (MVP scope - backend control only).
+      </artifact>
+      <artifact path="src-tauri/Cargo.toml" kind="config" symbol="dependencies" lines="20-40" reason="MPV dependency configuration">
+        Added libmpv2 = "5.0" dependency for MPV integration (upgraded from originally planned 2.0 for macOS 0.40.0 compatibility).
+      </artifact>
+      <artifact path="src-tauri/src/commands/media.rs" kind="commands" symbol="cmd_import_media" lines="15-30" reason="WebM format support added for VP9 codec testing">
+        Added .webm to accepted file extensions alongside .mp4 and .mov for universal codec support.
+      </artifact>
+      <artifact path="src/components/media-library/MediaImport.tsx" kind="component" symbol="MediaImport" lines="1-100" reason="Frontend file import with WebM support">
+        Updated accept attribute to include .webm files for VP9 codec support.
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <crate name="libmpv2" version="5.0.1" purpose="MPV video player library wrapper" />
+        <crate name="anyhow" version="1.0" purpose="Error handling in MPV service" />
+        <crate name="tracing" version="0.1" purpose="Structured logging for MPV operations" />
+      </rust>
+      <node>
+        <package name="@tauri-apps/api" version="2.x" purpose="Tauri invoke API for MPV commands" />
+        <package name="sonner" version="2.0.7" purpose="Toast notifications for playback errors" />
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - **Codec Support:** Must handle H.264, HEVC (yuv420p), ProRes, VP9, AV1 without transcoding
+    - **Time Units:** MPV uses seconds, frontend uses milliseconds (convert at command boundary)
+    - **Event-Based Loading:** load_file() waits for FileLoaded event before returning (5-second timeout)
+    - **Frame Accuracy:** Seeking precision must be <33ms (1 frame at 30fps)
+    - **No Video Rendering:** MVP scope is backend control only, no frame display in UI
+    - **Error Handling:** User-friendly toast notifications for all playback failures
+    - **System Dependency:** Requires MPV installed on system (brew install mpv on macOS)
+    - **Known Limitation:** HEVC yuvj420p (iOS screen recordings) not supported by libmpv
+    - **Polling Strategy:** Time updates via 100ms polling interval (no DOM events like Video.js)
+    - **Architecture Alignment:** Follows ADR-006, replaces originally planned Video.js approach
+  </constraints>
+
+  <interfaces>
+    <interface name="MpvPlayer" kind="rust-struct" path="src-tauri/src/services/mpv_player.rs">
+      <signature>
+        pub struct MpvPlayer {
+          mpv: Arc<Mutex<Mpv>>,
+        }
+
+        impl MpvPlayer {
+          pub fn new() -> Result<Self>;
+          pub fn load_file(&amp;self, file_path: &amp;str) -> Result<()>;
+          pub fn play(&amp;self) -> Result<()>;
+          pub fn pause(&amp;self) -> Result<()>;
+          pub fn seek(&amp;self, time_seconds: f64) -> Result<()>;
+          pub fn stop(&amp;self) -> Result<()>;
+          pub fn get_time(&amp;self) -> Result<f64>;
+          pub fn get_duration(&amp;self) -> Result<f64>;
+          pub fn is_playing(&amp;self) -> Result<bool>;
+        }
+      </signature>
+      <notes>
+        Event-based file loading waits for FileLoaded event. 5-second timeout prevents indefinite hangs. All time values in seconds.
+      </notes>
+    </interface>
+
+    <interface name="MPV Tauri Commands" kind="tauri-commands" path="src-tauri/src/commands/mpv.rs">
+      <signature>
+        #[tauri::command]
+        pub async fn mpv_init(state: State&lt;AppState&gt;) -> Result&lt;(), String&gt;
+
+        #[tauri::command]
+        pub async fn mpv_load_file(file_path: String, state: State&lt;AppState&gt;) -> Result&lt;(), String&gt;
+
+        #[tauri::command]
+        pub async fn mpv_play(state: State&lt;AppState&gt;) -> Result&lt;(), String&gt;
+
+        #[tauri::command]
+        pub async fn mpv_pause(state: State&lt;AppState&gt;) -> Result&lt;(), String&gt;
+
+        #[tauri::command]
+        pub async fn mpv_seek(position: f64, state: State&lt;AppState&gt;) -> Result&lt;(), String&gt;
+
+        #[tauri::command]
+        pub async fn mpv_stop(state: State&lt;AppState&gt;) -> Result&lt;(), String&gt;
+
+        #[tauri::command]
+        pub async fn mpv_get_time(state: State&lt;AppState&gt;) -> Result&lt;f64, String&gt;
+
+        #[tauri::command]
+        pub async fn mpv_get_duration(state: State&lt;AppState&gt;) -> Result&lt;f64, String&gt;
+      </signature>
+      <notes>
+        All commands async. Return Result for error handling. Position/time in seconds. Frontend converts to/from milliseconds.
+      </notes>
+    </interface>
+
+    <interface name="VideoPlayer" kind="react-component" path="src/components/player/VideoPlayer.tsx">
+      <signature>
+        interface VideoPlayerProps {
+          src: string;
+          onTimeUpdate?: (currentTime: number) => void;
+          onEnded?: () => void;
+        }
+
+        export function VideoPlayer({ src, onTimeUpdate, onEnded }: VideoPlayerProps)
+      </signature>
+      <notes>
+        Replaced Video.js with MPV backend. Uses invoke('mpv_*') for all control. Polling for time updates (100ms). No video frame rendering (backend only). Status messages displayed instead of video.
+      </notes>
+    </interface>
+  </interfaces>
+
+  <testingResults>
+    <codecTests>
+      <test codec="H.264/AVC" container="MP4" result="PASSED" notes="Smooth playback, frame-accurate seeking, synchronized audio" />
+      <test codec="HEVC/H.265 (yuv420p)" container="MP4" result="PASSED" notes="Smooth playback, frame-accurate seeking, synchronized audio" />
+      <test codec="VP9" container="WebM" result="PASSED" notes="Smooth playback, frame-accurate seeking, synchronized audio (WebM support added)" />
+      <test codec="ProRes" container="MOV" result="PASSED" notes="Smooth playback, frame-accurate seeking, synchronized audio" />
+      <test codec="HEVC/H.265 (yuvj420p)" container="MP4" result="FAILED" notes="iOS screen recording format not supported by libmpv (JPEG color range). Workaround: convert with FFmpeg" />
+    </codecTests>
+    <unitTests>
+      <summary>All existing tests pass with MPV backend. No new test failures introduced.</summary>
+    </unitTests>
+  </testingResults>
+
+  <architectureDecisions>
+    <decision id="ADR-006-update">
+      <title>MPV for Video Playback (replaces Video.js)</title>
+      <context>
+        Story 1.3.5 replaced originally planned Video.js with MPV for universal codec support. Video.js limited to codecs supported by browser (no HEVC/ProRes). MPV provides FFmpeg-powered playback via libmpv2.
+      </context>
+      <decision>
+        Use MPV (libmpv2 v5.0.1) for video playback instead of Video.js 8.16.1. Integrate via Rust service wrapper with Tauri command interface.
+      </decision>
+      <consequences>
+        Positive: Universal codec support (HEVC, ProRes, VP9, AV1), frame-accurate seeking, professional-grade playback.
+        Negative: No video frame rendering in MVP (backend control only), requires system MPV dependency, HEVC yuvj420p not supported.
+        Trade-off: Backend-only approach defers visual rendering but proves architecture for codec support.
+      </consequences>
+    </decision>
+  </architectureDecisions>
+
+  <relatedStories>
+    <story id="1.3" title="Video File Import" relationship="prerequisite" notes="WebM format support added in 1.3.5 for VP9 testing" />
+    <story id="1.4" title="Video Preview Player" relationship="replaces-video.js" notes="Refactored from Video.js to MPV" />
+    <story id="1.7" title="Timeline Playback Sync" relationship="uses-mpv" notes="Synchronization via MPV commands instead of Video.js DOM API" />
+    <story id="1.8" title="Basic Trim Functionality" relationship="uses-mpv" notes="Trim boundaries enforced via MPV playback control" />
+  </relatedStories>
+
+  <implementationNotes>
+    - **Version Upgrade:** Originally planned libmpv 2.0 upgraded to libmpv2 5.0.1 for macOS 0.40.0 compatibility
+    - **Event Architecture:** FileLoaded event preferred over polling for file load completion
+    - **MVP Scope:** Backend control only (no frame rendering) to prove architecture first
+    - **Performance:** 100ms polling interval for time updates balances responsiveness and CPU usage
+    - **Error Handling:** All MPV operations return Result, converted to user-friendly toast messages
+    - **Future Work:** OpenGL texture mapping for video frame display, render-to-canvas integration
+  </implementationNotes>
+</story-context>

@@ -1,6 +1,13 @@
 import "@testing-library/jest-dom";
 import { vi } from "vitest";
 
+// Mock ResizeObserver for Radix UI components (Slider)
+globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+}));
+
 // Mock canvas for Konva.js tests
 vi.mock("canvas", () => ({
   default: {},

@@ -11,6 +11,8 @@ describe("playerStore", () => {
       currentTime: 0,
       duration: 0,
       playheadPosition: 0,
+      mode: 'preview',
+      seekTarget: null,
     });
   });
 
@@ -135,6 +137,49 @@ describe("playerStore", () => {
 
       seek(90);
       expect(usePlayerStore.getState().currentTime).toBe(90);
+    });
+
+    it("should set seekTarget to trigger MPV seek", () => {
+      const { seek } = usePlayerStore.getState();
+
+      seek(45.5);
+
+      const state = usePlayerStore.getState();
+      expect(state.seekTarget).toBe(45.5);
+      expect(state.currentTime).toBe(45.5);
+    });
+
+    it("should update seekTarget on multiple seeks", () => {
+      const { seek } = usePlayerStore.getState();
+
+      seek(10);
+      expect(usePlayerStore.getState().seekTarget).toBe(10);
+
+      seek(20);
+      expect(usePlayerStore.getState().seekTarget).toBe(20);
+    });
+  });
+
+  describe("clearSeekTarget", () => {
+    it("should clear seekTarget after seek operation", () => {
+      const { seek, clearSeekTarget } = usePlayerStore.getState();
+
+      seek(75);
+      expect(usePlayerStore.getState().seekTarget).toBe(75);
+
+      clearSeekTarget();
+      expect(usePlayerStore.getState().seekTarget).toBe(null);
+    });
+
+    it("should not affect currentTime when clearing seekTarget", () => {
+      const { seek, clearSeekTarget } = usePlayerStore.getState();
+
+      seek(50);
+      expect(usePlayerStore.getState().currentTime).toBe(50);
+
+      clearSeekTarget();
+      expect(usePlayerStore.getState().currentTime).toBe(50);
+      expect(usePlayerStore.getState().seekTarget).toBe(null);
     });
   });
 

@@ -1,9 +1,10 @@
 import { Film, Trash2 } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
 import type { MediaFile } from "@/types/media";
 import { cn } from "@/lib/utils";
 import { usePlayerStore } from "@/stores/playerStore";
 import { useMediaLibraryStore } from "@/stores/mediaLibraryStore";
+import { useDragStore } from "@/stores/dragStore";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +52,8 @@ export function MediaItem({ mediaFile }: MediaItemProps) {
   const [thumbnailError, setThumbnailError] = useState(false);
 
   const handleClick = () => {
+    // Set to preview mode when selecting from library
+    usePlayerStore.getState().setMode('preview');
     setCurrentVideo(mediaFile);
   };
 
@@ -65,19 +68,30 @@ export function MediaItem({ mediaFile }: MediaItemProps) {
     setShowDeleteDialog(false);
   };
 
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
-    e.dataTransfer.effectAllowed = 'copy';
-    e.dataTransfer.setData('mediaFileId', mediaFile.id);
+  const startDrag = useDragStore((state) => state.startDrag);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Only start drag on left mouse button
+    if (e.button !== 0) return;
+
+    // Don't start drag if clicking on delete button
+    if ((e.target as HTMLElement).closest('button[aria-label="Delete video"]')) {
+      return;
+    }
+
+    // Prevent text selection during drag
+    e.preventDefault();
+
+    startDrag(mediaFile.id, e.clientX, e.clientY);
   };
 
   return (
     <>
       <div
         onClick={handleClick}
-        draggable
-        onDragStart={handleDragStart}
+        onMouseDown={handleMouseDown}
         className={cn(
-          "relative group flex flex-col gap-2 p-3 rounded-lg shadow-sm border-2 transition-all cursor-pointer",
+          "relative group flex flex-col gap-2 p-3 rounded-lg shadow-sm border-2 transition-all cursor-grab active:cursor-grabbing",
           isSelected
             ? "border-blue-500 bg-blue-50"
             : "border-gray-200 bg-white hover:bg-gray-50"

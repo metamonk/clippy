@@ -18,6 +18,7 @@ dist-ssr
 # Rust
 src-tauri/target
 src-tauri/Cargo.lock
+target/
 
 # Editor directories and files
 .vscode/*
@@ -29,6 +30,12 @@ src-tauri/Cargo.lock
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code
+.claude/settings.local.json
+
+# TypeScript
+*.tsbuildinfo
 
 # macOS
 .DS_Store
@@ -57,6 +64,11 @@ Thumbs.db
 coverage/
 .nyc_output/
 *.lcov
+
+# Playwright
+test-results/
+playwright-report/
+.playwright-mcp/
 
 # Tauri build artifacts
 *.app

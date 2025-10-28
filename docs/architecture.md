@@ -48,7 +48,7 @@ npx shadcn-ui@latest init
 # Follow prompts for Tailwind integration
 
 # Add core frontend dependencies
-npm install zustand konva react-konva video.js @videojs/themes
+npm install zustand konva react-konva
 npm install @tauri-apps/api @tauri-apps/plugin-fs @tauri-apps/plugin-dialog
 npm install @tauri-apps/plugin-notification @tauri-apps/plugin-shell @tauri-apps/plugin-os
 
@@ -64,6 +64,7 @@ npm install @tauri-apps/plugin-notification @tauri-apps/plugin-shell @tauri-apps
 # tracing-subscriber = "0.3"
 # chrono = { version = "0.4", features = ["serde"] }
 # uuid = { version = "1", features = ["v4", "serde"] }
+# libmpv2 = "5.0"  # MPV video player bindings (upgraded to match system MPV 0.40.0)
 # async-openai = "0.28"
 # ffmpeg-sidecar = "2.1"
 # screencapturekit = "0.3"
@@ -93,7 +94,7 @@ This establishes the base architecture with:
 | **UI Components** | shadcn/ui | Latest | All | Accessible Radix components + Tailwind |
 | **Timeline Canvas** | Konva.js | Latest | Epic 1, 3 | Better performance than Fabric.js (60 FPS target) |
 | **State Management** | Zustand | 4.x | Epic 1, 3, 4, 5 | Optimized re-renders, simple API |
-| **Video Player** | Video.js | 8.16.1 | Epic 1 | Production-ready, extensive plugin ecosystem |
+| **Video Player** | MPV (libmpv2) | 5.0.1 (system MPV 0.40.0) | Epic 1 | Universal codec support (H.264, HEVC, VP9, ProRes), event-based architecture, frame-accurate seeking |
 | **FFmpeg Integration** | ffmpeg-sidecar | 2.1.0 | Epic 1, 2, 4, 5 | Auto-download binary, proven performance |
 | **ScreenCaptureKit** | screencapturekit crate | 0.3.x | Epic 2, 4 | Safe Rust wrapper for macOS screen capture |
 | **Camera Capture** | nokhwa | 0.10.9 (feature: input-avfoundation) | Epic 2, 4 | Cross-platform webcam with AVFoundation backend |
@@ -123,7 +124,7 @@ clippy/
 │   │   │   ├── Playhead.tsx               # Playhead indicator
 │   │   │   └── TimeRuler.tsx              # Time markers
 │   │   ├── player/                         # Epic 1
-│   │   │   ├── VideoPlayer.tsx            # Video.js wrapper
+│   │   │   ├── VideoPlayer.tsx            # MPV integration via Tauri commands
 │   │   │   └── PlayerControls.tsx         # Play/pause/scrub controls
 │   │   ├── media-library/                  # Epic 1
 │   │   │   ├── MediaLibrary.tsx           # Library panel
@@ -186,12 +187,14 @@ clippy/
 │   ├── src/
 │   │   ├── commands/                       # Tauri commands (by epic)
 │   │   │   ├── media.rs                   # Epic 1 - import, metadata extraction
+│   │   │   ├── mpv.rs                     # Epic 1 - MPV video player control
 │   │   │   ├── recording.rs               # Epic 2, 4 - screen/camera capture
 │   │   │   ├── export.rs                  # Epic 1, 5 - FFmpeg export
 │   │   │   ├── ai.rs                      # Epic 5 - OpenAI integration
 │   │   │   ├── project.rs                 # Project save/load (JSON)
 │   │   │   └── mod.rs                     # Export all command modules
 │   │   ├── services/                       # Business logic layer
+│   │   │   ├── mpv_player.rs              # Epic 1 - MPV player wrapper
 │   │   │   ├── screen_capture/            # Epic 2, 4
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── screencapturekit.rs    # ScreenCaptureKit wrapper
@@ -290,11 +293,11 @@ clippy/
 **Frontend Libraries:**
 - **Konva.js** - Canvas-based timeline rendering (60 FPS target)
 - **react-konva** - React wrapper for Konva.js
-- **Video.js 8.16.1** - HTML5 video player with professional controls
 - **Zustand 4.x** - Lightweight state management with optimized re-renders
 - **Web Audio API** - Browser-native waveform visualization
 
 **Backend Libraries:**
+- **libmpv2 5.0.1** - Video playback engine with universal codec support (H.264, HEVC, ProRes, VP9, AV1), frame-accurate seeking, event-based architecture
 - **async-openai 0.28.x** - OpenAI API client (Whisper, GPT-4)
 - **serde + serde_json** - JSON serialization for project files and Tauri commands
 - **anyhow** - Flexible error handling with context
@@ -1915,7 +1918,7 @@ Extensions:
 **Decision:** Always use milliseconds (u64 in Rust, number in TypeScript)
 
 **Rationale:**
-- Video.js uses seconds (convert on display)
+- MPV uses seconds (convert on display)
 - FFmpeg uses seconds (convert for commands)
 - Web Audio uses seconds (convert for AudioContext)
 - JavaScript Date uses milliseconds
@@ -1926,6 +1929,158 @@ Extensions:
 - ✅ Easy conversion to other units
 - ✅ No floating point precision issues
 - ⚠️ Must remember to convert for external APIs
+
+### ADR-006: Use MPV (libmpv2) for Video Playback
+
+**Context:** HTML5 video element in Chromium WebView has limited codec support - specifically fails on HEVC (H.265) encoded videos, which are common from modern cameras and screen recorders. This creates a poor user experience as valid MP4 files fail to play with cryptic "format not supported" errors. Professional video editors require universal codec support to handle diverse source files.
+
+**Decision:** Integrate MPV (libmpv2 5.0.1) as the video playback engine instead of HTML5 video element.
+
+**Rationale:**
+- **Universal Codec Support:** MPV supports all professional codecs (H.264, HEVC/H.265, ProRes, DNxHD, VP9, AV1) without requiring OS-level codec packs
+- **Frame-Accurate Seeking:** Sub-33ms seeking precision required for professional timeline editing (HTML5 video seek accuracy varies by browser)
+- **Battle-Tested:** Used by VLC, OBS Studio, and professional video tools - proven stable for 24/7 streaming applications
+- **Native Integration:** libmpv provides C API that integrates cleanly with Rust via Tauri backend
+- **Performance:** Hardware-accelerated decoding, efficient memory usage, handles 4K+ without frame drops
+- **Separation of Concerns:** MPV handles playback, FFmpeg continues to handle export/processing - each tool optimized for its purpose
+- **Event-Based Architecture:** MPV's FileLoaded/EndFile events enable robust, non-polling architecture
+
+**Alternatives Considered:**
+- **FFmpeg.wasm (Rejected):** Would work in browser but requires transcoding all videos to supported format on import (slow, storage-intensive, lossy)
+- **Video.js plugins (Rejected):** No reliable HEVC support plugins exist; still limited by underlying HTML5 capabilities
+- **Server-side transcoding (Rejected):** Requires backend server, defeats purpose of desktop-native application
+- **Multiple player fallbacks (Rejected):** Complex architecture, inconsistent UX, still leaves codec gaps
+
+**Implementation (Actual):**
+- Story 1.3.5: MPV Integration (8 hours total)
+- **libmpv2 v5.0.1** added to Cargo.toml (upgraded from planned 2.0 to match system MPV 0.40.0)
+- System dependency: `brew install mpv` (documented in README)
+- Created `src-tauri/src/services/mpv_player.rs` - MPV wrapper service with event-based architecture
+- Created `src-tauri/src/commands/mpv.rs` - Tauri commands (init, load_file, play, pause, seek, get_time, get_duration, stop)
+- Refactored `VideoPlayer.tsx` to use Tauri invoke() instead of HTMLVideoElement API
+- **Event-based loading:** Uses MPV's FileLoaded event with 5-second timeout
+- **WebM support added:** VP9 codec tested and validated
+- **MVP prototype scope:** Backend playback control functional, video frame rendering deferred
+
+**Testing Results:**
+- ✅ H.264/AVC (MP4) - Tested and passing
+- ✅ HEVC/H.265 yuv420p (MP4) - Tested and passing
+- ✅ VP9 (WebM) - Tested and passing
+- ✅ ProRes (MOV) - Tested and passing
+- ❌ HEVC yuvj420p (iOS Screen Recording) - Known limitation (JPEG color range not supported by libmpv)
+
+**Consequences:**
+- ✅ Universal codec support - H.264, HEVC, VP9, ProRes all play without conversion
+- ✅ Professional-grade frame-accurate seeking (<33ms precision)
+- ✅ Event-based architecture more robust than polling
+- ✅ Better performance for high-resolution video (4K+)
+- ✅ Consistent behavior across macOS versions
+- ✅ Foundation for advanced features (color correction, filters)
+- ⚠️ Additional system dependency (MPV must be installed via Homebrew)
+- ⚠️ Backend video control architecture (more complex than direct DOM, but cleaner separation)
+- ⚠️ HEVC yuvj420p limitation (iOS Screen Recordings require FFmpeg conversion)
+- ⚠️ MVP prototype: Video frames not rendered to screen yet (backend-only implementation)
+
+**Status:** Implemented and tested in Epic 1 (2025-10-28)
+
+**Date:** 2025-10-28
+
+**Update (2025-10-28): Headless MPV Configuration**
+
+During Story 1.4 testing, MPV dimension retrieval was failing with `MPV_ERROR_PROPERTY_UNAVAILABLE` errors, causing 10-second timeouts on video load. The issue affected all codecs.
+
+**Root Cause:** Initial implementation used `vo=libmpv` which requires GUI render context via libmpv's render API. Since we're using screenshot-based frame capture (not render API), the VideoReconfig event never fired and dimensions remained unavailable.
+
+**Solution Applied:** Switched to headless MPV configuration:
+```rust
+// src-tauri/src/services/mpv_player.rs (lines 23-31)
+mpv.set_property("vo", "null")?;              // No video output window
+mpv.set_property("force-window", "no")?;      // Prevent window creation
+mpv.set_property("audio", "no")?;             // Disable audio output
+mpv.set_property("hwdec", "auto")?;           // Hardware decode still enabled
+mpv.set_property("keep-open", "yes")?;        // Keep file open at end
+mpv.set_property("pause", "yes")?;            // Start paused
+```
+
+**Event Handling:** Simplified `load_file()` to wait only for `FileLoaded` event (not VideoReconfig). With `vo=null`, VideoReconfig doesn't fire, but FileLoaded is sufficient for headless operation.
+
+**Results:**
+- ✅ All codecs (H.264, HEVC, ProRes, VP9) load in <1 second
+- ✅ No window popups or GUI artifacts
+- ✅ Screenshot-based frame capture works correctly
+- ✅ Video dimensions optional (already provided by FFmpeg during import)
+
+**Reference:** `docs/HANDOFF-PLAYBACK-MODE-DEBUG-2025-10-28.md`, `docs/TECHNICAL-DEBT.md` (TD-002)
+
+---
+
+### ADR-007: Playback Mode Architecture (Preview vs Timeline)
+
+**Context:** Video editor requires two distinct playback modes:
+1. **Preview Mode:** Play selected media files independently (Story 1.4)
+2. **Timeline Mode:** Play assembled timeline composition (Story 1.7)
+
+Without mode distinction, the VideoPlayer component cannot differentiate between these fundamentally different use cases, leading to broken UX where users cannot preview videos independently of the timeline.
+
+**Decision:** Implement mode-aware architecture with single MPV backend:
+- `playerStore` tracks active mode: `'preview' | 'timeline'`
+- VideoPlayer component handles preview mode playback
+- Future TimelinePlayer component will handle timeline mode
+- Single MpvPlayerState in Tauri backend switches between sources
+
+**Rationale:**
+- **Industry Pattern:** Follows professional video editor pattern (Source Monitor / Program Monitor in Premiere Pro, DaVinci Resolve, Final Cut Pro)
+- **Resource Efficient:** Single libmpv instance (heavyweight ~200MB RAM) shared between modes
+- **Clean Separation:** Clear separation of concerns - only one mode active at a time
+- **User Mental Model:** Matches user expectations from professional tools
+- **Prevents Conflicts:** Explicit mode prevents accidental timeline interference during preview
+
+**Implementation:**
+
+**playerStore Architecture:**
+```typescript
+interface PlayerStore {
+  mode: 'preview' | 'timeline';          // Which component controls MPV
+  currentVideo: MediaFile | null;        // Preview mode source
+  playheadPosition: number;              // Timeline mode position
+  isPlaying: boolean;                    // Shared playback state
+  currentTime: number;                   // Current position
+  duration: number;                      // Current duration
+
+  setMode: (mode: 'preview' | 'timeline') => void;
+  // ... existing actions
+}
+```
+
+**Mode Switching Logic:**
+- Click media library item → `mode = 'preview'`, load video for independent playback
+- Click timeline play → `mode = 'timeline'`, play composition synchronized with timeline
+- Only one mode active at a time (single MPV instance)
+
+**Component Updates:**
+- `MediaItem.tsx`: Sets mode to 'preview' when user selects video from library
+- `VideoPlayer.tsx`: Checks mode before timeline synchronization - only syncs if `mode === 'timeline'`
+- Timeline play button (future): Sets mode to 'timeline' before playback
+
+**Alternatives Considered:**
+- ❌ Two MPV instances: 2x memory overhead, coordination complexity, only one can render audio at a time
+- ❌ Conditional logic in single component: Tangled code, hard to maintain, unclear separation
+
+**Consequences:**
+- ✅ Users can preview videos independently before adding to timeline
+- ✅ Clear separation between preview and timeline playback
+- ✅ Resource efficient (single MPV instance)
+- ✅ Foundation for future timeline playback features
+- ⚠️ Mode must be explicitly managed (prevents accidental state conflicts)
+- ⚠️ Story 1.4 requires mode architecture implementation to satisfy AC #2 (independent playback)
+
+**Implementation Stories:**
+- Story 1.4: Preview Mode implementation
+- Story 1.7: Timeline Mode implementation (future)
+
+**Status:** Pending implementation (2025-10-28)
+
+**Date:** 2025-10-28
 
 ---
 

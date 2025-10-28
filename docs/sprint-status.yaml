@@ -51,6 +51,8 @@ development_status:
   1-8-basic-trim-functionality-with-in-out-points: done
   1-9-ffmpeg-integration-video-export: done
   1-10-production-build-app-packaging: done
+  1-11-video-seek-and-scrub-controls: review
+  1-12-fix-video-playback-early-stop: review
   epic-1-retrospective: optional
 
   # Epic 2: Recording Foundation

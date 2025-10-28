@@ -28,7 +28,7 @@ clippy bridges both gaps as a macOS-native video editor built with Tauri that co
 ### Functional Requirements
 
 **FR001: Video File Import and Management**
-- System shall support drag-and-drop and file picker import of video files in MP4, MOV, and WebM formats
+- System shall support drag-and-drop and file picker import of video files in any format with universal codec support (H.264, HEVC/H.265, ProRes, DNxHD, VP9, AV1) via MPV playback engine
 - System shall maintain a media library with thumbnail previews, metadata (duration, resolution, file size, codec), search/filter, and organizational capabilities
 
 **FR002: Screen Recording Capabilities**
@@ -46,8 +46,10 @@ clippy bridges both gaps as a macOS-native video editor built with Tauri that co
 - System shall support drag-drop clip arrangement, trimming (in/out points), splitting at playhead, deletion, track movement, and snap-to-grid editing
 
 **FR006: Real-Time Video Preview and Playback**
-- System shall render multi-track composition with PiP overlays in real-time preview window
-- System shall provide playback controls (play/pause, stop, skip forward/backward, scrubbing, speed control) with synchronized audio at 30+ FPS
+- System shall provide **Preview Mode** for playing selected media files independently with basic controls (play/pause, seek, scrub)
+- System shall provide **Timeline Mode** for rendering multi-track composition with PiP overlays in real-time preview window
+- System shall use single MPV (libmpv) playback engine with mode switching for resource efficiency
+- System shall maintain 30+ FPS playback and frame-accurate seeking (<33ms precision) in both modes
 
 **FR007: Audio Track Management**
 - System shall provide separate audio visualization, per-clip volume control, mute/unmute tracks, and audio fade in/out capabilities

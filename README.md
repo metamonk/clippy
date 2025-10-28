@@ -17,6 +17,10 @@ Before building clippy, ensure you have the following installed:
 
 - **Node.js** 20+ ([Download](https://nodejs.org/))
 - **Rust** 1.80+ ([Install via rustup](https://rustup.rs/))
+- **MPV** (Required for video playback with universal codec support)
+  ```bash
+  brew install mpv
+  ```
 - **Xcode Command Line Tools** (macOS only)
   ```bash
   xcode-select --install

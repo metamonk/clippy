@@ -13,9 +13,16 @@
  * @example
  * formatTime(65) // "01:05"
  * formatTime(3665) // "1:01:05"
+ * formatTime(4.967) // "0:05" (rounds up from 4.967 to show full second)
+ *
+ * Note: Uses Math.round() instead of Math.floor() to properly display times
+ * near the end of videos. This fixes TD-004 where 4.967s displayed as "0:04"
+ * instead of "0:05", making users think playback stopped 1 second early.
  */
 export function formatTime(seconds: number): string {
-  const totalSeconds = Math.floor(seconds);
+  // Round to nearest second instead of flooring
+  // This ensures times like 4.967s display as "0:05" not "0:04"
+  const totalSeconds = Math.round(seconds);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const secs = totalSeconds % 60;

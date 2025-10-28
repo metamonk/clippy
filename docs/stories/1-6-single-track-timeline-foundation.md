@@ -32,9 +32,12 @@ So that I can arrange them for editing.
   - [x] Render playhead line at current position
   - [x] Connect playhead position to player store state
 - [x] Implement drag-drop from media library to timeline (AC: 4)
-  - [x] Add drag handlers to MediaItem component
-  - [x] Detect drop zone on timeline canvas
-  - [x] Calculate drop position on timeline
+  - [x] Create dragStore.ts for global drag state management
+  - [x] Add mouse event handlers to MediaItem component (mouseDown)
+  - [x] Implement global mousemove/mouseup handlers in MainLayout
+  - [x] Detect drop zone on timeline via ref bounds checking
+  - [x] Calculate drop position on timeline using pixelsToMs
+  - [x] Add DragPreview component for visual feedback during drag
 - [x] Implement clip visualization on timeline (AC: 5)
   - [x] Create TimelineClip.tsx component
   - [x] Render clip as rectangle or thumbnail strip
@@ -74,7 +77,24 @@ src/components/timeline/
 ├── TimelineClip.tsx      # Clip visualization
 ├── Playhead.tsx          # Playhead indicator
 └── TimeRuler.tsx         # Time markers
+
+src/components/common/
+└── DragPreview.tsx       # Visual feedback during drag operations
+
+src/stores/
+└── dragStore.ts          # Global drag state (isDragging, mouse position)
 ```
+
+**Drag-Drop Implementation:**
+- **Decision:** Custom mouse-based drag (mouseDown/mouseMove/mouseUp) instead of HTML5 drag-drop API
+- **Rationale:** HTML5 drag-drop events (dragover, drop) blocked by Konva canvas and flex containers in Tauri WebView
+- **Approach:**
+  - Global drag state managed in dragStore.ts (Zustand)
+  - MediaItem captures mouseDown to initiate drag
+  - MainLayout handles global mousemove (updates cursor position) and mouseup (performs drop)
+  - Drop detection via getBoundingClientRect() on timeline ref
+  - Visual feedback via DragPreview component that follows cursor
+- **Benefits:** Works reliably across all UI elements, better control over drag visual feedback
 
 **Data Model (Architecture Decision ADR-005):**
 ```typescript
@@ -115,7 +135,9 @@ This story creates the following new files per architecture.md:
 - `src/components/timeline/TimelineClip.tsx` ✓
 - `src/components/timeline/Playhead.tsx` ✓
 - `src/components/timeline/TimeRuler.tsx` ✓
+- `src/components/common/DragPreview.tsx` ✓
 - `src/stores/timelineStore.ts` ✓
+- `src/stores/dragStore.ts` ✓
 - `src/types/timeline.ts` ✓
 - `src/lib/timeline/timeUtils.ts` (time format conversions) ✓
 
@@ -188,9 +210,11 @@ Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
 2. Time ruler with configurable intervals and formatted labels (MM:SS)
 3. Playhead synchronized with playerStore.currentTime
 4. Full drag-drop from media library to timeline with position calculation
-5. Clip visualization with filename, duration, and visual feedback
-6. Complete timeline state management with Zustand store
-7. Comprehensive test coverage (20 utility tests, 7 component tests, 16 store tests)
+5. Custom mouse-based drag implementation (replaces HTML5 drag-drop for Tauri compatibility)
+6. Visual drag preview component that follows cursor during drag operations
+7. Clip visualization with filename, duration, and visual feedback
+8. Complete timeline state management with Zustand store
+9. Comprehensive test coverage (20 utility tests, 7 component tests, 16 store tests)
 
 **Key Features:**
 - Empty state message when no clips on timeline
@@ -207,26 +231,30 @@ Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
 - Added uuid package for clip/track ID generation
 - Created .eslintignore and updated eslint.config.js to ignore dist folder
 - All timeline components follow project coding standards and pass linting
+- **Drag-Drop Implementation:** Replaced HTML5 drag-drop API with custom mouse event handlers (mouseDown/mouseMove/mouseUp) due to event blocking by Konva canvas and Tauri WebView limitations. Global drag state managed via dragStore.ts with visual feedback from DragPreview component.
 
 ### File List
 
 **New Files Created:**
 - src/types/timeline.ts - Clip, Track, Timeline, TimelineViewConfig interfaces
 - src/stores/timelineStore.ts - Zustand store for timeline state
+- src/stores/dragStore.ts - Zustand store for global drag state
 - src/lib/timeline/timeUtils.ts - Time conversion and formatting utilities
 - src/components/timeline/Timeline.tsx - Main Konva Stage component
 - src/components/timeline/TimelineTrack.tsx - Track container component
 - src/components/timeline/TimelineClip.tsx - Clip visualization component
 - src/components/timeline/Playhead.tsx - Playhead indicator component
 - src/components/timeline/TimeRuler.tsx - Time ruler with markers
+- src/components/common/DragPreview.tsx - Visual drag feedback component
 - src/lib/timeline/timeUtils.test.ts - Unit tests for utilities
 - src/components/timeline/Timeline.test.tsx - Component tests
 - src/stores/timelineStore.test.ts - Store tests
 - .eslintignore - ESLint ignore configuration
 
 **Modified Files:**
+- src/components/layout/MainLayout.tsx - Added global mouse event handlers for drag-drop
 - src/components/layout/TimelinePanel.tsx - Integrated Timeline component
-- src/components/media-library/MediaItem.tsx - Added drag handlers
+- src/components/media-library/MediaItem.tsx - Changed to custom mouse-based drag (mouseDown instead of HTML5 draggable)
 - src/test/setup.ts - Added canvas mock for Konva
 - src/App.test.tsx - Added Timeline mock
 - src/components/layout/MainLayout.test.tsx - Added Timeline mock and updated tests

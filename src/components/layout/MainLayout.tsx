@@ -3,8 +3,13 @@ import { PreviewPanel } from "./PreviewPanel";
 import { TimelinePanel } from "./TimelinePanel";
 import { MediaLibraryPanel } from "./MediaLibraryPanel";
 import { ExportDialog } from "../export/ExportDialog";
+import { DragPreview } from "../common/DragPreview";
 import { Download } from "lucide-react";
 import type { Timeline } from "@/types/timeline";
+import { useDragStore } from "@/stores/dragStore";
+import { useMediaLibraryStore } from "@/stores/mediaLibraryStore";
+import { useTimelineStore } from "@/stores/timelineStore";
+import { pixelsToMs } from "@/lib/timeline/timeUtils";
 
 export function MainLayout() {
   const mediaLibraryRef = useRef<HTMLDivElement>(null);
@@ -12,11 +17,23 @@ export function MainLayout() {
   const timelineRef = useRef<HTMLDivElement>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
 
-  // TODO: Replace with actual timeline from timeline store
-  // This is a placeholder for testing export functionality
-  const mockTimeline: Timeline = {
-    tracks: [],
-    totalDuration: 0,
+  // Drag state
+  const isDragging = useDragStore((state) => state.isDragging);
+  const draggedMediaFileId = useDragStore((state) => state.draggedMediaFileId);
+  const updateMousePosition = useDragStore((state) => state.updateMousePosition);
+  const endDrag = useDragStore((state) => state.endDrag);
+
+  // Stores
+  const getMediaFile = useMediaLibraryStore((state) => state.getMediaFile);
+  const addClip = useTimelineStore((state) => state.addClip);
+  const tracks = useTimelineStore((state) => state.tracks);
+  const viewConfig = useTimelineStore((state) => state.viewConfig);
+  const totalDuration = useTimelineStore((state) => state.totalDuration);
+
+  // Get actual timeline data from store for export
+  const timeline: Timeline = {
+    tracks,
+    totalDuration,
   };
 
   useEffect(() => {
@@ -65,6 +82,77 @@ export function MainLayout() {
     };
   }, []);
 
+  // Global drag handlers
+  useEffect(() => {
+    if (!isDragging) return;
+
+    // Disable text selection during drag
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
+
+    const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault();
+      updateMousePosition(e.clientX, e.clientY);
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (!draggedMediaFileId || !timelineRef.current) {
+        endDrag();
+        return;
+      }
+
+      // Check if mouse is over timeline
+      const timelineRect = timelineRef.current.getBoundingClientRect();
+      const isOverTimeline =
+        e.clientX >= timelineRect.left &&
+        e.clientX <= timelineRect.right &&
+        e.clientY >= timelineRect.top &&
+        e.clientY <= timelineRect.bottom;
+
+      if (isOverTimeline) {
+        // Get media file
+        const mediaFile = getMediaFile(draggedMediaFileId);
+        if (!mediaFile || tracks.length === 0) {
+          endDrag();
+          return;
+        }
+
+        // Calculate drop position relative to timeline
+        const dropX = e.clientX - timelineRect.left;
+        // const dropY = e.clientY - timelineRect.top; // TODO: Use for track calculation
+
+        // Convert X position to timeline time
+        const dropTimeMs = pixelsToMs(dropX, viewConfig.pixelsPerSecond);
+
+        // Determine which track (for now, just use first track)
+        // TODO: Calculate actual track based on dropY and track heights
+        const targetTrack = tracks[0];
+
+        // Add clip to timeline
+        addClip(targetTrack.id, {
+          filePath: mediaFile.filePath,
+          startTime: Math.max(0, dropTimeMs),
+          duration: mediaFile.duration,
+          trimIn: 0,
+          trimOut: mediaFile.duration,
+        });
+      }
+
+      endDrag();
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      // Re-enable text selection after drag
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, draggedMediaFileId, endDrag, updateMousePosition, getMediaFile, addClip, tracks, viewConfig]);
+
   return (
     <>
       <div className="flex h-screen w-screen bg-gray-50 gap-2 p-2 overflow-hidden">
@@ -87,10 +175,13 @@ export function MainLayout() {
 
       {/* Export dialog */}
       <ExportDialog
-        timeline={mockTimeline}
+        timeline={timeline}
         isOpen={showExportDialog}
         onClose={() => setShowExportDialog(false)}
       />
+
+      {/* Drag preview - shows what's being dragged */}
+      <DragPreview />
     </>
   );
 }

@@ -5,6 +5,23 @@ pub mod utils;
 
 use std::fs;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use commands::{
+    cmd_import_media,
+    cmd_start_export,
+    cmd_get_export_progress,
+    cmd_cancel_export,
+    mpv_init,
+    mpv_load_file,
+    mpv_play,
+    mpv_pause,
+    mpv_seek,
+    mpv_get_time,
+    mpv_get_duration,
+    mpv_stop,
+    mpv_is_playing,
+    mpv_get_video_dimensions,
+    mpv_capture_frame,
+};
 
 /// Initialize logging system with file output to ~/Library/Logs/clippy/app.log
 fn init_logging() -> anyhow::Result<()> {
@@ -87,13 +104,26 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::ExportState::new())
+        .manage(commands::MpvPlayerState(std::sync::Arc::new(std::sync::Mutex::new(None))))
         .invoke_handler(tauri::generate_handler![
             greet,
-            commands::media::cmd_import_media,
-            commands::export::cmd_start_export,
-            commands::export::cmd_get_export_progress,
-            commands::export::cmd_cancel_export
+            cmd_import_media,
+            cmd_start_export,
+            cmd_get_export_progress,
+            cmd_cancel_export,
+            mpv_init,
+            mpv_load_file,
+            mpv_play,
+            mpv_pause,
+            mpv_seek,
+            mpv_get_time,
+            mpv_get_duration,
+            mpv_stop,
+            mpv_is_playing,
+            mpv_get_video_dimensions,
+            mpv_capture_frame
         ])
         .setup(|app| {
             use tauri::menu::*;

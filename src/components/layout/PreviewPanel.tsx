@@ -8,6 +8,9 @@ import { PlayerControls } from "@/components/player/PlayerControls";
 export const PreviewPanel = forwardRef<HTMLDivElement>((_props, ref) => {
   const currentVideo = usePlayerStore((state) => state.currentVideo);
 
+  // Pass raw file path to VideoPlayer - MPV uses filesystem paths directly
+  const videoSrc = currentVideo ? currentVideo.filePath : null;
+
   return (
     <div
       ref={ref}
@@ -22,12 +25,14 @@ export const PreviewPanel = forwardRef<HTMLDivElement>((_props, ref) => {
       role="region"
       aria-label="Video Preview"
     >
-      {currentVideo ? (
+      {currentVideo && videoSrc ? (
         <>
-          <div className="flex-1 p-4 flex items-center justify-center bg-black rounded-t-lg">
-            <VideoPlayer src={currentVideo.filePath} />
+          <div className="flex-1 p-4 flex items-center justify-center bg-black rounded-t-lg overflow-hidden min-h-0">
+            <VideoPlayer src={videoSrc} />
           </div>
-          <PlayerControls />
+          <div className="flex-shrink-0">
+            <PlayerControls />
+          </div>
         </>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 p-4">

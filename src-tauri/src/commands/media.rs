@@ -27,7 +27,7 @@ pub async fn cmd_import_media(file_path: String) -> Result<MediaFile, String> {
         return Err(error_msg);
     }
 
-    // Validate file format (MP4 and MOV only)
+    // Validate file format (MP4, MOV, and WebM)
     let path = std::path::Path::new(&file_path);
     let extension = path
         .extension()
@@ -35,7 +35,7 @@ pub async fn cmd_import_media(file_path: String) -> Result<MediaFile, String> {
         .map(|ext| ext.to_lowercase());
 
     match extension.as_deref() {
-        Some("mp4") | Some("mov") => {
+        Some("mp4") | Some("mov") | Some("webm") => {
             tracing::debug!(
                 event = "file_format_validated",
                 file_path = %file_path,
@@ -43,7 +43,7 @@ pub async fn cmd_import_media(file_path: String) -> Result<MediaFile, String> {
             );
         }
         _ => {
-            let error_msg = "Unsupported file format. Please import MP4 or MOV files.".to_string();
+            let error_msg = "Unsupported file format. Please import MP4, MOV, or WebM files.".to_string();
             tracing::warn!(
                 event = "unsupported_format",
                 file_path = %file_path,
@@ -93,7 +93,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            "Unsupported file format. Please import MP4 or MOV files."
+            "Unsupported file format. Please import MP4, MOV, or WebM files."
         );
 
         // Cleanup

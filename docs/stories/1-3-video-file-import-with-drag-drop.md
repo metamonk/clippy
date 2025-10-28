@@ -10,11 +10,13 @@ So that I can load videos to edit.
 
 ## Acceptance Criteria
 
-1. Drag & drop zone in media library area accepts MP4 and MOV files
+1. Drag & drop zone in media library area accepts MP4, MOV, and WebM files
 2. File picker dialog (native macOS) allows selecting video files
 3. Imported files are stored in application state
 4. File validation rejects unsupported formats with clear error message
 5. Tauri command in Rust backend handles file path and metadata extraction
+
+**NOTE:** WebM format support was added as part of Story 1.3.5 (MPV Integration) to support VP9 codec testing.
 
 ## Tasks / Subtasks
 
@@ -34,10 +36,11 @@ So that I can load videos to edit.
   - [x] Write cargo test for metadata extraction (mock FFmpeg output)
 
 - [x] Implement file format validation (AC: 4)
-  - [x] Validate file extension (.mp4, .mov) before calling FFmpeg
-  - [x] Return clear error message for unsupported formats: "Unsupported file format. Please import MP4 or MOV files."
+  - [x] Validate file extension (.mp4, .mov, .webm) before calling FFmpeg
+  - [x] Return clear error message for unsupported formats: "Unsupported file format. Please import MP4, MOV, or WebM files."
   - [x] Test validation with various file extensions (valid and invalid)
   - [x] Write cargo test for format validation edge cases
+  - [x] **WebM support added in Story 1.3.5 for VP9 codec support**
 
 - [x] Create TypeScript types and Tauri command wrappers (AC: 3)
   - [x] Create `src/types/media.ts` with MediaFile interface (camelCase fields)
@@ -56,7 +59,7 @@ So that I can load videos to edit.
   - [x] Create `src/components/media-library/MediaImport.tsx`
   - [x] Implement drop zone using Tauri drag-drop event listeners
   - [x] Add visual feedback: border highlight on drag-over, drop indicator
-  - [x] Filter dropped files to only MP4/MOV (show error toast for unsupported)
+  - [x] Filter dropped files to only MP4/MOV/WebM (show error toast for unsupported)
   - [x] Call importMedia() for each valid dropped file
   - [x] Add Upload icon from lucide-react
   - [x] Implement keyboard accessibility (tabIndex, Enter key triggers file picker)
@@ -64,7 +67,7 @@ So that I can load videos to edit.
 - [x] Implement native file picker dialog (AC: 2)
   - [x] Add "Import Video" button in MediaImport component
   - [x] Use Tauri dialog plugin to open native macOS file picker
-  - [x] Filter file picker to show only .mp4 and .mov files
+  - [x] Filter file picker to show only .mp4, .mov, and .webm files
   - [x] Handle multiple file selection
   - [x] Call importMedia() for selected files
   - [x] Show loading indicator during import
@@ -142,9 +145,10 @@ This story follows the standard Tauri command pattern for secure file access:
 - **Video Metadata:** FFmpeg via `ffmpeg-sidecar` crate (architecture.md line 98)
 
 **File Format Support:**
-- **Phase 1 (This Story):** MP4 and MOV only
+- **Phase 1 (This Story):** MP4 and MOV
+- **Phase 1.5 (Story 1.3.5 - MPV Integration):** WebM added for VP9 codec support
+- **Current:** MP4, MOV, and WebM supported
 - **Validation:** Check file extension, reject unsupported formats
-- **Future:** WebM support can be added in later stories
 
 **Data Flow:**
 
@@ -220,13 +224,18 @@ src-tauri/
 **Error Handling Strategy:**
 
 Frontend (toast notifications):
-- "Unsupported file format. Please import MP4 or MOV files."
+- "Unsupported file format. Please import MP4, MOV, or WebM files." (updated for WebM support)
 - "Failed to import file: [filename]. Please check the file is not corrupted."
 
 Backend (Rust → String errors):
-- Validate file extension before processing
+- Validate file extension before processing (.mp4, .mov, .webm)
 - Catch FFmpeg metadata extraction failures
 - Return user-friendly error messages (not stack traces)
+
+**WebM Support Added (Story 1.3.5):**
+- Backend: Added `.webm` to accepted file extensions in `src-tauri/src/commands/media.rs`
+- Frontend: Updated accept attribute to include `.webm` in `src/components/media-library/MediaImport.tsx`
+- Rationale: Required for VP9 codec testing in Story 1.3.5 (MPV Integration)
 
 **Testing Strategy (from architecture.md lines 1129-1211):**
 

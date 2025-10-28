@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Layer, Stage, Group, Text } from 'react-konva';
 import { useTimelineStore } from '@/stores/timelineStore';
-import { useMediaLibraryStore } from '@/stores/mediaLibraryStore';
+// import { useMediaLibraryStore } from '@/stores/mediaLibraryStore'; // TODO: Use when loading media
 import { usePlayerStore } from '@/stores/playerStore';
 import { TimeRuler } from './TimeRuler';
 import { Playhead } from './Playhead';
@@ -33,13 +33,13 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
   const tracks = useTimelineStore((state) => state.tracks);
   const totalDuration = useTimelineStore((state) => state.totalDuration);
   const viewConfig = useTimelineStore((state) => state.viewConfig);
-  const addClip = useTimelineStore((state) => state.addClip);
+  // const addClip = useTimelineStore((state) => state.addClip); // TODO: Use when adding clips from UI
   const storeSelectedClipId = useTimelineStore((state) => state.selectedClipId);
   const getClip = useTimelineStore((state) => state.getClip);
   const resetTrim = useTimelineStore((state) => state.resetTrim);
 
   // Subscribe to media library
-  const getMediaFile = useMediaLibraryStore((state) => state.getMediaFile);
+  // const getMediaFile = useMediaLibraryStore((state) => state.getMediaFile); // TODO: Use when loading media
 
   // Subscribe to player store for click-to-seek
   const setPlayheadPosition = usePlayerStore((state) => state.setPlayheadPosition);
@@ -52,56 +52,6 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
   );
 
   const timelineHeight = viewConfig.rulerHeight + tracks.length * viewConfig.trackHeight;
-
-  // Handle drop event from media library
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-
-      const stage = stageRef.current;
-      if (!stage) return;
-
-      // Get drop data
-      const mediaFileId = e.dataTransfer.getData('mediaFileId');
-      if (!mediaFileId) return;
-
-      // Get media file from library
-      const mediaFile = getMediaFile(mediaFileId);
-      if (!mediaFile) return;
-
-      // Calculate drop position
-      const containerRect = e.currentTarget.getBoundingClientRect();
-      const dropX = e.clientX - containerRect.left;
-      const dropY = e.clientY - containerRect.top;
-
-      // Convert X position to timeline time
-      const dropTimeMs = pixelsToMs(dropX, viewConfig.pixelsPerSecond);
-
-      // Determine which track was dropped on
-      const trackIndex = Math.floor(
-        (dropY - viewConfig.rulerHeight) / viewConfig.trackHeight
-      );
-
-      if (trackIndex >= 0 && trackIndex < tracks.length) {
-        const targetTrack = tracks[trackIndex];
-
-        // Add clip to timeline
-        addClip(targetTrack.id, {
-          filePath: mediaFile.filePath,
-          startTime: Math.max(0, dropTimeMs),
-          duration: mediaFile.duration,
-          trimIn: 0,
-          trimOut: mediaFile.duration,
-        });
-      }
-    },
-    [tracks, viewConfig, addClip, getMediaFile]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  }, []);
 
   // Handle click on timeline to seek
   const handleStageClick = useCallback(
@@ -145,8 +95,6 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
   return (
     <div
       className="timeline-container"
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
       style={{
         width: '100%',
         height: '100%',
@@ -184,7 +132,12 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
         </button>
       )}
 
-      <Stage width={minTimelineWidth} height={timelineHeight} ref={stageRef} onClick={handleStageClick}>
+      <Stage
+        width={minTimelineWidth}
+        height={timelineHeight}
+        ref={stageRef}
+        onClick={handleStageClick}
+      >
         <Layer>
           {/* Time Ruler */}
           <TimeRuler

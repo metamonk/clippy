@@ -6,7 +6,7 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['dist', 'dist-ssr', '*.local', 'node_modules', 'coverage', '.nyc_output'],
+    ignores: ['dist', 'dist-ssr', '*.local', 'node_modules', 'coverage', '.nyc_output', 'src-tauri/target'],
   },
   js.configs.recommended,
   {

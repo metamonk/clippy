@@ -48,6 +48,38 @@ So that I can remove content from the beginning or end.
   - [x] Test playback respects trim boundaries
   - [x] Test trim reset functionality
 
+## Implementation Notes (2025-10-28)
+
+**Critical Bug Fixes Applied:**
+
+1. **Timeline Positioning Bug (2025-10-28)**
+   - **Problem:** When dragging left trim handle right, clip was shrinking from the wrong edge (right instead of left) and grey artifacts appeared
+   - **Root Cause:** Group positioned at `x - leftTrimWidth` kept visible portion anchored at original position
+   - **Fix:** Calculate `adjustedStartTime = clip.startTime + clip.trimIn` so visible portion moves right on timeline when trimming from left
+   - **Result:** Clips now behave correctly - left trim shrinks from left edge, right trim shrinks from right edge
+
+2. **Trim Handle Movement Bug (2025-10-28)**
+   - **Problem:** Trim handles physically moved during drag, could move vertically, created visual glitches
+   - **Root Cause:** Using Konva's `draggable={true}` with complex `dragBoundFunc` math fighting reactive updates
+   - **Fix:** Removed Konva dragging entirely, implemented pure window-level mouse event tracking:
+     - `onMouseDown` captures start position and trim values
+     - Window `mousemove` listener calculates delta and updates store
+     - React re-renders handles at new positions (declarative)
+     - Window `mouseup` cleanup removes listeners
+   - **Result:** Handles stay locked in place visually, only horizontal movement, no artifacts
+
+3. **Simplified Rendering (2025-10-28)**
+   - **Problem:** Grey "trimmed region overlays" created visual confusion
+   - **Fix:** Removed overlay rectangles, render only visible portion of clip
+   - **Result:** Clean, simple rendering - visible clip rendered at correct timeline position
+
+**Actual Implementation Approach:**
+- **Window-level mouse tracking** (not Konva drag events as originally planned)
+- **Declarative handle positioning** based on trim state
+- **Simplified clip rendering** without overlay regions
+- Trim handles only appear when clip is selected
+- Handles constrained to clip boundaries (trimIn < trimOut with 100ms minimum)
+
 ## Dev Notes
 
 - Relevant architecture patterns and constraints

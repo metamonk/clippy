@@ -2,6 +2,10 @@
 
 Status: review
 
+**NOTE:** This story was completed with MPV backend (Story 1.3.5) instead of the originally planned Video.js. Synchronization patterns remain the same, but implementation uses Tauri MPV commands (`mpv_play`, `mpv_pause`, `mpv_seek`, `mpv_get_time`) instead of Video.js DOM API.
+
+**ARCHITECTURE NOTE:** This story implements Timeline Mode playback, which shares the MPV backend with Preview Mode (Story 1.4). Mode switching logic will be added to playerStore. See ADR-007 in architecture.md for full playback mode architecture.
+
 ## Story
 
 As a user,
@@ -79,22 +83,38 @@ interface PlayerStore {
 - Use `requestAnimationFrame` for smooth playhead rendering
 - Avoid triggering unnecessary re-renders (Zustand selectors)
 
-**Video.js Integration:**
+**MPV Integration (ACTUAL IMPLEMENTATION - Story 1.3.5):**
 ```typescript
-// lib/tauri/player.ts
-export function syncVideoToPosition(
-  videoElement: HTMLVideoElement,
-  positionMs: number
-): void {
-  videoElement.currentTime = positionMs / 1000; // Convert ms to seconds
+// VideoPlayer.tsx - MPV synchronization via Tauri commands
+import { invoke } from "@tauri-apps/api/core";
+
+// Sync video to timeline position
+export async function syncVideoToPosition(positionMs: number): Promise<void> {
+  const positionSeconds = positionMs / 1000; // Convert ms to seconds for MPV
+  await invoke('mpv_seek', { position: positionSeconds });
 }
 
-export function getVideoPositionMs(
-  videoElement: HTMLVideoElement
-): number {
-  return videoElement.currentTime * 1000; // Convert seconds to ms
+// Get current video position
+export async function getVideoPositionMs(): Promise<number> {
+  const positionSeconds = await invoke<number>('mpv_get_time');
+  return positionSeconds * 1000; // Convert seconds to ms
+}
+
+// Play/pause control via MPV commands
+export async function playVideo(): Promise<void> {
+  await invoke('mpv_play');
+}
+
+export async function pauseVideo(): Promise<void> {
+  await invoke('mpv_pause');
 }
 ```
+
+**Key Differences from Video.js:**
+- Uses Tauri `invoke()` commands instead of DOM API
+- All operations are async (IPC communication)
+- No direct access to HTMLVideoElement
+- Same synchronization patterns, different implementation layer
 
 ### Component Changes
 
@@ -145,11 +165,12 @@ This story updates existing files and adds utility functions:
 - `src/lib/timeline/timeUtils.ts` (updated: add pixel ↔ ms conversion)
 
 **Dependencies:**
-- Video.js (already integrated in Story 1.4)
+- ~~Video.js~~ **MPV** (integrated in Story 1.3.5 via libmpv2)
 - Konva.js (already integrated in Story 1.6)
 - Zustand playerStore (already created in Story 1.4)
+- Tauri invoke API (for MPV commands)
 
-**No conflicts detected** - all updates follow established patterns from architecture.md.
+**No conflicts detected** - MPV integration follows same synchronization patterns as Video.js, just different API layer (Tauri commands vs DOM).
 
 ### Lessons Learned from Previous Stories
 
@@ -214,21 +235,27 @@ Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
 #### 2025-10-27 - Timeline Playback Synchronization Implementation
 
 **Implementation Summary:**
-Implemented full bidirectional synchronization between timeline playhead and video player with all acceptance criteria met.
+Implemented full bidirectional synchronization between timeline playhead and video player with all acceptance criteria met. **Completed with MPV backend (Story 1.3.5) instead of Video.js.**
 
 **Key Accomplishments:**
 1. **PlayerStore Extensions**: Added `playheadPosition` (milliseconds), `play()`, `pause()`, and `setPlayheadPosition()` actions
-2. **Playhead Drag Interaction**: Fully interactive draggable playhead with horizontal constraint and real-time video seeking
-3. **Click-to-Seek**: Timeline canvas click handler converts pixel coordinates to milliseconds and seeks video player
-4. **Play/Pause Synchronization**: RequestAnimationFrame loop drives playhead updates during playback (60fps)
-5. **Scrubbing Optimization**: Implemented 100ms threshold for seek operations to avoid unnecessary video seeks during playback
+2. **Playhead Drag Interaction**: Fully interactive draggable playhead with horizontal constraint and real-time video seeking via `invoke('mpv_seek')`
+3. **Click-to-Seek**: Timeline canvas click handler converts pixel coordinates to milliseconds and seeks MPV player
+4. **Play/Pause Synchronization**: RequestAnimationFrame loop drives playhead updates during playback (60fps), polling MPV time via `invoke('mpv_get_time')`
+5. **Scrubbing Optimization**: Implemented 100ms threshold for seek operations to avoid unnecessary MPV seeks during playback
 
 **Technical Approach:**
 - Used Konva.js drag events for playhead interaction (dragBoundFunc for horizontal constraint)
-- Implemented primary sync direction: Video player → playhead during playback (requestAnimationFrame)
-- Implemented secondary sync direction: Playhead/timeline → video player during scrubbing
-- Time unit consistency: Playhead position in milliseconds (ADR-005), Video.js in seconds (converted at interface boundary)
+- Implemented primary sync direction: MPV player → playhead during playback (requestAnimationFrame)
+- Implemented secondary sync direction: Playhead/timeline → MPV player during scrubbing
+- Time unit consistency: Playhead position in milliseconds (ADR-005), MPV uses seconds (converted at interface boundary via Tauri commands)
 - Performance: RequestAnimationFrame ensures smooth 60fps playhead rendering, 100ms threshold prevents seek thrashing
+
+**MPV Integration Notes:**
+- Replaced Video.js `currentTime` property with `invoke('mpv_get_time')` polling
+- Replaced Video.js `play()`/`pause()` methods with `invoke('mpv_play')`/`invoke('mpv_pause')` commands
+- Replaced Video.js seek with `invoke('mpv_seek', { position })` command
+- Same synchronization patterns, different implementation layer (Tauri IPC vs DOM API)
 
 **Testing:**
 - All 170 tests passing (17 tests in playerStore.test.ts including new play/pause/setPlayheadPosition tests)

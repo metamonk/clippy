@@ -38,6 +38,7 @@ async-openai = "0.28"
 ffmpeg-sidecar = "2.1"
 screencapturekit = "0.3"
 nokhwa = { version = "0.10", features = ["input-avfoundation"] }
+libmpv2 = "5.0"
 dirs = "6"
 base64 = "0.22"
 
