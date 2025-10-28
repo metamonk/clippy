@@ -67,8 +67,8 @@ export function MainLayout() {
 
   return (
     <>
-      <div className="flex h-screen w-screen bg-gray-50 gap-2 p-2">
-        <div className="flex flex-col flex-1 gap-2">
+      <div className="flex h-screen w-screen bg-gray-50 gap-2 p-2 overflow-hidden">
+        <div className="flex flex-col flex-1 gap-2 min-w-0 min-h-0">
           <PreviewPanel ref={previewRef} />
           <TimelinePanel ref={timelineRef} />
         </div>

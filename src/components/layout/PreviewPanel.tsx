@@ -12,9 +12,10 @@ export const PreviewPanel = forwardRef<HTMLDivElement>((_props, ref) => {
     <div
       ref={ref}
       className={cn(
-        "h-2/5 bg-gray-50 rounded-lg shadow-sm",
+        "flex-1 min-h-0 bg-gray-50 rounded-lg shadow-sm",
         "flex flex-col",
         "border border-gray-200",
+        "overflow-hidden",
         "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
       )}
       tabIndex={0}

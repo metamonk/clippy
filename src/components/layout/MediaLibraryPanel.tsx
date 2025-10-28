@@ -12,7 +12,7 @@ export const MediaLibraryPanel = forwardRef<HTMLDivElement>((_props, ref) => {
     <div
       ref={ref}
       className={cn(
-        "w-1/5 bg-gray-100 rounded-lg shadow-sm",
+        "w-80 flex-shrink-0 bg-gray-100 rounded-lg shadow-sm",
         "flex flex-col",
         "border border-gray-200",
         "overflow-hidden",
