@@ -1,0 +1,51 @@
+{
+  "name": "clippy",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "test": "vitest",
+    "lint": "eslint . --ext ts,tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-fs": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-notification": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/plugin-os": "^2",
+    "zustand": "^4",
+    "konva": "^9",
+    "react-konva": "^18",
+    "video.js": "8.16.1",
+    "@videojs/themes": "^1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4",
+    "@tauri-apps/cli": "^2",
+    "vitest": "^2",
+    "@testing-library/react": "^16",
+    "@testing-library/jest-dom": "^6",
+    "jsdom": "^25",
+    "eslint": "^9",
+    "@typescript-eslint/parser": "^8",
+    "@typescript-eslint/eslint-plugin": "^8",
+    "prettier": "^3",
+    "eslint-config-prettier": "^9",
+    "tailwindcss": "^3",
+    "postcss": "^8",
+    "autoprefixer": "^10"
+  }
+}

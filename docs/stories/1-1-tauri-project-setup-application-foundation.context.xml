@@ -1,0 +1,237 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1.1</storyId>
+    <title>Tauri Project Setup & Application Foundation</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-27</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-1-tauri-project-setup-application-foundation.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a developer</asA>
+    <iWant>to set up a Tauri project with React frontend and establish basic app structure</iWant>
+    <soThat>I have a working foundation to build clippy features upon</soThat>
+    <tasks>
+- Initialize Tauri project with React + TypeScript (AC: 1, 4)
+  - Run `npm create tauri-app@latest clippy` with React + TypeScript options
+  - Verify src-tauri/ and src/ directory structure created
+  - Install initial dependencies listed in architecture.md
+  - Verify project builds with `npm run tauri build`
+- Configure development environment and tooling (AC: 5, 9)
+  - Add Tailwind CSS with PostCSS configuration
+  - Install and configure ESLint with TypeScript parser
+  - Install and configure Prettier with ESLint integration
+  - Configure shadcn/ui component library
+  - Verify hot reload works with `npm run tauri dev`
+- Set up frontend testing infrastructure (AC: 7)
+  - Install Vitest and React Testing Library
+  - Create vitest.config.ts configuration file
+  - Write sample component test that passes
+  - Verify tests run with `npm run test`
+- Set up Rust backend testing infrastructure (AC: 8)
+  - Create sample Rust module with unit test
+  - Verify tests run with `cargo test` from src-tauri/
+  - Configure test coverage reporting
+- Configure Rust dependencies and logging (AC: 10)
+  - Add required Rust dependencies to Cargo.toml (serde, tokio, anyhow, thiserror, tracing, tracing-subscriber, chrono, uuid)
+  - Configure tracing with file output to ~/Library/Logs/clippy/app.log
+  - Add sample tracing::info! log and verify output to file
+  - Verify log directory created on first run
+- Verify native macOS integration (AC: 2, 3)
+  - Launch app and verify native macOS window chrome
+  - Verify native menu bar appears with app name
+  - Test window minimize/maximize/close buttons
+  - Verify app respects macOS light/dark mode
+- Initialize version control (AC: 11)
+  - Run `git init` if not already initialized
+  - Create .gitignore with node_modules/, target/, dist/, etc.
+  - Create initial commit with project scaffold
+  - Verify all necessary files tracked
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Tauri 2.x project initialized with React 18+ frontend
+2. Application launches as native macOS window with menu bar
+3. Basic window chrome follows macOS conventions
+4. Project structure organized (src-tauri for Rust backend, src for React frontend)
+5. Development environment configured (hot reload works)
+6. Can run `cargo tauri dev` and app launches successfully
+7. Vitest configured for frontend unit tests with sample test passing
+8. cargo test working for Rust backend with sample test passing
+9. ESLint and Prettier configured with project standards
+10. Logging configured with tracing crate, outputs to ~/Library/Logs/clippy/app.log
+11. Git repository initialized with initial commit
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>Project Initialization</section>
+        <snippet>Establishes base architecture with Tauri 2.x + React 18 + TypeScript + Vite, including complete dependency lists for frontend (Zustand, Konva, Video.js, Tauri plugins) and Rust (serde, tokio, tracing, async-openai, ffmpeg-sidecar, screencapturekit, nokhwa). Provides initialization commands via `npm create tauri-app@latest clippy`.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>Complete Project Structure</section>
+        <snippet>Defines full directory structure with src/ for React frontend (components, stores, lib, types, hooks), src-tauri/ for Rust backend (commands, services, models, utils), and configuration files (package.json, tsconfig.json, tailwind.config.js, vite.config.ts, vitest.config.ts).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>Implementation Patterns - Naming Conventions</section>
+        <snippet>Rust uses snake_case for files/modules/functions, PascalCase for structs/enums, SCREAMING_SNAKE_CASE for constants, and cmd_ prefix for Tauri commands. TypeScript uses PascalCase.tsx for components, camelCase.ts for utilities, camelCase for functions/variables, PascalCase for types/interfaces.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>Implementation Patterns - Testing Patterns</section>
+        <snippet>Frontend uses Vitest + React Testing Library with tests in *.test.ts files. Rust uses cargo test with #[cfg(test)] modules. Sample tests must pass to validate setup. Run commands: `npm run test` for frontend, `cargo test` from src-tauri/ for backend.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>Implementation Patterns - Error Handling Patterns</section>
+        <snippet>Rust backend uses anyhow::Result&lt;T&gt; for internal functions with .context() for rich errors, Result&lt;T, String&gt; for Tauri commands. thiserror for custom error types. Frontend catches Tauri command errors and displays via shadcn/ui toast notifications.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>Consistency Rules - Logging Strategy</section>
+        <snippet>Use tracing crate with structured fields. Levels: error!, warn!, info!, debug!, trace!. File logging to ~/Library/Logs/clippy/app.log (macOS standard). Example: tracing::info!(event = "app_startup", version = env!("CARGO_PKG_VERSION"))</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>Development Environment - Prerequisites</section>
+        <snippet>Requires macOS 12+, Xcode Command Line Tools (xcode-select --install), Rust toolchain via rustup, Node.js 18+ via brew. Install Tauri CLI with `cargo install tauri-cli`. Verify with `cargo tauri --version`.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>clippy - Decision Architecture</title>
+        <section>Development Environment - Setup Commands</section>
+        <snippet>After project initialization: run `npm install` for frontend deps, `npm run tauri dev` for development with hot reload, `npm run tauri build` for production, `npm run test` for Vitest tests, `cd src-tauri && cargo test` for Rust tests. Lint with `npm run lint`, format with `npm run format`.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>clippy Product Requirements Document</title>
+        <section>NFR002: Platform Compatibility</section>
+        <snippet>System shall run on macOS 12+ (Monterey and later) with primary support for Apple Silicon (M1/M2/M3) and secondary Intel support. Minimum 8GB RAM, 16GB recommended.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>clippy Product Requirements Document</title>
+        <section>UX Design Principles</section>
+        <snippet>Native macOS Experience - Follow macOS Human Interface Guidelines for menus, window chrome, keyboard shortcuts, and interactions to feel like a natural part of the macOS ecosystem.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>clippy Product Requirements Document</title>
+        <section>User Interface Design Goals - Design Constraints</section>
+        <snippet>UI Framework: React 18+ with Tailwind CSS for rapid styling. Browser Support: WebView2 (system WebKit on macOS) - no cross-browser concerns. Accessibility: Keyboard navigation support, basic VoiceOver compatibility, high contrast mode support.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>clippy - Epic Breakdown</title>
+        <section>Story 1.1: Tauri Project Setup & Application Foundation</section>
+        <snippet>First story with no prerequisites. Establishes working foundation with 11 acceptance criteria including Tauri 2.x + React 18+ initialization, native macOS window with menu bar, organized project structure, development environment with hot reload, Vitest and cargo test configured with passing sample tests, ESLint + Prettier, tracing logging to ~/Library/Logs/clippy/app.log, and git repository initialization.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <!-- No existing code - this is the project initialization story -->
+    </code>
+    <dependencies>
+      <ecosystem name="npm">
+        <package name="react" version="18.x" />
+        <package name="react-dom" version="18.x" />
+        <package name="typescript" version="5.x" />
+        <package name="vite" version="latest" />
+        <package name="tailwindcss" version="3.x" />
+        <package name="postcss" version="latest" />
+        <package name="autoprefixer" version="latest" />
+        <package name="zustand" version="4.x" />
+        <package name="konva" version="latest" />
+        <package name="react-konva" version="latest" />
+        <package name="video.js" version="8.16.1" />
+        <package name="@videojs/themes" version="latest" />
+        <package name="@tauri-apps/api" version="latest" />
+        <package name="@tauri-apps/plugin-fs" version="latest" />
+        <package name="@tauri-apps/plugin-dialog" version="latest" />
+        <package name="@tauri-apps/plugin-notification" version="latest" />
+        <package name="@tauri-apps/plugin-shell" version="latest" />
+        <package name="@tauri-apps/plugin-os" version="latest" />
+        <package name="vitest" version="latest" dev="true" />
+        <package name="@testing-library/react" version="latest" dev="true" />
+        <package name="@testing-library/jest-dom" version="latest" dev="true" />
+        <package name="eslint" version="latest" dev="true" />
+        <package name="@typescript-eslint/parser" version="latest" dev="true" />
+        <package name="@typescript-eslint/eslint-plugin" version="latest" dev="true" />
+        <package name="prettier" version="latest" dev="true" />
+        <package name="eslint-config-prettier" version="latest" dev="true" />
+      </ecosystem>
+      <ecosystem name="cargo">
+        <package name="tauri" version="2" features="..." />
+        <package name="serde" version="1" features="derive" />
+        <package name="serde_json" version="1" />
+        <package name="tokio" version="1" features="full" />
+        <package name="anyhow" version="1" />
+        <package name="thiserror" version="1" />
+        <package name="tracing" version="0.1" />
+        <package name="tracing-subscriber" version="0.3" />
+        <package name="chrono" version="0.4" features="serde" />
+        <package name="uuid" version="1" features="v4,serde" />
+        <package name="async-openai" version="0.28" />
+        <package name="ffmpeg-sidecar" version="2.1" />
+        <package name="screencapturekit" version="0.3" />
+        <package name="nokhwa" version="0.10" features="input-avfoundation" />
+      </ecosystem>
+      <framework name="Tauri" version="2.x" description="Native desktop framework combining Rust backend with web frontend" />
+      <framework name="React" version="18.x" description="Component-based UI framework with concurrent features" />
+      <framework name="Vite" version="latest" description="Fast development server with HMR and optimized builds" />
+      <framework name="shadcn/ui" version="latest" description="Accessible component library built on Radix UI + Tailwind" />
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Follow macOS Human Interface Guidelines for native window chrome, menu bar, and keyboard shortcuts</constraint>
+    <constraint>Use Tauri 2.x framework with React 18+ and TypeScript 5.x</constraint>
+    <constraint>Use Vite as build tool for fast HMR and optimized production builds</constraint>
+    <constraint>Use Tailwind CSS 3.x for styling and shadcn/ui component library (Radix UI + Tailwind)</constraint>
+    <constraint>Rust naming: snake_case files/modules/functions, PascalCase structs/enums, SCREAMING_SNAKE_CASE constants, cmd_ prefix for Tauri commands</constraint>
+    <constraint>TypeScript naming: PascalCase.tsx for components, camelCase.ts for utilities, camelCase for functions/variables, PascalCase for types/interfaces</constraint>
+    <constraint>Frontend testing: Vitest + React Testing Library with *.test.ts files. Must have at least one passing sample test</constraint>
+    <constraint>Backend testing: cargo test with #[cfg(test)] modules. Must have at least one passing sample test</constraint>
+    <constraint>Error handling: Use anyhow::Result with .context() for Rust internal functions, Result&lt;T, String&gt; for Tauri commands, thiserror for custom errors</constraint>
+    <constraint>Logging: Use tracing crate with structured fields, output to ~/Library/Logs/clippy/app.log (macOS standard location)</constraint>
+    <constraint>Project structure must match architecture.md specifications: src/ for React frontend, src-tauri/ for Rust backend</constraint>
+    <constraint>Configure ESLint with TypeScript parser and Prettier with ESLint integration for code quality</constraint>
+    <constraint>Initialize git repository with proper .gitignore (node_modules/, target/, dist/)</constraint>
+    <constraint>Minimum window size of 1280x720 enforced (to be implemented in Story 1.2, noted for context)</constraint>
+  </constraints>
+  <interfaces>
+    <!-- No interfaces defined yet - this is the foundation story -->
+  </interfaces>
+  <tests>
+    <standards>
+Frontend testing uses Vitest + React Testing Library with tests in *.test.ts files co-located with source files. Backend testing uses cargo test with #[cfg(test)] modules in Rust source files. Sample tests must pass to validate setup. Test commands: `npm run test` for frontend, `cargo test` from src-tauri/ for backend. Focus on unit tests for this foundation story.
+    </standards>
+    <locations>
+      <location>src/**/*.test.ts - Frontend component and utility tests</location>
+      <location>src-tauri/src/**/*.rs - Rust unit tests in #[cfg(test)] modules</location>
+    </locations>
+    <ideas>
+      <idea ac="7">Create sample React component test using Vitest + React Testing Library that renders a simple component and verifies it appears in the document</idea>
+      <idea ac="8">Create sample Rust unit test in a utility module that tests a simple function (e.g., string formatting or time conversion)</idea>
+      <idea ac="10">Verify tracing logging works by testing that log file is created and contains expected log entry</idea>
+      <idea ac="2,3">Manual verification: Launch app via `cargo tauri dev` and verify macOS native window chrome, menu bar, and window controls work correctly</idea>
+      <idea ac="5">Manual verification: Make a code change and verify hot reload updates the UI without full restart</idea>
+      <idea ac="6">Integration smoke test: Verify `cargo tauri dev` command succeeds and app launches without errors</idea>
+      <idea ac="9">Manual verification: Run `npm run lint` and `npm run format` to verify ESLint and Prettier are configured correctly</idea>
+      <idea ac="11">Verify git initialization by checking .git directory exists and .gitignore file contains expected entries</idea>
+    </ideas>
+  </tests>
+</story-context>

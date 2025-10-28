@@ -1,0 +1,106 @@
+# Sprint Status - clippy
+# This file tracks the development status of all epics and stories
+
+# generated: 2025-10-27
+# project: clippy
+# project_key: clippy
+# tracking_system: file-system
+# story_location: {project-root}/docs/stories
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic exists in epic file but not contexted
+#   - contexted: Epic tech context created (required before drafting stories)
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - drafted: Story file created in stories folder
+#   - ready-for-dev: Draft approved and story context created
+#   - in-progress: Developer actively working on implementation
+#   - review: Under SM review (via review-story workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - completed: Retrospective has been done
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epics should be 'contexted' before stories can be 'drafted'
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically drafts next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', SM reviews, then Dev moves to 'done'
+
+generated: 2025-10-27
+project: clippy
+project_key: clippy
+tracking_system: file-system
+story_location: "{project-root}/docs/stories"
+
+development_status:
+  # Epic 1: Foundation & TRUE MVP
+  epic-1: backlog
+  1-1-tauri-project-setup-application-foundation: in-progress
+  1-2-frontend-ui-shell-layout-structure: drafted
+  1-3-video-file-import-with-drag-drop: backlog
+  1-4-video-preview-player-with-basic-controls: backlog
+  1-5-media-library-panel-with-thumbnails: backlog
+  1-6-single-track-timeline-foundation: backlog
+  1-7-timeline-playback-synchronization: backlog
+  1-8-basic-trim-functionality-with-in-out-points: backlog
+  1-9-ffmpeg-integration-video-export: backlog
+  1-10-production-build-app-packaging: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Recording Foundation
+  epic-2: backlog
+  2-1-screencapturekit-setup-permissions: backlog
+  2-2-full-screen-recording-with-video-capture: backlog
+  2-3-real-time-ffmpeg-encoding-during-recording: backlog
+  2-4-system-audio-and-microphone-capture: backlog
+  2-5-recording-controls-status-feedback: backlog
+  2-6-auto-import-recordings-to-media-library: backlog
+  2-7-basic-webcam-recording-setup: backlog
+  2-8-webcam-recording-with-audio-save: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Multi-Track Timeline & Editing Maturity
+  epic-3: backlog
+  3-1-multi-track-timeline-foundation: backlog
+  3-2-multiple-clips-per-track-with-sequencing: backlog
+  3-3-drag-clips-between-tracks: backlog
+  3-4-split-clip-at-playhead: backlog
+  3-5-delete-clips-with-ripple-option: backlog
+  3-6-timeline-zoom-and-precision-editing: backlog
+  3-7-snap-to-grid-and-snap-to-clip-edges: backlog
+  3-8-audio-waveform-visualization: backlog
+  3-9-per-clip-volume-control: backlog
+  3-10-audio-fade-in-out: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Advanced Recording & PiP Composition
+  epic-4: backlog
+  4-1-window-selection-for-screen-recording: backlog
+  4-2-recording-configuration-panel: backlog
+  4-3-multi-audio-track-recording-architecture: backlog
+  4-4-webcam-preview-in-recording-panel: backlog
+  4-5-pip-position-and-size-configuration: backlog
+  4-6-simultaneous-screen-webcam-recording: backlog
+  4-7-independent-audio-track-management-in-pip-recording: backlog
+  4-8-advanced-recording-controls-pause-resume: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: AI-Powered Workflow Automation
+  epic-5: backlog
+  5-1-openai-api-integration-configuration: backlog
+  5-2-audio-extraction-from-video-clips: backlog
+  5-3-whisper-api-transcription: backlog
+  5-4-transcript-display-and-editing-panel: backlog
+  5-5-auto-generate-captions-from-transcript: backlog
+  5-6-caption-editor-with-timing-adjustments: backlog
+  5-7-caption-styling-and-preview: backlog
+  5-8-gpt-4-content-analysis: backlog
+  5-9-caption-export-srt-vtt-files: backlog
+  5-10-burn-captions-into-video-export: backlog
+  epic-5-retrospective: optional
