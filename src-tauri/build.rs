@@ -4,6 +4,7 @@ fn main() {
     {
         println!("cargo:rustc-link-search=native=/opt/homebrew/opt/mpv/lib");
         println!("cargo:rustc-link-lib=dylib=mpv");
+        println!("cargo:rustc-link-lib=framework=AVFoundation");
     }
 
     tauri_build::build()
