@@ -80,7 +80,7 @@ development_status:
   3-9-per-clip-volume-control: done
   3-9-1-preview-playback-volume-control: done
   3-10-audio-fade-in-out: done  # Review #2 outcome: Approved (2025-10-29) - 5/6 ACs satisfied, test coverage 75%+, AC #4 deferred to Story 3.10.1
-  3-10-1-preview-playback-audio-fades: in-progress  # Follow-up to Story 3.10 AC #4 - Enable MPV audio output and apply fade filters during preview playback (8-12 hours)
+  3-10-1-preview-playback-audio-fades: review  # Follow-up to Story 3.10 AC #4 - Enable MPV audio output and apply fade filters during preview playback (COMPLETE - also completes Story 3.9.1)
   epic-3-retrospective: optional
 
   # Epic 4: Advanced Recording & PiP Composition

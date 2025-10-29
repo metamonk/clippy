@@ -1,6 +1,6 @@
 # Story 3.10.1: Preview Playback Audio Fades (MPV Integration)
 
-Status: backlog
+Status: review
 
 ## Story
 
