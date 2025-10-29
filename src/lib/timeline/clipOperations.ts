@@ -298,8 +298,16 @@ export function deleteClip(clips: Clip[], clipId: string, ripple: boolean): Clip
 }
 
 /**
+ * Maximum allowed fade duration per AC #3 (5 seconds)
+ */
+export const MAX_FADE_DURATION_MS = 5000;
+
+/**
  * Validate fade durations for a clip
- * Ensures that the combined fade-in and fade-out durations don't exceed the clip's effective duration
+ * Ensures that fade durations meet all requirements:
+ * - Non-negative values
+ * - Not exceeding maximum allowed duration (5 seconds per AC #3)
+ * - Combined fadeIn + fadeOut not exceeding clip's effective duration
  *
  * @param clip - The clip to validate
  * @param fadeIn - Proposed fade-in duration in milliseconds (optional, defaults to clip's fadeIn)
@@ -315,11 +323,23 @@ export function validateFadeDuration(
   const proposedFadeIn = fadeIn !== undefined ? fadeIn : (clip.fadeIn ?? 0);
   const proposedFadeOut = fadeOut !== undefined ? fadeOut : (clip.fadeOut ?? 0);
 
-  // Ensure fades are non-negative
+  // Check non-negative
   if (proposedFadeIn < 0 || proposedFadeOut < 0) {
+    console.warn('Fade durations must be non-negative');
     return false;
   }
 
-  // Ensure combined fades don't exceed clip duration
-  return proposedFadeIn + proposedFadeOut <= effectiveDuration;
+  // Check max duration (5 seconds = 5000ms per AC #3)
+  if (proposedFadeIn > MAX_FADE_DURATION_MS || proposedFadeOut > MAX_FADE_DURATION_MS) {
+    console.warn(`Fade durations must not exceed ${MAX_FADE_DURATION_MS}ms (5 seconds)`);
+    return false;
+  }
+
+  // Check doesn't exceed clip duration
+  if (proposedFadeIn + proposedFadeOut > effectiveDuration) {
+    console.warn(`Combined fade durations (${proposedFadeIn + proposedFadeOut}ms) exceed clip duration (${effectiveDuration}ms)`);
+    return false;
+  }
+
+  return true;
 }

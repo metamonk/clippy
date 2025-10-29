@@ -5,6 +5,7 @@
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Host, Sample, SampleFormat, Stream, StreamConfig, SupportedStreamConfig};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -93,6 +94,8 @@ pub struct AudioCapture {
     stream: Option<Stream>,
     /// Stream configuration
     config: Option<SupportedStreamConfig>,
+    /// Pause flag for sample discard (Story 4.8)
+    is_paused: Arc<AtomicBool>,
 }
 
 impl AudioCapture {
@@ -111,6 +114,7 @@ impl AudioCapture {
             device: None,
             stream: None,
             config: None,
+            is_paused: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -241,6 +245,7 @@ impl AudioCapture {
                 sample_rate,
                 channels,
                 start_time,
+                self.is_paused.clone(), // Story 4.8
             )?,
             SampleFormat::I16 => self.build_stream::<i16>(
                 device,
@@ -249,6 +254,7 @@ impl AudioCapture {
                 sample_rate,
                 channels,
                 start_time,
+                self.is_paused.clone(), // Story 4.8
             )?,
             SampleFormat::U16 => self.build_stream::<u16>(
                 device,
@@ -257,6 +263,7 @@ impl AudioCapture {
                 sample_rate,
                 channels,
                 start_time,
+                self.is_paused.clone(), // Story 4.8
             )?,
             _ => {
                 error!("Unsupported sample format: {:?}", sample_format);
@@ -288,6 +295,7 @@ impl AudioCapture {
         sample_rate: u32,
         channels: u16,
         start_time: std::time::Instant,
+        is_paused: Arc<AtomicBool>, // Story 4.8
     ) -> Result<Stream, AudioCaptureError>
     where
         T: cpal::Sample + cpal::SizedSample,
@@ -299,6 +307,12 @@ impl AudioCapture {
         let sample_tx = Arc::new(sample_tx);
 
         let data_fn = move |data: &[T], _: &cpal::InputCallbackInfo| {
+            // Story 4.8: Discard samples during pause (sample discard approach)
+            if is_paused.load(Ordering::Relaxed) {
+                debug!("Microphone audio sample discarded during pause");
+                return;
+            }
+
             let timestamp_ns = start_time.elapsed().as_nanos() as u64;
 
             // Convert samples to f32
@@ -349,6 +363,50 @@ impl AudioCapture {
     /// Check if currently capturing
     pub fn is_capturing(&self) -> bool {
         self.stream.is_some()
+    }
+
+    /// Pause audio capture (Story 4.8 - AC #1)
+    ///
+    /// When paused, audio samples continue to be captured but are immediately
+    /// discarded (sample discard approach). This prevents audio gaps in the output.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if pause succeeded, or error if capture is not active.
+    pub fn pause_capture(&self) -> Result<(), AudioCaptureError> {
+        if !self.is_capturing() {
+            return Err(AudioCaptureError::StreamPlayError(
+                "Cannot pause: capture is not active".to_string(),
+            ));
+        }
+
+        self.is_paused.store(true, Ordering::Relaxed);
+        info!("Microphone audio capture paused (sample discard enabled)");
+        Ok(())
+    }
+
+    /// Resume audio capture (Story 4.8 - AC #3)
+    ///
+    /// Resumes capturing audio samples after a pause.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if resume succeeded, or error if capture is not active.
+    pub fn resume_capture(&self) -> Result<(), AudioCaptureError> {
+        if !self.is_capturing() {
+            return Err(AudioCaptureError::StreamPlayError(
+                "Cannot resume: capture is not active".to_string(),
+            ));
+        }
+
+        self.is_paused.store(false, Ordering::Relaxed);
+        info!("Microphone audio capture resumed");
+        Ok(())
+    }
+
+    /// Check if capture is currently paused (Story 4.8)
+    pub fn is_paused(&self) -> bool {
+        self.is_paused.load(Ordering::Relaxed)
     }
 }
 

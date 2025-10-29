@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import {
   Dialog,
   DialogContent,
@@ -16,13 +17,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { RecordingControls } from './RecordingControls';
 import { PermissionPrompt } from './PermissionPrompt';
 import { AudioSourceSelector } from './AudioSourceSelector';
 import { CameraSelector } from './CameraSelector';
+import { RecordingConfigSection } from './RecordingConfigSection';
 import WebcamPreview from './WebcamPreview';
+import { WindowSelector } from './WindowSelector';
+import { RecordingModeToggle } from './RecordingModeToggle';
 import { useRecordingStore } from '@/stores/recordingStore';
 import {
   checkScreenRecordingPermission,
@@ -55,7 +59,7 @@ function formatDuration(ms: number): string {
 }
 
 export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
-  const [recordingMode, setRecordingMode] = useState<'screen' | 'webcam'>('screen');
+  const [screenMode, setScreenMode] = useState<'fullscreen' | 'window'>('fullscreen'); // Story 4.1
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -66,6 +70,12 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
   const recordingId = useRecordingStore((state) => state.recordingId);
   const elapsedMs = useRecordingStore((state) => state.elapsedMs);
   const selectedCamera = useRecordingStore((state) => state.selectedCamera);
+  const recordingMode = useRecordingStore((state) => state.recordingMode); // Story 4.4
+  const setRecordingMode = useRecordingStore((state) => state.setRecordingMode); // Story 4.4
+  const selectedWindowId = useRecordingStore((state) => state.selectedWindowId); // Story 4.1
+  const frameRate = useRecordingStore((state) => state.frameRate); // Story 4.2
+  const resolution = useRecordingStore((state) => state.resolution); // Story 4.2
+  const audioSources = useRecordingStore((state) => state.audioSources); // Story 4.2
   const startRecordingStore = useRecordingStore((state) => state.startRecording);
   const stopRecordingStore = useRecordingStore((state) => state.stopRecording);
   const pauseRecordingStore = useRecordingStore((state) => state.pauseRecording);
@@ -84,8 +94,13 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
     if (open) {
       if (recordingMode === 'screen') {
         checkPermission();
-      } else if (recordingMode === 'webcam') {
+      } else if (recordingMode === 'webcam' || recordingMode === 'pip') {
+        // Webcam and PiP modes both need camera permission
         checkCameraPermissionStatus();
+        // PiP mode also needs screen recording permission
+        if (recordingMode === 'pip') {
+          checkPermission();
+        }
       }
     }
   }, [open, recordingMode]);
@@ -138,6 +153,43 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
 
     return () => clearInterval(checkInterval);
   }, [isRecording, isPaused, recordingId]);
+
+  // Listen for window-closed event from backend (Story 4.1 - AC #7, Subtask 6.4-6.5)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const setupListener = async () => {
+      // Only listen during window recording
+      if (isRecording && screenMode === 'window' && recordingMode === 'screen') {
+        unlisten = await listen('window-closed', async () => {
+          toast.error('Window Closed', {
+            description: 'The selected window closed during recording. Attempting to save partial recording...',
+            duration: 8000,
+          });
+
+          // Attempt to stop recording gracefully to save partial recording (Subtask 6.5)
+          if (recordingId) {
+            try {
+              await handleStopRecording();
+            } catch (err) {
+              console.error('Failed to save partial recording:', err);
+              toast.error('Failed to Save Recording', {
+                description: 'Could not save partial recording after window closure',
+              });
+            }
+          }
+        });
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [isRecording, screenMode, recordingMode, recordingId]);
 
   const checkPermission = async () => {
     try {
@@ -205,6 +257,14 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
       let id: string;
 
       if (recordingMode === 'screen') {
+        // Story 4.1: Validate window selection if in window mode (AC #1, #2)
+        if (screenMode === 'window' && !selectedWindowId) {
+          toast.error('No Window Selected', {
+            description: 'Please select a window to record',
+          });
+          return;
+        }
+
         // Check screen recording permission first
         const granted = await checkScreenRecordingPermission();
         if (!granted) {
@@ -212,8 +272,19 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
           return;
         }
 
+        // Build recording config (Story 4.2)
+        const config = {
+          mode: 'screen' as const,
+          frameRate,
+          resolution,
+          systemAudio: audioSources.systemAudio,
+          microphone: audioSources.microphone,
+          screenRecordingMode: screenMode === 'window' ? ('window' as const) : ('fullscreen' as const),
+          selectedWindowId: selectedWindowId ?? undefined,
+        };
+
         // Start screen recording
-        id = await startScreenRecording();
+        id = await startScreenRecording(config);
 
         // Send native macOS notification (AC #4)
         try {
@@ -400,26 +471,44 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs
-            value={recordingMode}
-            onValueChange={(value: string) => setRecordingMode(value as 'screen' | 'webcam')}
-            className="w-full"
-          >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="screen" disabled={isRecording}>
-                <Monitor className="w-4 h-4 mr-2" />
-                Screen
-              </TabsTrigger>
-              <TabsTrigger value="webcam" disabled={isRecording}>
-                <Camera className="w-4 h-4 mr-2" />
-                Webcam
-              </TabsTrigger>
-            </TabsList>
+          {/* Recording Mode Toggle - Story 4.4 */}
+          {!isRecording && <RecordingModeToggle />}
 
-            <TabsContent value="screen" className="space-y-6 py-4">
+          <div className="space-y-6 py-4">
+            {/* Screen Recording Mode (Story 4.1) */}
+            {recordingMode === 'screen' && (
+              <>
+              {/* Screen Recording Mode Toggle (Story 4.1 - AC #1) */}
+              {!isRecording && hasPermission && (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">Recording Mode</label>
+                    <Tabs value={screenMode} onValueChange={(v: string) => setScreenMode(v as 'fullscreen' | 'window')}>
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="fullscreen">Full Screen</TabsTrigger>
+                        <TabsTrigger value="window">Window</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  </div>
+
+                  {/* Window Selector - Story 4.1 - AC #2 */}
+                  {screenMode === 'window' && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium">Select Window</label>
+                      <WindowSelector />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Audio Source Selection */}
               {!isRecording && hasPermission && (
                 <AudioSourceSelector />
+              )}
+
+              {/* Recording Configuration (Story 4.2 - AC #1-6) */}
+              {!isRecording && hasPermission && (
+                <RecordingConfigSection />
               )}
 
               {/* Recording Controls */}
@@ -459,9 +548,12 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
                   </ul>
                 </div>
               )}
-            </TabsContent>
+              </>
+            )}
 
-            <TabsContent value="webcam" className="space-y-6 py-4">
+            {/* Webcam Recording Mode */}
+            {recordingMode === 'webcam' && (
+              <>
               {/* Camera Selection */}
               {!isRecording && hasCameraPermission && (
                 <CameraSelector
@@ -535,8 +627,108 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
                   </ul>
                 </div>
               )}
-            </TabsContent>
-          </Tabs>
+              </>
+            )}
+
+            {/* PiP Recording Mode (Story 4.4) */}
+            {recordingMode === 'pip' && (
+              <>
+              {/* Camera Preview - Always visible in pip mode (AC #1, #5) */}
+              {!isRecording && hasCameraPermission && selectedCamera && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Webcam Preview</label>
+                  <WebcamPreview
+                    cameraIndex={selectedCamera.id}
+                    active={true}
+                    onError={(error) => {
+                      toast.error('Camera Preview Error', {
+                        description: error,
+                      });
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Camera Selection */}
+              {!isRecording && hasCameraPermission && (
+                <CameraSelector
+                  onCameraSelected={(cameraId) => {
+                    console.log('Camera selected for PiP:', cameraId);
+                  }}
+                />
+              )}
+
+              {/* Screen Recording Configuration */}
+              {!isRecording && hasPermission && (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">Screen Recording Mode</label>
+                    <Tabs value={screenMode} onValueChange={(v: string) => setScreenMode(v as 'fullscreen' | 'window')}>
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="fullscreen">Full Screen</TabsTrigger>
+                        <TabsTrigger value="window">Window</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  </div>
+
+                  {/* Window Selector */}
+                  {screenMode === 'window' && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium">Select Window</label>
+                      <WindowSelector />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Audio Source Selection */}
+              {!isRecording && hasPermission && hasCameraPermission && (
+                <AudioSourceSelector />
+              )}
+
+              {/* Recording Configuration */}
+              {!isRecording && hasPermission && hasCameraPermission && (
+                <RecordingConfigSection />
+              )}
+
+              {/* Recording Controls */}
+              <div className="flex flex-col items-center gap-4">
+                <Button
+                  size="lg"
+                  disabled={true}
+                  className="w-full"
+                >
+                  PiP Recording Coming in Story 4.6
+                </Button>
+                <p className="text-sm text-gray-500 text-center">
+                  Picture-in-picture recording will be available in Story 4.6
+                </p>
+
+                {/* Duration Display */}
+                {(isRecording || isPaused) && (
+                  <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                    <Clock className="w-4 h-4" />
+                    <span className="text-sm font-mono">
+                      {formatDuration(elapsedMs)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Information */}
+              {!isRecording && hasPermission && hasCameraPermission && (
+                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-md text-sm">
+                  <p className="font-semibold mb-2">Preview Mode</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2 text-gray-700 dark:text-gray-300">
+                    <li>Webcam preview is active</li>
+                    <li>Configure screen and camera settings above</li>
+                    <li>PiP recording will be implemented in Story 4.6</li>
+                  </ul>
+                </div>
+              )}
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

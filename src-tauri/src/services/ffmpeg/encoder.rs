@@ -320,6 +320,159 @@ impl FFmpegEncoder {
 
         Ok(())
     }
+
+    /// Finalize recording with audio muxing (Story 2.4, Story 4.7)
+    ///
+    /// Takes video file and 1-3 PCM audio files, muxes them into final MP4.
+    /// Supports system audio, microphone, and webcam audio tracks.
+    ///
+    /// # Arguments
+    /// * `video_path` - Path to the encoded video file (from stop_encoding)
+    /// * `audio_inputs` - Vector of audio input configurations (1-3 tracks)
+    /// * `output_path` - Final output path with all tracks muxed
+    ///
+    /// # Returns
+    /// * `Ok(())` - Audio muxing completed successfully
+    /// * `Err(anyhow::Error)` - Muxing failed
+    ///
+    /// # Implementation Notes
+    /// - Video file should already be encoded (call stop_encoding first)
+    /// - Audio PCM files are raw 48kHz stereo s16le format
+    /// - FFmpeg maps video + N audio tracks: -map 0:v -map 1:a -map 2:a ...
+    /// - Each audio track encoded to AAC 192kbps
+    pub async fn finalize_with_audio(
+        video_path: PathBuf,
+        audio_inputs: Vec<AudioInputConfig>,
+        output_path: PathBuf,
+    ) -> Result<()> {
+        if audio_inputs.is_empty() {
+            return Err(anyhow::anyhow!("At least one audio input required"));
+        }
+
+        if audio_inputs.len() > 3 {
+            return Err(anyhow::anyhow!(
+                "Maximum 3 audio tracks supported, got {}",
+                audio_inputs.len()
+            ));
+        }
+
+        tracing::info!(
+            event = "audio_mux_start",
+            video_path = %video_path.display(),
+            audio_track_count = audio_inputs.len(),
+            output_path = %output_path.display(),
+            "Starting audio muxing with {} track(s)",
+            audio_inputs.len()
+        );
+
+        // Verify video file exists
+        if !video_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Video file not found: {}",
+                video_path.display()
+            ));
+        }
+
+        // Verify all audio files exist
+        for (idx, audio_input) in audio_inputs.iter().enumerate() {
+            if !audio_input.pcm_path.exists() {
+                return Err(anyhow::anyhow!(
+                    "Audio file {} not found: {}",
+                    idx,
+                    audio_input.pcm_path.display()
+                ));
+            }
+        }
+
+        // Build FFmpeg command for muxing
+        let mut command = FfmpegCommand::new();
+
+        // Input 0: Video file (already encoded H.264)
+        command.arg("-i").arg(&video_path);
+
+        // Inputs 1-N: Audio PCM files
+        for audio_input in &audio_inputs {
+            command
+                .arg("-f")
+                .arg("s16le") // PCM signed 16-bit little-endian
+                .arg("-ar")
+                .arg(audio_input.sample_rate.to_string())
+                .arg("-ac")
+                .arg(audio_input.channels.to_string())
+                .arg("-i")
+                .arg(&audio_input.pcm_path);
+        }
+
+        // Map video stream from input 0
+        command.arg("-map").arg("0:v");
+
+        // Map each audio stream (inputs 1, 2, 3, ...)
+        for i in 0..audio_inputs.len() {
+            command.arg("-map").arg(format!("{}:a", i + 1));
+        }
+
+        // Video codec: copy (already encoded)
+        command.arg("-c:v").arg("copy");
+
+        // Audio codec: AAC for all tracks
+        command.arg("-c:a").arg("aac");
+        command.arg("-b:a").arg("192k");
+
+        // Output format
+        command.arg("-f").arg("mp4");
+        command.arg("-y"); // Overwrite output
+        command.arg(&output_path);
+
+        tracing::debug!(
+            event = "ffmpeg_mux_command",
+            command = format!("{:?}", command),
+            "FFmpeg muxing command built"
+        );
+
+        // Execute FFmpeg muxing
+        let mut child = command
+            .spawn()
+            .context("Failed to spawn FFmpeg for audio muxing")?;
+
+        // Wait for muxing to complete
+        let result = child.wait().context("FFmpeg muxing process failed")?;
+
+        if !result.success() {
+            return Err(anyhow::anyhow!("FFmpeg muxing exited with error"));
+        }
+
+        // Verify output file was created
+        if !output_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Output file not created: {}",
+                output_path.display()
+            ));
+        }
+
+        tracing::info!(
+            event = "audio_mux_complete",
+            output_path = %output_path.display(),
+            "Audio muxing completed successfully"
+        );
+
+        Ok(())
+    }
+}
+
+/// Configuration for audio input during muxing (Story 2.4, Story 4.7)
+#[derive(Debug, Clone)]
+pub struct AudioInputConfig {
+    /// Path to PCM audio file
+    pub pcm_path: PathBuf,
+
+    /// Audio sample rate (typically 48000 Hz)
+    pub sample_rate: u32,
+
+    /// Audio channel count (typically 2 for stereo)
+    pub channels: u16,
+
+    /// Label for this audio track (e.g., "System Audio", "Microphone", "Webcam")
+    pub label: String,
 }
 
 impl Drop for FFmpegEncoder {

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
-import type { Camera, FrameRate, Resolution, WindowInfo } from '../types/recording';
+import type { Camera, FrameRate, Resolution, WindowInfo, ScreenRecordingMode, RecordingMode, PipPosition, PipSize, PipPreset } from '../types/recording';
 
 export type RecordingStatus = 'idle' | 'recording' | 'paused' | 'stopping' | 'error';
 
@@ -51,6 +51,30 @@ interface RecordingState {
   /** Selected camera for webcam recording */
   selectedCamera: Camera | null;
 
+  /** Recording mode: screen, webcam, or pip (Story 4.4) */
+  recordingMode: RecordingMode;
+
+  /** Screen recording mode: fullscreen or window (Story 4.1) */
+  screenRecordingMode: ScreenRecordingMode;
+
+  /** Available windows for window recording (Story 4.1) */
+  availableWindows: WindowInfo[];
+
+  /** Selected window ID for window recording (Story 4.1) */
+  selectedWindowId: number | null;
+
+  /** Last selected window ID (persists across mode switches) (Story 4.1) */
+  lastSelectedWindowId: number | null;
+
+  /** PiP overlay position in pixels (Story 4.5) */
+  pipPosition: PipPosition | null;
+
+  /** PiP overlay size in pixels (Story 4.5) */
+  pipSize: PipSize | null;
+
+  /** PiP position preset (Story 4.5) */
+  pipPreset: PipPreset;
+
   /** Start a new recording */
   startRecording: (recordingId: string) => void;
 
@@ -92,6 +116,27 @@ interface RecordingState {
 
   /** Set selected camera */
   setSelectedCamera: (camera: Camera | null) => void;
+
+  /** Set recording mode (Story 4.4) */
+  setRecordingMode: (mode: RecordingMode) => void;
+
+  /** Set screen recording mode (Story 4.1) */
+  setScreenRecordingMode: (mode: ScreenRecordingMode) => void;
+
+  /** Refresh available windows (Story 4.1) */
+  refreshWindows: () => Promise<void>;
+
+  /** Set selected window (Story 4.1) */
+  setSelectedWindow: (windowId: number | null) => void;
+
+  /** Set PiP position (Story 4.5) */
+  setPipPosition: (position: PipPosition) => void;
+
+  /** Set PiP size (Story 4.5) */
+  setPipSize: (size: PipSize) => void;
+
+  /** Set PiP preset (Story 4.5) */
+  setPipPreset: (preset: PipPreset) => void;
 }
 
 /**
@@ -125,6 +170,14 @@ export const useRecordingStore = create<RecordingState>()(
       resolution: '1080p',
       cameras: [],
       selectedCamera: null,
+      recordingMode: 'screen',
+      screenRecordingMode: 'fullscreen',
+      availableWindows: [],
+      selectedWindowId: null,
+      lastSelectedWindowId: null,
+      pipPosition: null,
+      pipSize: null,
+      pipPreset: 'bottom-right',
 
       startRecording: (recordingId: string) =>
         set(
@@ -303,6 +356,102 @@ export const useRecordingStore = create<RecordingState>()(
           false,
           'setSelectedCamera'
         ),
+
+      setRecordingMode: (mode) =>
+        set(
+          {
+            recordingMode: mode,
+          },
+          false,
+          'setRecordingMode'
+        ),
+
+      setScreenRecordingMode: (mode) =>
+        set(
+          (state) => {
+            // When switching to window mode, restore last selected window if available
+            if (mode === 'window' && state.lastSelectedWindowId !== null) {
+              return {
+                screenRecordingMode: mode,
+                selectedWindowId: state.lastSelectedWindowId,
+              };
+            }
+            // When switching to fullscreen, clear selected window
+            if (mode === 'fullscreen') {
+              return {
+                screenRecordingMode: mode,
+                selectedWindowId: null,
+              };
+            }
+            return {
+              screenRecordingMode: mode,
+            };
+          },
+          false,
+          'setScreenRecordingMode'
+        ),
+
+      refreshWindows: async () => {
+        try {
+          const windows = await invoke<WindowInfo[]>('cmd_get_available_windows');
+          set(
+            {
+              availableWindows: windows,
+            },
+            false,
+            'refreshWindows'
+          );
+        } catch (error) {
+          console.error('Failed to refresh windows:', error);
+          set(
+            {
+              availableWindows: [],
+            },
+            false,
+            'refreshWindows'
+          );
+        }
+      },
+
+      setSelectedWindow: (windowId) =>
+        set(
+          {
+            selectedWindowId: windowId,
+            // Also update lastSelectedWindowId for session persistence (AC #6)
+            lastSelectedWindowId: windowId,
+          },
+          false,
+          'setSelectedWindow'
+        ),
+
+      setPipPosition: (position) =>
+        set(
+          {
+            pipPosition: position,
+            // Switching to custom when position is manually set
+            pipPreset: 'custom',
+          },
+          false,
+          'setPipPosition'
+        ),
+
+      setPipSize: (size) =>
+        set(
+          {
+            pipSize: size,
+          },
+          false,
+          'setPipSize'
+        ),
+
+      setPipPreset: (preset) =>
+        set(
+          {
+            pipPreset: preset,
+          },
+          false,
+          'setPipPreset'
+        ),
       }),
       {
         name: 'recording-config-storage',
@@ -310,6 +459,11 @@ export const useRecordingStore = create<RecordingState>()(
           frameRate: state.frameRate,
           resolution: state.resolution,
           audioSources: state.audioSources,
+          screenRecordingMode: state.screenRecordingMode, // Story 4.1: AC #6 - persist recording mode
+          lastSelectedWindowId: state.lastSelectedWindowId, // Story 4.1: AC #6 - persist window selection
+          pipPosition: state.pipPosition, // Story 4.5: AC #5 - persist PiP position
+          pipSize: state.pipSize, // Story 4.5: AC #5 - persist PiP size
+          pipPreset: state.pipPreset, // Story 4.5: AC #5 - persist PiP preset
         }),
       }
     ),

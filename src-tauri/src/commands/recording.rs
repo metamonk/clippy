@@ -2,6 +2,7 @@
 //!
 //! This module provides Tauri commands for screen recording, camera, and audio capture operations.
 
+use crate::models::recording::RecordingConfig;
 use crate::services::permissions::{
     check_camera_permission, check_screen_recording_permission, request_camera_permission,
     request_screen_recording_permission,
@@ -42,6 +43,16 @@ type CameraPreviewHandle = tokio::task::JoinHandle<()>;
 lazy_static::lazy_static! {
     static ref ACTIVE_CAMERA_PREVIEWS: Arc<Mutex<HashMap<u32, CameraPreviewHandle>>> =
         Arc::new(Mutex::new(HashMap::new()));
+}
+
+/// Camera frame payload for preview streaming
+#[derive(Clone, serde::Serialize)]
+struct CameraFramePayload {
+    camera_index: u32,
+    width: u32,
+    height: u32,
+    frame_data: String,  // Base64-encoded RGB frame data
+    timestamp: i64,      // Milliseconds since epoch
 }
 
 /// Global state for managing active webcam recordings
@@ -243,7 +254,10 @@ pub async fn cmd_list_cameras() -> Result<Vec<CameraInfo>, String> {
 /// This is currently a stub implementation that prepares for Story 2.8.
 /// Full implementation will stream frames to frontend for live preview.
 #[tauri::command]
-pub async fn cmd_start_camera_preview(camera_index: u32) -> Result<(), String> {
+pub async fn cmd_start_camera_preview(
+    camera_index: u32,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
     debug!("Command: start camera preview for index {}", camera_index);
 
     // Check camera permission first
@@ -268,57 +282,104 @@ pub async fn cmd_start_camera_preview(camera_index: u32) -> Result<(), String> {
         return Err(format!("Camera preview already running for index {}", camera_index));
     }
 
-    // ============================================================================
-    // STORY 2.8 INTERFACE CONTRACT - Camera Frame Streaming Implementation
-    // ============================================================================
-    //
-    // This stub will be implemented in Story 2.8 with the following contract:
-    //
-    // 1. FRAME STREAMING EVENT:
-    //    - Event name: "camera-frame"
-    //    - Payload structure:
-    //      ```rust
-    //      #[derive(Clone, serde::Serialize)]
-    //      struct CameraFramePayload {
-    //          camera_index: u32,
-    //          width: u32,
-    //          height: u32,
-    //          frame_data: String,  // Base64-encoded RGBA frame data
-    //          timestamp: i64,      // Milliseconds since epoch
-    //      }
-    //      ```
-    //    - Emission frequency: 30 FPS (one frame every ~33ms)
-    //    - Frame format: RGBA (4 bytes per pixel)
-    //
-    // 2. IMPLEMENTATION STEPS (Story 2.8):
-    //    a. Open camera with CameraService::new(camera_index)
-    //    b. Start frame capture loop at 30 FPS using tokio interval timer
-    //    c. For each frame:
-    //       - Capture frame from nokhwa Camera
-    //       - Convert to RGBA format if needed
-    //       - Encode frame data to base64 string
-    //       - Emit "camera-frame" event with CameraFramePayload
-    //    d. Store preview task handle in ACTIVE_CAMERA_PREVIEWS for cleanup
-    //
-    // 3. STATE MANAGEMENT:
-    //    - ACTIVE_CAMERA_PREVIEWS: Tracks running preview tasks (camera_index -> JoinHandle)
-    //    - cmd_stop_camera_preview: Cancels task and removes from ACTIVE_CAMERA_PREVIEWS
-    //    - Error handling: If camera capture fails, emit error event and clean up
-    //
-    // 4. FRONTEND CONTRACT (WebcamPreview.tsx):
-    //    - Component must listen for "camera-frame" events
-    //    - Decode base64 frame_data to display in canvas/img element
-    //    - Handle frame rate (display every frame or throttle for performance)
-    //
-    // ============================================================================
+    info!("Starting camera preview for index {}", camera_index);
 
-    info!("Camera preview started (stub) for index {}", camera_index);
-
-    // Create a dummy task handle for now (Story 2.8 will replace with actual frame loop)
+    // Spawn preview task with frame capture loop
     let handle = tokio::spawn(async move {
-        debug!("Camera preview task running (stub) for index {}", camera_index);
-        // Story 2.8: Actual frame capture loop goes here
-        tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+        debug!("Camera preview task starting for index {}", camera_index);
+
+        // Use spawn_blocking for Camera operations (nokhwa Camera is not Send-safe)
+        let result = tokio::task::spawn_blocking(move || {
+            use base64::Engine;
+
+            // Open camera
+            let service = CameraService::new();
+            let mut camera = match service.open_camera(camera_index) {
+                Ok(cam) => cam,
+                Err(e) => {
+                    error!("Failed to open camera {}: {}", camera_index, e);
+                    let _ = app_handle.emit("camera-error", format!("Failed to open camera: {}", e));
+                    return Err(e);
+                }
+            };
+
+            // Start camera stream
+            if let Err(e) = service.start_stream(&mut camera) {
+                error!("Failed to start camera stream for index {}: {}", camera_index, e);
+                let _ = app_handle.emit("camera-error", format!("Failed to start stream: {}", e));
+                return Err(e);
+            }
+
+            // Get camera resolution for event payload
+            let resolution = service.get_resolution(&camera);
+            let width = resolution.width();
+            let height = resolution.height();
+            info!("Camera {} preview streaming at {}x{}", camera_index, width, height);
+
+            // Frame capture loop at 30 FPS (33.33ms per frame)
+            let frame_duration = std::time::Duration::from_millis(33);
+            let mut frame_count: u64 = 0;
+
+            loop {
+                let frame_start = std::time::Instant::now();
+
+                // Capture frame
+                match service.capture_frame(&mut camera) {
+                    Ok(frame_data) => {
+                        // Base64 encode the RGB frame data
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&frame_data);
+
+                        // Create frame payload
+                        let payload = CameraFramePayload {
+                            camera_index,
+                            width,
+                            height,
+                            frame_data: encoded,
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as i64,
+                        };
+
+                        // Emit camera-frame event
+                        if let Err(e) = app_handle.emit("camera-frame", &payload) {
+                            error!("Failed to emit camera-frame event: {}", e);
+                            break;
+                        }
+
+                        frame_count += 1;
+                        if frame_count % 300 == 0 {
+                            debug!("Camera {} preview: {} frames captured", camera_index, frame_count);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Frame capture failed for camera {}: {}", camera_index, e);
+                        let _ = app_handle.emit("camera-error", format!("Frame capture failed: {}", e));
+                        break;
+                    }
+                }
+
+                // Maintain 30 FPS timing
+                let frame_elapsed = frame_start.elapsed();
+                if frame_elapsed < frame_duration {
+                    std::thread::sleep(frame_duration - frame_elapsed);
+                }
+            }
+
+            info!("Camera {} preview loop ended ({} frames captured)", camera_index, frame_count);
+            Ok::<(), crate::services::camera::CameraError>(())
+        })
+        .await;
+
+        match result {
+            Ok(Ok(())) => debug!("Camera preview task completed normally for index {}", camera_index),
+            Ok(Err(e)) => error!("Camera preview error for index {}: {}", camera_index, e),
+            Err(e) => error!("Camera preview task panicked for index {}: {}", camera_index, e),
+        }
+
+        // Clean up: remove from active previews
+        let mut previews = ACTIVE_CAMERA_PREVIEWS.lock().await;
+        previews.remove(&camera_index);
     });
 
     previews.insert(camera_index, handle);
@@ -882,8 +943,15 @@ pub async fn cmd_stop_webcam_recording(
 /// - FFmpeg encoder initialization failed
 /// - Device not available
 #[tauri::command]
-pub async fn cmd_start_screen_recording() -> Result<String, String> {
+pub async fn cmd_start_screen_recording(
+    config: Option<RecordingConfig>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
     debug!("Command: start screen recording");
+
+    // Use provided config or default
+    let config = config.unwrap_or_default();
+    info!("Recording config: frameRate={}, resolution={}", config.frame_rate, config.resolution);
 
     // Check permission first
     match check_screen_recording_permission() {
@@ -918,26 +986,47 @@ pub async fn cmd_start_screen_recording() -> Result<String, String> {
 
     info!("Output path: {}", output_path.display());
 
-    // Initialize ScreenCapture
-    let mut screen_capture = ScreenCapture::new().map_err(|e| {
+    // Story 4.1: Determine window ID based on recording mode (AC #3)
+    let window_id = if config.screen_recording_mode == crate::models::recording::ScreenRecordingMode::Window {
+        config.selected_window_id
+    } else {
+        None
+    };
+
+    // Initialize ScreenCapture with optional window ID
+    let mut screen_capture = ScreenCapture::new(window_id).map_err(|e| {
         error!("Failed to initialize ScreenCapture: {}", e);
         format!("Screen capture initialization failed: {}", e)
     })?;
 
     // Get capture dimensions
-    let (width, height) = screen_capture.get_dimensions();
-    info!("Capture dimensions: {}x{}", width, height);
+    let (capture_width, capture_height) = screen_capture.get_dimensions();
+    info!("Capture dimensions: {}x{}", capture_width, capture_height);
 
-    // Create FrameHandler with bounded channel for real-time encoding (30 frames)
-    let mut frame_handler = FrameHandler::new_for_encoding(30);
+    // Map resolution string to output dimensions (Story 4.2)
+    let (width, height) = match config.resolution.as_str() {
+        "720p" => (1280_u32, 720_u32),
+        "1080p" => (1920_u32, 1080_u32),
+        "source" | _ => {
+            // For source resolution, use captured dimensions (may need downscaling if > 1080p)
+            // For now, default to 1080p for "source" to avoid huge files
+            info!("Source resolution requested, using 1080p");
+            (1920_u32, 1080_u32)
+        }
+    };
+
+    info!("Output resolution: {}x{} at {} FPS", width, height, config.frame_rate);
+
+    // Create FrameHandler with bounded channel for real-time encoding
+    let mut frame_handler = FrameHandler::new_for_encoding(config.frame_rate as usize);
     let frame_tx = frame_handler.get_sender();
 
-    // Create FFmpeg encoder for real-time H.264 encoding
+    // Create FFmpeg encoder for real-time H.264 encoding (Story 4.2 - AC #2, #3)
     let mut encoder = crate::services::ffmpeg::FFmpegEncoder::new(
         output_path.clone(),
         width,
         height,
-        30, // 30 FPS
+        config.frame_rate, // Use configured frame rate
     ).map_err(|e| {
         error!("Failed to create FFmpeg encoder: {}", e);
         format!("Failed to create encoder: {}", e)
@@ -955,9 +1044,9 @@ pub async fn cmd_start_screen_recording() -> Result<String, String> {
         format!("Failed to start encoder task: {}", e)
     })?;
 
-    // Start continuous capture (without system audio for now)
+    // Start continuous capture (with app_handle for window-closed events)
     let capture_handle = screen_capture
-        .start_continuous_capture(frame_tx, None)
+        .start_continuous_capture(frame_tx, None, Some(app_handle.clone()))
         .map_err(|e| {
             error!("Failed to start screen capture: {}", e);
             format!("Failed to start screen capture: {}", e)
@@ -1324,6 +1413,102 @@ pub async fn cmd_get_available_windows() -> Result<Vec<crate::models::recording:
         error!("Window enumeration is only supported on macOS");
         Err("Window recording is only supported on macOS".to_string())
     }
+}
+
+/// Start Picture-in-Picture (PiP) recording - screen + webcam simultaneously
+///
+/// This command starts a PiP recording session that captures both the screen and webcam
+/// in real-time, compositing the webcam feed over the screen with configurable position/size.
+///
+/// # Arguments
+///
+/// * `camera_index` - Index of the webcam to use (from `cmd_list_cameras`)
+/// * `pip_x` - X position of the PiP overlay (pixels from left)
+/// * `pip_y` - Y position of the PiP overlay (pixels from top)
+/// * `pip_width` - Width of the PiP overlay in pixels
+/// * `pip_height` - Height of the PiP overlay in pixels
+/// * `output_path` - Path where the composited MP4 will be saved
+///
+/// # Returns
+///
+/// * `Ok(recording_id)` - Unique ID for this recording session
+/// * `Err(String)` - User-friendly error message if recording fails to start
+///
+/// # Story 4.6 - Acceptance Criteria
+///
+/// - AC #1: "Screen + Webcam" recording mode triggers both captures simultaneously
+/// - AC #2: ScreenCaptureKit captures screen, AVFoundation captures webcam in parallel
+#[tauri::command]
+pub async fn cmd_start_pip_recording(
+    camera_index: u32,
+    pip_x: i32,
+    pip_y: i32,
+    pip_width: u32,
+    pip_height: u32,
+    output_path: String,
+) -> Result<String, String> {
+    debug!(
+        "Command: start PiP recording (camera: {}, pip: {}x{} at ({},{}), output: {})",
+        camera_index, pip_width, pip_height, pip_x, pip_y, output_path
+    );
+
+    // Check permissions
+    if !check_screen_recording_permission().map_err(|e| e.to_string())? {
+        return Err("Screen recording permission required. Please enable in System Preferences → Privacy & Security → Screen Recording".to_string());
+    }
+
+    if !check_camera_permission().map_err(|e| e.to_string())? {
+        return Err("Camera permission required. Please enable in System Preferences → Privacy & Security → Camera".to_string());
+    }
+
+    // Create PiP configuration
+    let pip_config = crate::services::ffmpeg::PipConfig {
+        x: pip_x,
+        y: pip_y,
+        width: pip_width,
+        height: pip_height,
+    };
+
+    // Create orchestrator configuration
+    let orchestrator_config = crate::services::recording::RecordingConfig {
+        output_path: PathBuf::from(&output_path),
+        width: 1920,  // Screen resolution (configurable in future stories)
+        height: 1080,
+        fps: 30,
+        enable_system_audio: true,  // Enable system audio for PiP recordings
+        enable_microphone: true,    // Enable microphone for PiP recordings
+        enable_webcam_audio: false, // Webcam audio deferred to Story 4.7
+        audio_sample_rate: 48000,
+        audio_channels: 2,
+    };
+
+    // Create recording orchestrator
+    let mut orchestrator = crate::services::recording::RecordingOrchestrator::new(orchestrator_config)
+        .map_err(|e| {
+            error!("Failed to create recording orchestrator: {}", e);
+            format!("Failed to initialize PiP recording: {}", e)
+        })?;
+
+    // Start PiP recording
+    orchestrator.start_pip_recording(camera_index, pip_config)
+        .await
+        .map_err(|e| {
+            error!("Failed to start PiP recording: {}", e);
+            format!("Failed to start PiP recording: {}", e)
+        })?;
+
+    // Generate recording ID
+    let recording_id = Uuid::new_v4().to_string();
+
+    info!(
+        "PiP recording started successfully - ID: {}, Output: {}",
+        recording_id, output_path
+    );
+
+    // TODO: Store orchestrator handle in global state for stop_recording command
+    // For now, returning success ID
+
+    Ok(recording_id)
 }
 
 #[cfg(test)]

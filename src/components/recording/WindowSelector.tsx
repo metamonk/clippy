@@ -5,11 +5,11 @@
  * Displays window titles with app names, supports search/filter, and refresh.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRecordingStore } from '@/stores/recordingStore';
 import type { WindowInfo } from '@/types/recording';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { RefreshCw, Search } from 'lucide-react';
 
@@ -29,19 +29,19 @@ export function WindowSelector({ onWindowSelect }: WindowSelectorProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Load windows on mount
-  useEffect(() => {
-    handleRefresh();
-  }, []);
-
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
       await refreshWindows();
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [refreshWindows]);
+
+  // Load windows on mount
+  useEffect(() => {
+    handleRefresh();
+  }, [handleRefresh]);
 
   const handleSelect = (value: string) => {
     const windowId = value === 'none' ? null : parseInt(value, 10);
@@ -129,7 +129,8 @@ export function WindowSelector({ onWindowSelect }: WindowSelectorProps) {
         <SelectContent>
           <SelectItem value="none">Select a window...</SelectItem>
           {Object.entries(groupedWindows).map(([appName, windows]) => (
-            <optgroup key={appName} label={appName}>
+            <SelectGroup key={appName}>
+              <SelectLabel>{appName}</SelectLabel>
               {windows.map((window) => (
                 <SelectItem
                   key={window.windowId}
@@ -144,7 +145,7 @@ export function WindowSelector({ onWindowSelect }: WindowSelectorProps) {
                   </span>
                 </SelectItem>
               ))}
-            </optgroup>
+            </SelectGroup>
           ))}
         </SelectContent>
       </Select>

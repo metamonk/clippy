@@ -13,6 +13,8 @@ import {
   splitClipAtTime,
   calculateRippleShift,
   deleteClip,
+  validateFadeDuration,
+  MAX_FADE_DURATION_MS,
 } from './clipOperations';
 import type { Clip, Track } from '@/types/timeline';
 
@@ -671,5 +673,232 @@ describe('deleteClip', () => {
     expect(result[1].startTime).toBe(5000); // clip3: 8000 - 3000
     expect(result[2].startTime).toBe(7000); // clip4: 10000 - 3000
     expect(result[3].startTime).toBe(11000); // clip5: 14000 - 3000
+  });
+});
+
+describe('validateFadeDuration', () => {
+  const createClipWithFades = (
+    id: string,
+    duration: number,
+    fadeIn: number = 0,
+    fadeOut: number = 0
+  ): Clip => ({
+    id,
+    filePath: `/test/${id}.mp4`,
+    startTime: 0,
+    duration,
+    trimIn: 0,
+    trimOut: duration,
+    fadeIn,
+    fadeOut,
+    volume: 100,
+    muted: false,
+  });
+
+  describe('valid fade configurations', () => {
+    it('accepts zero fades (no fade)', () => {
+      const clip = createClipWithFades('clip1', 10000, 0, 0);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+
+    it('accepts valid fade-in only', () => {
+      const clip = createClipWithFades('clip1', 10000, 2000, 0);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+
+    it('accepts valid fade-out only', () => {
+      const clip = createClipWithFades('clip1', 10000, 0, 2000);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+
+    it('accepts valid fade-in and fade-out', () => {
+      const clip = createClipWithFades('clip1', 10000, 2000, 2000);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+
+    it('accepts maximum fade duration (5 seconds)', () => {
+      const clip = createClipWithFades('clip1', 20000, 5000, 5000);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+
+    it('accepts fade-in at max duration (5s)', () => {
+      const clip = createClipWithFades('clip1', 10000, MAX_FADE_DURATION_MS, 0);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+
+    it('accepts fade-out at max duration (5s)', () => {
+      const clip = createClipWithFades('clip1', 10000, 0, MAX_FADE_DURATION_MS);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+
+    it('accepts combined fades equal to clip duration', () => {
+      const clip = createClipWithFades('clip1', 10000, 5000, 5000);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+  });
+
+  describe('negative fade durations', () => {
+    it('rejects negative fade-in', () => {
+      const clip = createClipWithFades('clip1', 10000);
+      expect(validateFadeDuration(clip, -100, 0)).toBe(false);
+    });
+
+    it('rejects negative fade-out', () => {
+      const clip = createClipWithFades('clip1', 10000);
+      expect(validateFadeDuration(clip, 0, -100)).toBe(false);
+    });
+
+    it('rejects both negative fades', () => {
+      const clip = createClipWithFades('clip1', 10000);
+      expect(validateFadeDuration(clip, -100, -200)).toBe(false);
+    });
+  });
+
+  describe('maximum fade duration validation', () => {
+    it('rejects fade-in exceeding 5 seconds', () => {
+      const clip = createClipWithFades('clip1', 20000);
+      expect(validateFadeDuration(clip, 5001, 0)).toBe(false);
+    });
+
+    it('rejects fade-out exceeding 5 seconds', () => {
+      const clip = createClipWithFades('clip1', 20000);
+      expect(validateFadeDuration(clip, 0, 5001)).toBe(false);
+    });
+
+    it('rejects both fades exceeding 5 seconds', () => {
+      const clip = createClipWithFades('clip1', 30000);
+      expect(validateFadeDuration(clip, 6000, 7000)).toBe(false);
+    });
+
+    it('verifies MAX_FADE_DURATION_MS constant is 5000', () => {
+      expect(MAX_FADE_DURATION_MS).toBe(5000);
+    });
+  });
+
+  describe('combined fade duration validation', () => {
+    it('rejects combined fade exceeding clip duration', () => {
+      const clip = createClipWithFades('clip1', 10000);
+      expect(validateFadeDuration(clip, 6000, 5000)).toBe(false); // 11s fade for 10s clip
+    });
+
+    it('rejects symmetric fades exceeding clip duration', () => {
+      const clip = createClipWithFades('clip1', 8000);
+      expect(validateFadeDuration(clip, 5000, 5000)).toBe(false); // 10s fade for 8s clip
+    });
+
+    it('accepts combined fades at clip boundary', () => {
+      const clip = createClipWithFades('clip1', 10000);
+      expect(validateFadeDuration(clip, 5000, 5000)).toBe(true); // 10s fade for 10s clip (max fades)
+    });
+  });
+
+  describe('very short clips', () => {
+    it('accepts valid fades for 1-second clip', () => {
+      const clip = createClipWithFades('clip1', 1000, 500, 500);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+
+    it('rejects fades exceeding 1-second clip duration', () => {
+      const clip = createClipWithFades('clip1', 1000);
+      expect(validateFadeDuration(clip, 600, 600)).toBe(false); // 1.2s fade for 1s clip
+    });
+
+    it('accepts maximum allowed fade for very short clip', () => {
+      const clip = createClipWithFades('clip1', 500, 250, 250);
+      expect(validateFadeDuration(clip)).toBe(true);
+    });
+  });
+
+  describe('trimmed clips', () => {
+    it('validates based on effective duration (trimmed)', () => {
+      const clip: Clip = {
+        id: 'clip1',
+        filePath: '/test/clip1.mp4',
+        startTime: 0,
+        duration: 20000,
+        trimIn: 5000,
+        trimOut: 15000, // Effective duration: 10000ms
+        fadeIn: 3000,
+        fadeOut: 3000,
+        volume: 100,
+        muted: false,
+      };
+
+      expect(validateFadeDuration(clip)).toBe(true); // 6s fade for 10s effective duration
+    });
+
+    it('rejects fades exceeding effective duration', () => {
+      const clip: Clip = {
+        id: 'clip1',
+        filePath: '/test/clip1.mp4',
+        startTime: 0,
+        duration: 20000,
+        trimIn: 5000,
+        trimOut: 10000, // Effective duration: 5000ms
+        fadeIn: 3000,
+        fadeOut: 3000,
+        volume: 100,
+        muted: false,
+      };
+
+      expect(validateFadeDuration(clip)).toBe(false); // 6s fade for 5s effective duration
+    });
+  });
+
+  describe('proposed fade validation', () => {
+    it('validates proposed fadeIn against current fadeOut', () => {
+      const clip = createClipWithFades('clip1', 10000, 0, 3000);
+      expect(validateFadeDuration(clip, 5000)).toBe(true); // 5s + 3s = 8s (within limits)
+      expect(validateFadeDuration(clip, 8000)).toBe(false); // 8s exceeds 5s max per fade
+    });
+
+    it('validates proposed fadeOut against current fadeIn', () => {
+      const clip = createClipWithFades('clip1', 10000, 3000, 0);
+      expect(validateFadeDuration(clip, undefined, 5000)).toBe(true); // 3s + 5s = 8s (within limits)
+      expect(validateFadeDuration(clip, undefined, 8000)).toBe(false); // 8s exceeds 5s max per fade
+    });
+
+    it('validates both proposed fades', () => {
+      const clip = createClipWithFades('clip1', 10000, 2000, 2000);
+      expect(validateFadeDuration(clip, 3000, 3000)).toBe(true); // 3s + 3s = 6s (within limits)
+      expect(validateFadeDuration(clip, 5000, 6000)).toBe(false); // 6s exceeds 5s max per fade
+    });
+
+    it('uses clip fades when not provided', () => {
+      const clip = createClipWithFades('clip1', 10000, 3000, 3000);
+      expect(validateFadeDuration(clip)).toBe(true); // Uses existing 3s + 3s
+    });
+  });
+
+  describe('edge cases', () => {
+    it('handles clips with undefined fadeIn/fadeOut', () => {
+      const clip: Clip = {
+        id: 'clip1',
+        filePath: '/test/clip1.mp4',
+        startTime: 0,
+        duration: 10000,
+        trimIn: 0,
+        trimOut: 10000,
+        volume: 100,
+        muted: false,
+      };
+
+      expect(validateFadeDuration(clip)).toBe(true); // Treats undefined as 0
+    });
+
+    it('accepts zero fade with proposed non-zero fade', () => {
+      const clip = createClipWithFades('clip1', 10000, 0, 0);
+      expect(validateFadeDuration(clip, 2000, 2000)).toBe(true);
+    });
+
+    it('rejects fade at exactly max + 1ms', () => {
+      const clip = createClipWithFades('clip1', 20000);
+      expect(validateFadeDuration(clip, MAX_FADE_DURATION_MS + 1, 0)).toBe(false);
+    });
+
+    it('accepts fade at exactly max duration', () => {
+      const clip = createClipWithFades('clip1', 20000);
+      expect(validateFadeDuration(clip, MAX_FADE_DURATION_MS, 0)).toBe(true);
+    });
   });
 });

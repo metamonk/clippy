@@ -30,6 +30,7 @@ pub use recording::{
     cmd_start_webcam_recording,
     cmd_stop_webcam_recording,
     cmd_start_screen_recording,
+    cmd_start_pip_recording,
     cmd_stop_recording,
     cmd_pause_recording,
     cmd_resume_recording,

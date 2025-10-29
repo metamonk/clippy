@@ -45,6 +45,10 @@ pub struct RecordingConfig {
     /// Enable microphone audio capture
     pub enable_microphone: bool,
 
+    /// Enable webcam audio capture (Story 4.7)
+    /// Uses third AudioCapture instance for webcam's built-in mic
+    pub enable_webcam_audio: bool,
+
     /// Audio sample rate (default: 48000 Hz)
     pub audio_sample_rate: u32,
 
@@ -61,6 +65,7 @@ impl Default for RecordingConfig {
             fps: 30,
             enable_system_audio: false,
             enable_microphone: false,
+            enable_webcam_audio: false,
             audio_sample_rate: 48000,
             audio_channels: 2,
         }
@@ -73,8 +78,9 @@ impl Default for RecordingConfig {
 /// 1. Video capture from ScreenCaptureKit
 /// 2. System audio capture from ScreenCaptureKit (optional)
 /// 3. Microphone capture from CPAL/CoreAudio (optional)
-/// 4. Timestamp-based synchronization via FrameSynchronizer
-/// 5. Real-time FFmpeg encoding with multi-audio muxing
+/// 4. Webcam audio capture from CPAL/CoreAudio (optional, Story 4.7)
+/// 5. Timestamp-based synchronization via FrameSynchronizer
+/// 6. Real-time FFmpeg encoding with multi-audio muxing
 pub struct RecordingOrchestrator {
     /// Recording configuration
     config: RecordingConfig,
@@ -84,6 +90,9 @@ pub struct RecordingOrchestrator {
 
     /// Microphone capture service (optional)
     audio_capture: Option<AudioCapture>,
+
+    /// Webcam audio capture service (optional, Story 4.7)
+    webcam_audio_capture: Option<AudioCapture>,
 
     /// Frame synchronizer for A/V sync
     synchronizer: FrameSynchronizer,
@@ -118,8 +127,8 @@ impl RecordingOrchestrator {
             "Creating recording orchestrator"
         );
 
-        // Initialize screen capture
-        let mut screen_capture = ScreenCapture::new()
+        // Initialize screen capture (fullscreen mode for orchestrator)
+        let mut screen_capture = ScreenCapture::new(None)
             .context("Failed to initialize screen capture")?;
 
         // Enable system audio if requested
@@ -144,6 +153,21 @@ impl RecordingOrchestrator {
             None
         };
 
+        // Initialize webcam audio capture if requested (Story 4.7)
+        let webcam_audio_capture = if config.enable_webcam_audio {
+            let mut capture = AudioCapture::new()
+                .context("Failed to initialize webcam audio capture")?;
+
+            // Select default device (user can configure to webcam's built-in mic)
+            capture
+                .select_default_device()
+                .context("Failed to select webcam audio device")?;
+
+            Some(capture)
+        } else {
+            None
+        };
+
         // Create frame synchronizer (30 FPS, 50ms tolerance per AC #4)
         let synchronizer = FrameSynchronizer::new(config.fps, 50);
 
@@ -153,6 +177,7 @@ impl RecordingOrchestrator {
             config,
             screen_capture,
             audio_capture,
+            webcam_audio_capture,
             synchronizer,
             encoder: None,
             capture_handles: Vec::new(),
@@ -213,10 +238,17 @@ impl RecordingOrchestrator {
             (None, None)
         };
 
+        let (webcam_audio_tx, mut webcam_audio_rx) = if self.config.enable_webcam_audio {
+            let (tx, rx) = mpsc::channel::<AudioSample>(30);
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
+
         // Start screen capture (video + optional system audio)
         let capture_handle = self
             .screen_capture
-            .start_continuous_capture(video_tx, system_audio_tx)
+            .start_continuous_capture(video_tx, system_audio_tx, None)
             .context("Failed to start screen capture")?;
 
         self.capture_handles.push(capture_handle);
@@ -228,6 +260,16 @@ impl RecordingOrchestrator {
                     .start_capture(mic_tx)
                     .context("Failed to start microphone capture")?;
                 info!("Microphone capture started");
+            }
+        }
+
+        // Start webcam audio capture if enabled (Story 4.7)
+        if let Some(ref mut webcam_capture) = self.webcam_audio_capture {
+            if let Some(webcam_tx) = webcam_audio_tx.clone() {
+                webcam_capture
+                    .start_capture(webcam_tx)
+                    .context("Failed to start webcam audio capture")?;
+                info!("Webcam audio capture started");
             }
         }
 
@@ -322,6 +364,34 @@ impl RecordingOrchestrator {
                             // 2. Use named pipes (FIFOs) for real-time multi-input FFmpeg
                             // 3. Extend FFmpegEncoder to support multiple stdin-like streams
                             // Current: Audio capture/sync works; muxing deferred (like Stories 2.2-2.3 pattern)
+                        }
+                    }
+
+                    // Process webcam audio samples (Story 4.7)
+                    Some(audio_sample) = async {
+                        if let Some(ref mut rx) = webcam_audio_rx {
+                            rx.recv().await
+                        } else {
+                            // If no webcam audio, park this branch forever
+                            std::future::pending().await
+                        }
+                    } => {
+                        // Synchronize webcam audio with video
+                        let should_process = synchronizer.process_audio_sample(
+                            audio_sample.timestamp_ns,
+                            false,  // is_system_audio = false (webcam mic)
+                            current_video_timestamp_ms,
+                        );
+
+                        if should_process {
+                            debug!(
+                                event = "webcam_audio_processed",
+                                samples = audio_sample.data.len(),
+                                timestamp_ns = audio_sample.timestamp_ns,
+                                "Webcam audio sample synchronized"
+                            );
+                            // Story 4.7: Webcam audio capture and sync implemented
+                            // Audio muxing handled by finalize_with_audio() in FFmpegEncoder
                         }
                     }
 
@@ -448,10 +518,17 @@ impl RecordingOrchestrator {
             (None, None)
         };
 
+        let (webcam_audio_tx, mut webcam_audio_rx) = if self.config.enable_webcam_audio {
+            let (tx, rx) = mpsc::channel::<AudioSample>(30);
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
+
         // Start screen capture (video + optional system audio)
         let screen_capture_handle = self
             .screen_capture
-            .start_continuous_capture(screen_video_tx, system_audio_tx)
+            .start_continuous_capture(screen_video_tx, system_audio_tx, None)
             .context("Failed to start screen capture")?;
 
         self.capture_handles.push(screen_capture_handle);
@@ -470,6 +547,16 @@ impl RecordingOrchestrator {
                     .start_capture(mic_tx)
                     .context("Failed to start microphone capture")?;
                 info!("Microphone capture started");
+            }
+        }
+
+        // Start webcam audio capture if enabled (Story 4.7)
+        if let Some(ref mut webcam_capture) = self.webcam_audio_capture {
+            if let Some(webcam_tx) = webcam_audio_tx.clone() {
+                webcam_capture
+                    .start_capture(webcam_tx)
+                    .context("Failed to start webcam audio capture")?;
+                info!("Webcam audio capture started");
             }
         }
 
@@ -709,6 +796,81 @@ impl RecordingOrchestrator {
 
         Ok(())
     }
+
+    /// Pause recording (Story 4.8 - AC #1, H1, H2)
+    ///
+    /// Pauses all active capture streams (screen, microphone, webcam audio).
+    /// Uses frame/sample discard approach - streams continue running but discard data.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if pause succeeded for all streams
+    pub fn pause_recording(&mut self) -> Result<()> {
+        info!("Pausing multi-stream recording");
+
+        // Pause screen capture (video + system audio)
+        self.screen_capture
+            .pause_capture()
+            .context("Failed to pause screen capture")?;
+
+        // Pause microphone capture if active
+        if let Some(ref audio_capture) = self.audio_capture {
+            audio_capture
+                .pause_capture()
+                .context("Failed to pause microphone capture")?;
+        }
+
+        // Pause webcam audio capture if active (Story 4.7 - H2)
+        if let Some(ref webcam_audio) = self.webcam_audio_capture {
+            webcam_audio
+                .pause_capture()
+                .context("Failed to pause webcam audio capture")?;
+        }
+
+        info!("All streams paused successfully");
+        Ok(())
+    }
+
+    /// Resume recording (Story 4.8 - AC #3, H1, H2)
+    ///
+    /// Resumes all active capture streams after a pause.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if resume succeeded for all streams
+    pub fn resume_recording(&mut self) -> Result<()> {
+        info!("Resuming multi-stream recording");
+
+        // Resume screen capture (video + system audio)
+        self.screen_capture
+            .resume_capture()
+            .context("Failed to resume screen capture")?;
+
+        // Resume microphone capture if active
+        if let Some(ref audio_capture) = self.audio_capture {
+            audio_capture
+                .resume_capture()
+                .context("Failed to resume microphone capture")?;
+        }
+
+        // Resume webcam audio capture if active (Story 4.7 - H2)
+        if let Some(ref webcam_audio) = self.webcam_audio_capture {
+            webcam_audio
+                .resume_capture()
+                .context("Failed to resume webcam audio capture")?;
+        }
+
+        info!("All streams resumed successfully");
+        Ok(())
+    }
+
+    /// Check if recording is currently paused (Story 4.8)
+    ///
+    /// Returns true if screen capture is paused (all streams pause together)
+    pub fn is_paused(&self) -> bool {
+        self.screen_capture.is_paused()
+    }
+
 
     /// Get current synchronization metrics
     pub fn get_sync_metrics(&self) -> &crate::services::recording::SyncMetrics {

@@ -223,8 +223,6 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!repositionDragRef.current.isDragging) return;
 
-      const deltaY = moveEvent.clientY - repositionDragRef.current.startY;
-
       // Calculate which track is being hovered based on Y position
       const targetTrackIndex = Math.floor((moveEvent.clientY - yPosition) / trackHeight);
       const targetTrack = tracks[targetTrackIndex];

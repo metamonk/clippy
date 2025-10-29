@@ -5,7 +5,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import type { Camera } from '../../types/recording';
+import type { Camera, RecordingConfig, WindowInfo } from '../../types/recording';
 
 /**
  * Check if screen recording permission is granted
@@ -24,9 +24,10 @@ export async function requestScreenRecordingPermission(): Promise<void> {
 /**
  * Start screen recording
  * Returns a recording ID (UUID) for tracking
+ * @param config - Optional recording configuration (Story 4.2)
  */
-export async function startScreenRecording(): Promise<string> {
-  return invoke<string>('cmd_start_screen_recording');
+export async function startScreenRecording(config?: RecordingConfig): Promise<string> {
+  return invoke<string>('cmd_start_screen_recording', { config });
 }
 
 /**
@@ -142,4 +143,12 @@ export async function checkDiskSpace(path: string): Promise<number> {
  */
 export async function sendRecordingNotification(title: string, body: string): Promise<void> {
   return invoke('cmd_send_recording_notification', { title, body });
+}
+
+/**
+ * Get list of available windows for window recording (Story 4.1)
+ * Returns array of capturable windows from ScreenCaptureKit
+ */
+export async function getAvailableWindows(): Promise<WindowInfo[]> {
+  return invoke<WindowInfo[]>('cmd_get_available_windows');
 }

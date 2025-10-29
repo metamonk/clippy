@@ -22,8 +22,8 @@
 //!         return Err("Screen recording permission required".into());
 //!     }
 //!
-//!     // Create capture instance with audio enabled
-//!     let mut capture = ScreenCapture::new()?;
+//!     // Create capture instance with audio enabled (fullscreen mode)
+//!     let mut capture = ScreenCapture::new(None)?;
 //!     capture.enable_system_audio(48000, 2)?;
 //!
 //!     // Capture a single frame
@@ -32,6 +32,9 @@
 //! }
 //! ```
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tauri::Emitter;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
@@ -87,6 +90,10 @@ pub enum ScreenCaptureError {
 struct VideoStreamOutput {
     frame_tx: mpsc::Sender<crate::services::ffmpeg::TimestampedFrame>,
     recording_start: std::sync::Arc<std::sync::Mutex<Option<std::time::Instant>>>,
+    /// Last frame received timestamp (Story 4.1 - AC #7: Window closure detection)
+    last_frame_time: std::sync::Arc<std::sync::Mutex<std::time::Instant>>,
+    /// Pause flag for discarding frames during pause (Story 4.8)
+    is_paused: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "macos")]
@@ -98,6 +105,12 @@ impl SCStreamOutputTrait for VideoStreamOutput {
     ) {
         // Only process video frames
         if of_type != SCStreamOutputType::Screen {
+            return;
+        }
+
+        // Story 4.8: Discard frames during pause (frame discard approach)
+        if self.is_paused.load(Ordering::Relaxed) {
+            debug!("Frame discarded during pause");
             return;
         }
 
@@ -146,6 +159,11 @@ impl SCStreamOutputTrait for VideoStreamOutput {
             height: height as u32,
         };
 
+        // Update last frame time (Story 4.1 - AC #7: Window closure detection)
+        if let Ok(mut last_time) = self.last_frame_time.lock() {
+            *last_time = std::time::Instant::now();
+        }
+
         // Send frame through channel (blocking if channel is full - backpressure)
         // Use Handle::current() to spawn on the Tokio runtime from any thread
         let tx = self.frame_tx.clone();
@@ -168,6 +186,8 @@ struct AudioStreamOutput {
     recording_start: std::sync::Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     sample_rate: u32,
     channels: u16,
+    /// Pause flag for discarding audio samples during pause (Story 4.8)
+    is_paused: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "macos")]
@@ -179,6 +199,12 @@ impl SCStreamOutputTrait for AudioStreamOutput {
     ) {
         // Only process audio samples
         if of_type != SCStreamOutputType::Audio {
+            return;
+        }
+
+        // Story 4.8: Discard audio samples during pause (frame discard approach)
+        if self.is_paused.load(Ordering::Relaxed) {
+            debug!("System audio sample discarded during pause");
             return;
         }
 
@@ -304,6 +330,10 @@ pub struct ScreenCapture {
     height: usize,
     /// System audio configuration
     audio_config: SystemAudioConfig,
+    /// Optional window ID for window-specific capture (Story 4.1)
+    window_id: Option<u32>,
+    /// Pause flag for frame/sample discard (Story 4.8)
+    is_paused: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "macos")]
@@ -312,11 +342,15 @@ impl ScreenCapture {
     ///
     /// This initializes the ScreenCaptureKit framework and prepares it for capture operations.
     ///
+    /// # Arguments
+    ///
+    /// * `window_id` - Optional window ID for window-specific capture (Story 4.1). If None, captures full screen.
+    ///
     /// # Errors
     ///
     /// Returns `ScreenCaptureError::PermissionDenied` if screen recording permission is not granted.
     /// Returns `ScreenCaptureError::InitFailed` if ScreenCaptureKit initialization fails.
-    pub fn new() -> Result<Self, ScreenCaptureError> {
+    pub fn new(window_id: Option<u32>) -> Result<Self, ScreenCaptureError> {
         debug!("Initializing ScreenCapture");
 
         // Check permission first
@@ -344,8 +378,8 @@ impl ScreenCapture {
         let height = 1080;
 
         info!(
-            "ScreenCapture initialized successfully: {}x{}",
-            width, height
+            "ScreenCapture initialized successfully: {}x{}, window_id: {:?}",
+            width, height, window_id
         );
 
         Ok(Self {
@@ -353,6 +387,8 @@ impl ScreenCapture {
             width,
             height,
             audio_config: SystemAudioConfig::default(),
+            window_id,
+            is_paused: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -389,7 +425,7 @@ impl ScreenCapture {
     ///
     /// ```rust,no_run
     /// # use clippy_lib::services::screen_capture::ScreenCapture;
-    /// let mut capture = ScreenCapture::new()?;
+    /// let mut capture = ScreenCapture::new(None)?; // Fullscreen mode
     /// capture.enable_system_audio(48000, 2)?; // 48kHz stereo
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
@@ -510,6 +546,7 @@ impl ScreenCapture {
         &mut self,
         frame_tx: mpsc::Sender<crate::services::ffmpeg::TimestampedFrame>,
         audio_tx: Option<mpsc::Sender<crate::services::audio_capture::AudioSample>>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<tokio::task::JoinHandle<()>, ScreenCaptureError> {
         if self.is_capturing {
             warn!("Capture already in progress");
@@ -523,16 +560,22 @@ impl ScreenCapture {
         let width = self.width;
         let height = self.height;
         let audio_config = self.audio_config.clone();
+        let window_id = self.window_id;
+        let is_paused = self.is_paused.clone(); // Story 4.8: Clone pause flag for capture task
 
         info!(
-            "Starting ScreenCaptureKit capture at 30 FPS: {}x{}, audio: {}",
+            "Starting ScreenCaptureKit capture at 30 FPS: {}x{}, audio: {}, window_id: {:?}",
             width,
             height,
-            if audio_config.enabled { "enabled" } else { "disabled" }
+            if audio_config.enabled { "enabled" } else { "disabled" },
+            window_id
         );
 
         // Spawn capture task
         let handle = tokio::spawn(async move {
+            // Story 4.1 - AC #7: Initialize last frame time for window closure detection
+            let last_frame_time = std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+
             // Create and start capture stream (in a scope to drop non-Send types)
             let stream = {
                 // Get shareable content (displays and windows)
@@ -544,16 +587,46 @@ impl ScreenCapture {
                     }
                 };
 
-                // Get first display
-                let displays = shareable_content.displays();
-                if displays.is_empty() {
-                    error!("No displays available for capture");
-                    return;
-                }
-                let display = &displays[0];
+                // Story 4.1: Create content filter based on recording mode
+                let filter = if let Some(wid) = window_id {
+                    // Window mode: Find and capture specific window
+                    info!("Creating window-specific filter for window ID: {}", wid);
 
-                // Create content filter (capture entire display, excluding no windows)
-                let filter = SCContentFilter::new().with_display_excluding_windows(display, &[]);
+                    let windows = shareable_content.windows();
+                    let target_window = windows
+                        .iter()
+                        .find(|w| w.window_id() == wid)
+                        .ok_or_else(|| {
+                            error!("Window ID {} not found in shareable content", wid);
+                        });
+
+                    match target_window {
+                        Ok(window) => {
+                            info!("Found window: {} ({})", window.title(), window.owning_application().application_name());
+                            // Story 4.1 AC#3, #5: Use window-specific filter (Follow Window approach)
+                            SCContentFilter::new().with_desktop_independent_window(window)
+                        }
+                        Err(_) => {
+                            error!("Window {} not available, falling back to fullscreen", wid);
+                            // Fallback to fullscreen if window not found
+                            let displays = shareable_content.displays();
+                            if displays.is_empty() {
+                                error!("No displays available for capture");
+                                return;
+                            }
+                            SCContentFilter::new().with_display_excluding_windows(&displays[0], &[])
+                        }
+                    }
+                } else {
+                    // Fullscreen mode: Capture entire display
+                    info!("Creating fullscreen filter");
+                    let displays = shareable_content.displays();
+                    if displays.is_empty() {
+                        error!("No displays available for capture");
+                        return;
+                    }
+                    SCContentFilter::new().with_display_excluding_windows(&displays[0], &[])
+                };
 
                 // Configure stream
                 let config = match SCStreamConfiguration::new()
@@ -604,6 +677,8 @@ impl ScreenCapture {
                 let video_output = VideoStreamOutput {
                     frame_tx: frame_tx.clone(),
                     recording_start: recording_start.clone(),
+                    last_frame_time: last_frame_time.clone(),
+                    is_paused: is_paused.clone(), // Story 4.8
                 };
 
                 // Create SCStream
@@ -619,6 +694,7 @@ impl ScreenCapture {
                         recording_start: recording_start.clone(),
                         sample_rate: audio_config.sample_rate,
                         channels: audio_config.channels,
+                        is_paused: is_paused.clone(), // Story 4.8
                     };
                     stream.add_output_handler(audio_output, SCStreamOutputType::Audio);
                     info!("System audio capture enabled ({}Hz, {} channels)",
@@ -649,6 +725,23 @@ impl ScreenCapture {
                 if frame_tx.is_closed() {
                     info!("Frame channel closed, stopping capture");
                     break;
+                }
+
+                // Story 4.1 - AC #7: Window closure detection (only for window mode)
+                if window_id.is_some() {
+                    if let Ok(last_time) = last_frame_time.lock() {
+                        let elapsed = last_time.elapsed();
+                        if elapsed > std::time::Duration::from_secs(3) {
+                            error!("Window closure detected: No frames received for {} seconds (window mode)", elapsed.as_secs());
+
+                            // Emit window-closed event to frontend (Story 4.1 - AC #7, Subtask 6.4)
+                            if let Some(handle) = &app_handle {
+                                let _ = handle.emit("window-closed", ());
+                            }
+
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -681,6 +774,50 @@ impl ScreenCapture {
     pub fn is_capturing(&self) -> bool {
         self.is_capturing
     }
+
+    /// Pause capture (Story 4.8 - AC #1)
+    ///
+    /// When paused, frames and audio samples continue to be captured but are immediately
+    /// discarded (frame discard approach). This prevents frozen frames in the output.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if pause succeeded, or error if capture is not active.
+    pub fn pause_capture(&self) -> Result<(), ScreenCaptureError> {
+        if !self.is_capturing {
+            return Err(ScreenCaptureError::CaptureFailed(
+                "Cannot pause: capture is not active".to_string(),
+            ));
+        }
+
+        self.is_paused.store(true, Ordering::Relaxed);
+        info!("Screen capture paused (frame discard enabled)");
+        Ok(())
+    }
+
+    /// Resume capture (Story 4.8 - AC #3)
+    ///
+    /// Resumes capturing frames and audio samples after a pause.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if resume succeeded, or error if capture is not active.
+    pub fn resume_capture(&self) -> Result<(), ScreenCaptureError> {
+        if !self.is_capturing {
+            return Err(ScreenCaptureError::CaptureFailed(
+                "Cannot resume: capture is not active".to_string(),
+            ));
+        }
+
+        self.is_paused.store(false, Ordering::Relaxed);
+        info!("Screen capture resumed");
+        Ok(())
+    }
+
+    /// Check if capture is currently paused (Story 4.8)
+    pub fn is_paused(&self) -> bool {
+        self.is_paused.load(Ordering::Relaxed)
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -688,7 +825,7 @@ pub struct ScreenCapture;
 
 #[cfg(not(target_os = "macos"))]
 impl ScreenCapture {
-    pub fn new() -> Result<Self, ScreenCaptureError> {
+    pub fn new(_window_id: Option<u32>) -> Result<Self, ScreenCaptureError> {
         Err(ScreenCaptureError::UnsupportedPlatform)
     }
 
@@ -707,7 +844,7 @@ mod tests {
         // This test verifies that ScreenCapture::new() checks permission
         // If permission is not granted, it should return PermissionDenied error
         // If permission is granted, it should succeed
-        let result = ScreenCapture::new();
+        let result = ScreenCapture::new(None);
 
         // Either succeeds (permission granted) or returns permission error
         match result {
@@ -733,7 +870,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn test_capture_single_frame_returns_bytes() {
         // Only run if we can initialize (permission granted)
-        if let Ok(capture) = ScreenCapture::new() {
+        if let Ok(capture) = ScreenCapture::new(None) {
             let result = capture.capture_single_frame();
 
             match result {
@@ -756,7 +893,7 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "macos"))]
     fn test_non_macos_returns_unsupported() {
-        let result = ScreenCapture::new();
+        let result = ScreenCapture::new(None);
         assert!(matches!(result, Err(ScreenCaptureError::UnsupportedPlatform)));
     }
 
@@ -764,7 +901,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     async fn test_continuous_capture_streams_frames() {
         // Only run if permission granted
-        if let Ok(mut capture) = ScreenCapture::new() {
+        if let Ok(mut capture) = ScreenCapture::new(None) {
             let (tx, mut rx) = tokio::sync::mpsc::channel(30);
 
             // Start continuous capture (without audio)
@@ -800,7 +937,7 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "macos")]
     async fn test_bounded_channel_prevents_memory_bloat() {
-        if let Ok(mut capture) = ScreenCapture::new() {
+        if let Ok(mut capture) = ScreenCapture::new(None) {
             // Create small buffer to test backpressure
             let (tx, mut rx) = tokio::sync::mpsc::channel(2);
 
@@ -861,7 +998,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_enable_system_audio() {
-        if let Ok(mut capture) = ScreenCapture::new() {
+        if let Ok(mut capture) = ScreenCapture::new(None) {
             assert!(!capture.is_system_audio_enabled());
 
             capture.enable_system_audio(48000, 2).unwrap();
@@ -876,7 +1013,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_disable_system_audio() {
-        if let Ok(mut capture) = ScreenCapture::new() {
+        if let Ok(mut capture) = ScreenCapture::new(None) {
             capture.enable_system_audio(48000, 2).unwrap();
             assert!(capture.is_system_audio_enabled());
 
@@ -888,7 +1025,7 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "macos")]
     async fn test_continuous_capture_with_system_audio() {
-        if let Ok(mut capture) = ScreenCapture::new() {
+        if let Ok(mut capture) = ScreenCapture::new(None) {
             // Enable system audio
             capture.enable_system_audio(48000, 2).unwrap();
 

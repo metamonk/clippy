@@ -268,4 +268,126 @@ describe('RecordingPanel', () => {
       });
     });
   });
+
+  describe('Screen Recording Mode Toggle (Story 4.1)', () => {
+    /**
+     * Test ID: 4.1-CT-001
+     * AC: #1 - Recording panel shows "Full Screen" vs "Window" toggle
+     */
+    it('should show screen recording mode toggle with both options', async () => {
+      vi.mocked(invoke).mockResolvedValueOnce(true);
+
+      render(<RecordingPanel open={true} onOpenChange={mockOnOpenChange} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Full Screen' })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: 'Window' })).toBeInTheDocument();
+      });
+    });
+
+    /**
+     * Test ID: 4.1-CT-002
+     * AC: #1 - Full Screen mode is selected by default
+     */
+    it('should have Full Screen mode selected by default', async () => {
+      vi.mocked(invoke).mockResolvedValueOnce(true);
+
+      render(<RecordingPanel open={true} onOpenChange={mockOnOpenChange} />);
+
+      await waitFor(() => {
+        const fullScreenTab = screen.getByRole('tab', { name: 'Full Screen' });
+        expect(fullScreenTab).toHaveAttribute('data-state', 'active');
+      });
+    });
+
+    /**
+     * Test ID: 4.1-CT-003
+     * AC: #1, #2 - Switching to Window mode updates store and shows WindowSelector
+     */
+    it('should switch to window mode and show window selector', async () => {
+      const user = userEvent.setup();
+      vi.mocked(invoke).mockResolvedValueOnce(true);
+
+      render(<RecordingPanel open={true} onOpenChange={mockOnOpenChange} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Window' })).toBeInTheDocument();
+      });
+
+      // Click Window tab
+      const windowTab = screen.getByRole('tab', { name: 'Window' });
+      await user.click(windowTab);
+
+      await waitFor(() => {
+        // Window selector should be visible
+        expect(screen.getByText('Select Window')).toBeInTheDocument();
+        // Window mode should be active
+        expect(windowTab).toHaveAttribute('data-state', 'active');
+      });
+    });
+
+    /**
+     * Test ID: 4.1-CT-004
+     * AC: #2 - Window selector is hidden in Full Screen mode
+     */
+    it('should hide window selector in full screen mode', async () => {
+      const user = userEvent.setup();
+      vi.mocked(invoke).mockResolvedValueOnce(true);
+
+      render(<RecordingPanel open={true} onOpenChange={mockOnOpenChange} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Window' })).toBeInTheDocument();
+      });
+
+      // Switch to Window mode first
+      await user.click(screen.getByRole('tab', { name: 'Window' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Select Window')).toBeInTheDocument();
+      });
+
+      // Switch back to Full Screen
+      await user.click(screen.getByRole('tab', { name: 'Full Screen' }));
+
+      await waitFor(() => {
+        // Window selector should not be visible
+        expect(screen.queryByText('Select Window')).not.toBeInTheDocument();
+      });
+    });
+
+    /**
+     * Test ID: 4.1-CT-005
+     * AC: #2 - Recording validation requires window selection in window mode
+     */
+    it('should show error if recording in window mode without window selection', async () => {
+      const user = userEvent.setup();
+      vi.mocked(invoke)
+        .mockResolvedValueOnce(true) // permission check
+        .mockResolvedValueOnce(true); // permission check before start
+
+      render(<RecordingPanel open={true} onOpenChange={mockOnOpenChange} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Window' })).toBeInTheDocument();
+      });
+
+      // Switch to Window mode
+      await user.click(screen.getByRole('tab', { name: 'Window' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Select Window')).toBeInTheDocument();
+      });
+
+      // Try to start recording without selecting a window
+      const recordButton = screen.getByText('Record Screen');
+      await user.click(recordButton);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('No Window Selected', {
+          description: 'Please select a window to record in window mode.',
+        });
+      });
+    });
+  });
 });
