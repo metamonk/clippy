@@ -1,0 +1,272 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>8</storyId>
+    <title>Audio Waveform Visualization</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-8-audio-waveform-visualization.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to see audio waveforms for clips on the timeline</iWant>
+    <soThat>I can identify audio content visually and make precise audio edits</soThat>
+    <tasks>
+- Implement waveform generation using Web Audio API (AC: #2, #6)
+  - Create `src/lib/waveform/waveformGenerator.ts` module
+  - Add `extractAudioFromVideo()` - Get audio buffer from video file
+  - Add `generateWaveformData()` - Process audio buffer, extract peak samples
+  - Return normalized waveform data (array of peak values 0-1)
+  - Make generation async to avoid blocking UI thread
+  - Add error handling for videos without audio tracks
+  - Unit tests for waveform extraction logic
+
+- Store waveform data with media files (AC: #2, #5)
+  - Extend MediaFile interface with optional waveformData field
+  - Update mediaLibraryStore to cache waveform data
+  - Generate waveform on media import (background task)
+  - Persist waveform data in project file (optional optimization)
+  - Handle waveform regeneration when needed
+  - Unit tests for waveform caching logic
+
+- Render waveform overlay on timeline clips (AC: #1, #3, #4)
+  - Update TimelineClip.tsx to render waveform using Konva shapes
+  - Calculate waveform rendering resolution based on clip width and zoom
+  - Draw waveform as semi-transparent overlay (distinct from video thumbnail)
+  - Use contrasting color (e.g., semi-transparent blue/green)
+  - Ensure waveform scales with timeline zoom level
+  - Add visual tests for waveform rendering
+
+- Handle waveform updates on clip operations (AC: #5)
+  - Update waveform display when clip trimmed (trim in/out points)
+  - Update waveform when clip split (show appropriate segment for each half)
+  - Recalculate visible waveform segment based on trim boundaries
+  - Ensure waveform stays synchronized with clip audio
+  - Integration tests for trim and split operations
+
+- Optimize waveform performance (AC: #6)
+  - Implement waveform data caching per media file
+  - Lazy-load waveform generation (only when clip added to timeline)
+  - Throttle waveform rendering during zoom/scroll operations
+  - Use downsampled waveform data for large audio files
+  - Profile waveform generation time (target: <2s for 5-minute video)
+  - Performance tests for waveform generation and rendering
+
+- Add comprehensive tests (AC: #1-6)
+  - Unit test: extractAudioFromVideo with test video files
+  - Unit test: generateWaveformData with sample audio buffers
+  - Unit test: waveform data caching logic
+  - Integration test: waveform appears on timeline clip after import
+  - Integration test: waveform updates on trim operation
+  - Integration test: waveform updates on split operation
+  - Visual test: waveform color distinct from video thumbnail
+  - Visual test: waveform scales correctly with zoom
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Timeline clips show audio waveform overlay (not just solid block)
+2. Waveform generated from audio track using FFmpeg or Web Audio API
+3. Waveform renders at appropriate resolution for zoom level
+4. Waveform color/style visually distinct from video thumbnail
+5. Waveform updates when clip trimmed or split
+6. Performance acceptable (waveform generation doesn't block UI)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Stack - Waveform Visualization</title>
+        <section>Technical Stack Decision Table (line 102)</section>
+        <snippet>Web Audio API chosen for waveform visualization - browser native, zero dependencies, integrates with canvas (Konva.js)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Project Structure - Waveform Module Location</title>
+        <section>Frontend Structure (lines 169-170)</section>
+        <snippet>Waveform module location: src/lib/waveform/ with waveformGenerator.ts for extracting waveform data from audio using Web Audio API</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>State Management Patterns - Zustand Store Structure</title>
+        <section>Zustand Patterns (lines 850-945)</section>
+        <snippet>Timeline and media stores use Zustand with devtools middleware. Clips tracked with millisecond timestamps, immutable updates via set() function. Optimized re-renders with selectors.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>ADR-005: Store Timeline Timestamps in Milliseconds</title>
+        <section>Architecture Decision Records (lines 1914-1932)</section>
+        <snippet>Always use milliseconds (u64 in Rust, number in TypeScript) for timeline timestamps. Convert to seconds only when calling MPV, FFmpeg, or Web Audio APIs. JavaScript Date uses milliseconds natively.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>FR005: Multi-Track Timeline Editor</title>
+        <section>Functional Requirements (lines 44-46)</section>
+        <snippet>System shall provide visual timeline with multiple tracks, time ruler, zoom/scroll capabilities. Support drag-drop clip arrangement, trimming, splitting, deletion, track movement, and snap-to-grid editing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>FR007: Audio Track Management</title>
+        <section>Functional Requirements (line 56)</section>
+        <snippet>System shall provide separate audio visualization, per-clip volume control, mute/unmute tracks, and audio fade in/out capabilities</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>NFR001: Performance</title>
+        <section>Non-Functional Requirements (lines 76-80)</section>
+        <snippet>Video playback shall maintain 30+ FPS for 1080p content with smooth timeline rendering. Screen recording at 30+ FPS. Video export near real-time. Launch under 3 seconds.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Story 3.8: Audio Waveform Visualization</title>
+        <section>Epic 3 Stories (lines 605-620)</section>
+        <snippet>Display audio waveforms as overlay on timeline clips. Generated from audio track using Web Audio API. Waveform renders at zoom-appropriate resolution, updates on trim/split, non-blocking generation.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/media.ts</path>
+        <kind>interface</kind>
+        <symbol>MediaFile</symbol>
+        <lines>14-41</lines>
+        <reason>Core interface to extend with waveformData field. Currently includes id, filePath, filename, duration, resolution, fileSize, codec, thumbnail, importedAt.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>interface</kind>
+        <symbol>Clip</symbol>
+        <lines>5-12</lines>
+        <reason>Timeline clip data structure with id, filePath, startTime, duration, trimIn, trimOut. Used by TimelineClip component for rendering.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/mediaLibraryStore.ts</path>
+        <kind>store</kind>
+        <symbol>MediaLibraryState</symbol>
+        <lines>4-22</lines>
+        <reason>Zustand store managing mediaFiles array. Methods: addMediaFile, removeMediaFile, getMediaFile, hasMediaFile, clearMediaFiles. Need to update to handle waveformData caching.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>1-80</lines>
+        <reason>Main timeline clip rendering component using Konva (Group, Rect, Text). Handles clip selection, trim handles, drag-drop. Need to add waveform overlay rendering here.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/timeUtils.ts</path>
+        <kind>utility</kind>
+        <symbol>timeUtils</symbol>
+        <lines>N/A</lines>
+        <reason>Timeline utility functions: calculateClipPosition, msToPixels, pixelsToMs, formatTimeSimple, snapToSecond. Useful for waveform positioning calculations.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/clipOperations.ts</path>
+        <kind>utility</kind>
+        <symbol>clipOperations</symbol>
+        <lines>N/A</lines>
+        <reason>Clip manipulation utilities for trim/split operations. Waveform needs to update when these operations occur.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/media.ts</path>
+        <kind>tauri-interface</kind>
+        <symbol>importMedia</symbol>
+        <lines>N/A</lines>
+        <reason>Tauri command interface for media import. May need extension to support reading file bytes for Web Audio API processing.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.test.tsx</path>
+        <kind>test</kind>
+        <symbol>TimelineClip tests</symbol>
+        <lines>1-50</lines>
+        <reason>Existing test patterns: Vitest + React Testing Library, mocked Konva components, useTimelineStore.setState for setup. Template for waveform rendering tests.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="konva" version="^9.3.22" />
+        <package name="react-konva" version="^19.2.0" />
+        <package name="zustand" version="^4" />
+        <package name="uuid" version="^13.0.0" />
+        <package name="@tauri-apps/api" version="^2" />
+        <package name="vitest" version="^2" />
+        <package name="@testing-library/react" version="^16" />
+        <package name="@testing-library/jest-dom" version="^6" />
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Timeline timestamps must always be in milliseconds (u64 in Rust, number in TypeScript) per ADR-005. Convert to seconds only for Web Audio API AudioContext.</constraint>
+    <constraint>Waveform generation must not block UI thread - use async processing with target &lt;2 seconds for 5-minute video (NFR001 performance requirement).</constraint>
+    <constraint>Timeline rendering must maintain 60 FPS for smooth interactions. Use Konva.js dirty region detection and avoid unnecessary re-renders.</constraint>
+    <constraint>Use Zustand state management patterns: immutable updates via set(), optimized selectors to prevent unnecessary re-renders.</constraint>
+    <constraint>Follow naming conventions: camelCase for functions (generateWaveform), PascalCase for interfaces (WaveformData), project-relative paths only.</constraint>
+    <constraint>Waveform overlay must be visually distinct from video thumbnail - use semi-transparent color (e.g., rgba(59, 130, 246, 0.6)).</constraint>
+    <constraint>Handle edge cases: videos without audio tracks (skip waveform, show "No Audio"), corrupted audio (catch errors, fallback gracefully), very long videos (&gt;1 hour, use lower sample count).</constraint>
+    <constraint>Test coverage required: unit tests for waveform extraction, integration tests for timeline rendering, visual tests for overlay appearance.</constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>WaveformData</name>
+      <kind>TypeScript interface</kind>
+      <signature>interface WaveformData { peaks: number[]; sampleRate: number; duration: number; channels: number; generatedAt: string; }</signature>
+      <path>src/types/media.ts (to be added)</path>
+    </interface>
+    <interface>
+      <name>MediaFile (extended)</name>
+      <kind>TypeScript interface</kind>
+      <signature>interface MediaFile { ...existing fields...; waveformData?: WaveformData; }</signature>
+      <path>src/types/media.ts (line 14-41, to extend)</path>
+    </interface>
+    <interface>
+      <name>generateWaveform</name>
+      <kind>function signature</kind>
+      <signature>async function generateWaveform(filePath: string, targetSamples?: number): Promise&lt;WaveformData&gt;</signature>
+      <path>src/lib/waveform/waveformGenerator.ts (to be created)</path>
+    </interface>
+    <interface>
+      <name>WaveformShape</name>
+      <kind>React component</kind>
+      <signature>function WaveformShape(props: { peaks: number[]; width: number; height: number; color: string }): JSX.Element</signature>
+      <path>src/components/timeline/WaveformShape.tsx (to be created)</path>
+    </interface>
+    <interface>
+      <name>Web Audio API - AudioContext</name>
+      <kind>Browser API</kind>
+      <signature>const audioContext = new AudioContext(); audioBuffer = await audioContext.decodeAudioData(arrayBuffer);</signature>
+      <path>Browser native API (Web Audio)</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Frontend testing uses Vitest with React Testing Library for unit and integration tests. Component tests mock Konva components using vi.mock('react-konva'). Store state is set up via useTimelineStore.setState() or useMediaLibraryStore.setState(). Tests follow describe/it/expect pattern with beforeEach for setup. E2E tests use Playwright in tests/e2e/ directory. Unit tests are co-located with source files (*.test.ts, *.test.tsx). Test coverage expected for: pure functions (waveform extraction logic), component rendering (waveform overlay appearance), integration (waveform updates on trim/split), and edge cases (no audio, corrupted files).
+    </standards>
+    <locations>
+      <location>src/lib/waveform/waveformGenerator.test.ts (unit tests for waveform generation)</location>
+      <location>src/components/timeline/WaveformShape.test.tsx (unit/visual tests for waveform rendering)</location>
+      <location>src/components/timeline/TimelineClip.test.tsx (integration tests for waveform overlay in clip)</location>
+      <location>src/stores/mediaLibraryStore.test.ts (unit tests for waveform caching in store)</location>
+      <location>tests/e2e/3.8-audio-waveform.spec.ts (E2E test for end-to-end waveform workflow)</location>
+    </locations>
+    <ideas>
+      <idea ac="2">Unit test: generateWaveform() extracts audio from video file and returns WaveformData with normalized peaks (0-1 range)</idea>
+      <idea ac="2">Unit test: extractPeaks() downsamples audio buffer to target number of samples (e.g., 500)</idea>
+      <idea ac="2">Unit test: Edge case - video without audio track returns null or throws handled error</idea>
+      <idea ac="2">Unit test: Edge case - corrupted audio file throws error caught gracefully</idea>
+      <idea ac="1,3">Integration test: Waveform overlay appears on TimelineClip after media file imported with waveformData</idea>
+      <idea ac="1,4">Visual test: Waveform rendered as semi-transparent overlay (distinct color from clip background)</idea>
+      <idea ac="3">Integration test: Waveform resolution scales with zoom level (more samples at higher zoom)</idea>
+      <idea ac="5">Integration test: Waveform updates when clip trimmed - shows only visible segment based on trimIn/trimOut</idea>
+      <idea ac="5">Integration test: Waveform updates when clip split - each resulting clip shows correct audio segment</idea>
+      <idea ac="6">Performance test: Waveform generation for 5-minute video completes in &lt;2 seconds</idea>
+      <idea ac="6">Performance test: Timeline rendering maintains 60 FPS with multiple clips showing waveforms</idea>
+      <idea ac="1-6">E2E test: Import video → waveform appears on timeline clip → trim clip → waveform updates → split clip → both clips show waveforms</idea>
+    </ideas>
+  </tests>
+</story-context>

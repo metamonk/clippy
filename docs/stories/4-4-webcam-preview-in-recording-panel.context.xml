@@ -1,0 +1,303 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>4</epicId>
+    <storyId>4</storyId>
+    <title>Webcam Preview in Recording Panel</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/4-4-webcam-preview-in-recording-panel.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>to see a live webcam preview before starting simultaneous recording</iWant>
+    <soThat>I can check framing and camera positioning</soThat>
+    <tasks>
+      <task id="1" acs="1,2,6">
+        <title>Implement Backend Camera Preview Commands</title>
+        <subtask id="1.1">Create cmd_start_camera_preview Tauri command in commands/recording.rs</subtask>
+        <subtask id="1.2">Implement frame capture loop with 30 FPS target</subtask>
+        <subtask id="1.3">Emit camera frames via Tauri events (camera-frame channel)</subtask>
+        <subtask id="1.4">Base64-encode RGB frames for event serialization</subtask>
+        <subtask id="1.5">Create cmd_stop_camera_preview Tauri command</subtask>
+        <subtask id="1.6">Handle cleanup of camera resources on stop</subtask>
+        <subtask id="1.7">Add unit tests for preview commands</subtask>
+      </task>
+      <task id="2" acs="1,5">
+        <title>Add Screen + Webcam Mode to RecordingPanel</title>
+        <subtask id="2.1">Add recording mode option: pip (picture-in-picture)</subtask>
+        <subtask id="2.2">Create UI toggle for Screen + Webcam mode</subtask>
+        <subtask id="2.3">Show webcam preview when pip mode selected</subtask>
+        <subtask id="2.4">Ensure preview persists during PiP configuration</subtask>
+        <subtask id="2.5">Update recording store with pip mode state</subtask>
+      </task>
+      <task id="3" acs="3">
+        <title>Camera Switching Support</title>
+        <subtask id="3.1">Stop preview when camera selection changes</subtask>
+        <subtask id="3.2">Restart preview with new camera index</subtask>
+        <subtask id="3.3">Handle camera switch errors gracefully</subtask>
+        <subtask id="3.4">Update WebcamPreview component to handle camera prop changes</subtask>
+        <subtask id="3.5">Add loading state during camera switch</subtask>
+      </task>
+      <task id="4" acs="4">
+        <title>Resolution and Aspect Ratio Display</title>
+        <subtask id="4.1">Query camera resolution from nokhwa service</subtask>
+        <subtask id="4.2">Display resolution info in preview UI (e.g., 1920x1080 @ 30fps)</subtask>
+        <subtask id="4.3">Ensure canvas aspect ratio matches camera resolution</subtask>
+        <subtask id="4.4">Add letterboxing or pillarboxing for aspect ratio correction</subtask>
+      </task>
+      <task id="5" acs="6">
+        <title>Preview Stop on Recording Start</title>
+        <subtask id="5.1">Add preview cleanup to handleStartRecording in RecordingPanel</subtask>
+        <subtask id="5.2">Stop preview automatically when recording begins</subtask>
+        <subtask id="5.3">Log resource conservation metrics (optional)</subtask>
+        <subtask id="5.4">Test preview stop/start cycle during multiple recordings</subtask>
+      </task>
+      <task id="6" acs="all">
+        <title>Integration Testing</title>
+        <subtask id="6.1">E2E test: Open recording panel → Select pip mode → Verify preview appears</subtask>
+        <subtask id="6.2">E2E test: Switch between cameras → Verify preview updates</subtask>
+        <subtask id="6.3">E2E test: Start recording → Verify preview stops</subtask>
+        <subtask id="6.4">E2E test: Stop recording → Restart preview → Verify works</subtask>
+        <subtask id="6.5">Integration test: Measure preview latency (&lt; 100ms target)</subtask>
+        <subtask id="6.6">Manual test: Verify aspect ratio correctness for multiple cameras</subtask>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="1">Recording panel shows webcam preview window when Screen + Webcam mode selected</criterion>
+    <criterion id="2">Preview updates in real-time (&lt; 100ms latency)</criterion>
+    <criterion id="3">Can switch between cameras if multiple available</criterion>
+    <criterion id="4">Preview shows same resolution/aspect ratio as will be recorded</criterion>
+    <criterion id="5">Preview remains visible while configuring PiP settings</criterion>
+    <criterion id="6">Preview stops when recording starts (to conserve resources)</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR003 - Webcam Recording</section>
+        <snippet>System shall access and record from system cameras with audio, provide preview before recording, and support camera selection when multiple cameras are available (line 39)</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR004 - PiP Recording</section>
+        <snippet>System shall record screen and webcam simultaneously in picture-in-picture (PiP) style with configurable position/size, independent audio tracks, and real-time preview (line 42)</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001 - Performance</section>
+        <snippet>Real-time video preview synchronization with timeline scrubbing. 30+ FPS recording target (lines 77, 137)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Camera Capture Technology</section>
+        <snippet>nokhwa 0.10.9 with input-avfoundation feature provides cross-platform webcam capture via AVFoundation backend for Epic 2 and Epic 4 (line 100)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Project Structure - Frontend Components</section>
+        <snippet>components/recording/RecordingPreview.tsx handles webcam preview rendering (line 138)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Project Structure - Backend Services</section>
+        <snippet>services/camera/nokhwa_wrapper.rs provides camera capture abstraction (lines 202-204)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Epic 4 Implementation</section>
+        <snippet>Advanced Recording & PiP requires multi-stream orchestration, frame synchronization, and FFmpeg PiP overlay filter (line 259)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Security - Permission Handling</section>
+        <snippet>check_camera_permission() verifies AVFoundation camera access (line 1613)</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Story 4.4 Definition</section>
+        <snippet>Webcam Preview in Recording Panel enables live camera preview before simultaneous recording with real-time updates and camera switching (lines 725-739)</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/2-7-basic-webcam-recording-setup.md</path>
+        <title>Story 2.7 - Basic Webcam Recording Setup</title>
+        <section>Webcam Preview Implementation</section>
+        <snippet>Task 3 implemented camera preview commands with event-based frame streaming and WebcamPreview component rendering (lines 36-41)</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>Epic 2 Technical Specification</title>
+        <section>Recording Foundation Overview</section>
+        <snippet>Real-time encoding during capture pattern uses bounded channels to prevent memory bloat. Foundation for Epic 4 advanced PiP composition (lines 11-15)</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/components/recording/WebcamPreview.tsx</path>
+        <kind>component</kind>
+        <symbol>WebcamPreview</symbol>
+        <lines>26-152</lines>
+        <reason>Existing webcam preview component that renders camera frames from event stream. Frontend is complete but backend commands are missing.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingPanel</symbol>
+        <lines>all</lines>
+        <reason>Main recording UI panel that needs pip mode toggle and integration with webcam preview.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/recordingStore.ts</path>
+        <kind>store</kind>
+        <symbol>useRecordingStore</symbol>
+        <lines>all</lines>
+        <reason>Zustand store managing recording state. Needs pip mode state addition.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/recording.ts</path>
+        <kind>api</kind>
+        <symbol>startCameraPreview, stopCameraPreview</symbol>
+        <lines>51-61</lines>
+        <reason>Frontend commands already defined but backend implementation is missing (deferred from Story 2.7).</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/recording.ts</path>
+        <kind>types</kind>
+        <symbol>RecordingMode, Camera</symbol>
+        <lines>8-22</lines>
+        <reason>Type definitions for recording modes including pip. Camera interface already defined.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>commands</kind>
+        <symbol>cmd_list_cameras</symbol>
+        <lines>all</lines>
+        <reason>Backend Tauri commands for recording. Need to ADD cmd_start_camera_preview and cmd_stop_camera_preview.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/camera/nokhwa_wrapper.rs</path>
+        <kind>service</kind>
+        <symbol>CameraService</symbol>
+        <lines>all</lines>
+        <reason>Camera service providing frame capture via nokhwa. Existing capture_frame() method will be used in preview loop.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/lib.rs</path>
+        <kind>module</kind>
+        <symbol>invoke_handler</symbol>
+        <lines>all</lines>
+        <reason>Tauri app builder registration. New preview commands must be registered here.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <package name="nokhwa" version="0.10.9" features="input-avfoundation">Camera capture via AVFoundation</package>
+        <package name="tokio" version="1.x">Async runtime for preview loop and event emission</package>
+        <package name="tauri" version="2.x">Tauri commands and event system for frame streaming</package>
+        <package name="base64" version="latest">Base64 encoding for RGB frame data serialization</package>
+      </rust>
+      <frontend>
+        <package name="@tauri-apps/api" version="2.x">Tauri invoke and event listening</package>
+        <package name="react" version="19.x">Component framework</package>
+        <package name="zustand" version="latest">State management for recording store</package>
+      </frontend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Preview commands must use spawn_blocking for Camera operations (nokhwa Camera is not Send-safe)</constraint>
+    <constraint>30 FPS target for preview matching recording frame rate (NFR001)</constraint>
+    <constraint>Base64 encoding required for RGB frame serialization over Tauri events (established pattern from Story 2.7)</constraint>
+    <constraint>Preview must stop when recording starts to conserve system resources (AC #6)</constraint>
+    <constraint>Camera permission must be checked before starting preview via check_camera_permission()</constraint>
+    <constraint>Frame streaming via Tauri event system using 'camera-frame' channel (established pattern)</constraint>
+    <constraint>Preview frames are ephemeral - no bounded channel buffering needed (unlike recording)</constraint>
+    <constraint>PiP mode ('pip') must be added to RecordingMode type in recording types</constraint>
+    <constraint>Recording panel must show preview when pip mode selected and hide in other modes</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>cmd_start_camera_preview</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_start_camera_preview(camera_index: usize) -> Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_stop_camera_preview</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_stop_camera_preview() -> Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>camera-frame event</name>
+      <kind>Tauri Event</kind>
+      <signature>{ data: string (base64), width: u32, height: u32 }</signature>
+      <path>Backend emits, WebcamPreview.tsx listens</path>
+    </interface>
+    <interface>
+      <name>startCameraPreview</name>
+      <kind>Frontend API</kind>
+      <signature>async function startCameraPreview(cameraIndex: number): Promise&lt;void&gt;</signature>
+      <path>src/lib/tauri/recording.ts:51-53</path>
+    </interface>
+    <interface>
+      <name>stopCameraPreview</name>
+      <kind>Frontend API</kind>
+      <signature>async function stopCameraPreview(): Promise&lt;void&gt;</signature>
+      <path>src/lib/tauri/recording.ts:59-61</path>
+    </interface>
+    <interface>
+      <name>RecordingMode</name>
+      <kind>TypeScript Type</kind>
+      <signature>type RecordingMode = 'screen' | 'webcam' | 'pip'</signature>
+      <path>src/types/recording.ts:22</path>
+    </interface>
+    <interface>
+      <name>CameraService::capture_frame</name>
+      <kind>Rust Method</kind>
+      <signature>pub fn capture_frame(&amp;mut self) -> Result&lt;Vec&lt;u8&gt;, CameraError&gt;</signature>
+      <path>src-tauri/src/services/camera/nokhwa_wrapper.rs</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Testing follows the project's comprehensive testing approach: Rust unit tests with #[cfg(test)] modules in implementation files, integration tests in tests/ directory for E2E scenarios, and frontend tests using Vitest with React Testing Library. Mock Tauri commands in frontend tests. Backend tests verify command behavior and service integration. E2E tests use Playwright/WebDriver for full user flows. All acceptance criteria must have corresponding test coverage.
+    </standards>
+    <locations>
+      <location>src-tauri/src/commands/recording.rs - Rust unit tests for preview commands</location>
+      <location>src/components/recording/RecordingPanel.test.tsx - Frontend component tests for pip mode</location>
+      <location>src/components/recording/WebcamPreview.test.tsx - Verify existing tests still pass</location>
+      <location>tests/e2e/4.4-webcam-preview.spec.ts - E2E tests for preview functionality</location>
+    </locations>
+    <ideas>
+      <test acs="1">Unit test: cmd_start_camera_preview creates preview handle and spawns frame capture loop</test>
+      <test acs="1">Integration test: RecordingPanel shows WebcamPreview when pip mode selected</test>
+      <test acs="2">E2E test: Measure frame latency from capture to canvas render (target &lt; 100ms)</test>
+      <test acs="2">Unit test: Preview loop targets 30 FPS with frame_duration calculation</test>
+      <test acs="3">E2E test: Switch camera via dropdown, verify preview restarts with new camera</test>
+      <test acs="3">Unit test: stopCameraPreview properly cleans up resources before restart</test>
+      <test acs="4">Unit test: camera-frame event payload includes correct width/height from camera resolution</test>
+      <test acs="4">Integration test: WebcamPreview canvas matches camera aspect ratio</test>
+      <test acs="5">E2E test: Select pip mode, configure PiP settings, verify preview remains active</test>
+      <test acs="5">Integration test: Preview persists when recordingStore pip settings change</test>
+      <test acs="6">Unit test: handleStartRecording calls stopCameraPreview before recording</test>
+      <test acs="6">E2E test: Start recording, verify preview canvas hidden and resources released</test>
+      <test>Unit test: cmd_stop_camera_preview handles case when no preview is running</test>
+      <test>Unit test: Preview loop handles CameraService errors gracefully and emits camera-error event</test>
+      <test>Integration test: RecordingPanel hides preview when switching from pip to screen/webcam mode</test>
+    </ideas>
+  </tests>
+</story-context>

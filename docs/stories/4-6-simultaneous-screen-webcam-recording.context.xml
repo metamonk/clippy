@@ -1,0 +1,257 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>4</epicId>
+    <storyId>6</storyId>
+    <title>Simultaneous Screen + Webcam Recording</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/4-6-simultaneous-screen-webcam-recording.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to record screen and webcam simultaneously with picture-in-picture</iWant>
+    <soThat>I can create tutorial videos with my face visible in one recording session</soThat>
+    <tasks>
+- **Task 1: Implement simultaneous capture initialization** (AC: #1, #2)
+  - Create orchestrator method for PiP recording mode
+  - Initialize ScreenCaptureKit for screen capture
+  - Initialize nokhwa camera for webcam capture
+  - Set up dual capture coordination in RecordingOrchestrator
+
+- **Task 2: Implement synchronous stream start** (AC: #3)
+  - Create synchronized start mechanism using tokio channels
+  - Implement timestamp validation (< 100ms variance check)
+  - Add startup synchronization tests
+
+- **Task 3: Implement FFmpeg PiP composition** (AC: #4, #5, #6)
+  - Create FFmpegCompositor service with overlay filter
+  - Configure two input pipes (screen: pipe:0, webcam: pipe:1)
+  - Apply PiP position/size from RecordingConfig
+  - Implement real-time frame streaming to FFmpeg
+  - Output single composited MP4 file
+
+- **Task 4: Implement frame synchronization** (AC: #7)
+  - Create FrameSynchronizer for timestamp-based frame matching
+  - Implement bounded channel buffers (30 frames = 1 second)
+  - Add frame drop detection and logging
+  - Implement backpressure to prevent memory bloat
+
+- **Task 5: Update RecordingPanel UI** (AC: #1)
+  - Add "Screen + Webcam" mode toggle/button
+  - Show both screen and webcam previews when mode selected
+  - Display PiP configuration options (from Story 4.5)
+  - Update recording status indicators for dual-stream mode
+
+- **Task 6: Testing and validation** (AC: #7)
+  - Test 30 FPS performance across 5+ minute recordings
+  - Verify frame drop rate < 1% under normal conditions
+  - Test various PiP positions and sizes
+  - Validate composited output plays correctly
+  - Test on both Apple Silicon and Intel Macs
+  - Add integration tests for dual-stream recording
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. "Screen + Webcam" recording mode triggers both captures simultaneously
+2. ScreenCaptureKit captures screen, AVFoundation captures webcam in parallel
+3. Both streams start synchronously (< 100ms variance)
+4. FFmpeg composites webcam over screen using overlay filter in real-time
+5. PiP position and size from configuration applied correctly
+6. Single MP4 output contains composited video
+7. Recording performance acceptable (30 FPS, no significant frame drops)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR004: Simultaneous Screen and Webcam Recording</section>
+        <snippet>System shall record screen and webcam simultaneously in picture-in-picture (PiP) style with configurable position/size, independent audio tracks, and real-time preview</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Pattern 1: Simultaneous Multi-Stream Recording with Real-Time PiP Composition</section>
+        <snippet>Capture screen and webcam simultaneously with configurable picture-in-picture overlay while recording 3 independent audio tracks. Uses RecordingOrchestrator, FrameSynchronizer, and FFmpegCompositor with 16ms sync tolerance.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Epic 4: Advanced Recording & PiP Composition</section>
+        <snippet>Transform basic recording capabilities into a professional recording suite with simultaneous multi-stream recording and real-time composition. Users can record screen and webcam simultaneously with configurable picture-in-picture layout.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Story 4.6: Simultaneous Screen + Webcam Recording</section>
+        <snippet>"Screen + Webcam" recording mode triggers both captures simultaneously. ScreenCaptureKit captures screen, AVFoundation captures webcam in parallel with &lt;100ms variance. FFmpeg composites webcam over screen using overlay filter in real-time.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/src/services/recording/orchestrator.rs</path>
+        <kind>service</kind>
+        <symbol>RecordingOrchestrator</symbol>
+        <lines>81-200</lines>
+        <reason>Coordinates parallel screen and webcam capture. Needs extension for PiP recording mode with dual-stream coordination</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/recording/frame_synchronizer.rs</path>
+        <kind>service</kind>
+        <symbol>FrameSynchronizer</symbol>
+        <lines>79-150</lines>
+        <reason>Aligns timestamps and buffers frames. Needs extension to handle dual video streams (screen + webcam) with 16ms sync tolerance</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+        <kind>service</kind>
+        <symbol>FFmpegEncoder</symbol>
+        <lines>46-300</lines>
+        <reason>Current single-stream encoder. Story 4.6 creates new FFmpegCompositor for dual-stream PiP composition using overlay filter</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+        <kind>service</kind>
+        <symbol>ScreenCapture</symbol>
+        <lines>1-400</lines>
+        <reason>ScreenCaptureKit wrapper for screen recording. Will be used in parallel with camera capture for PiP mode</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/camera/nokhwa_wrapper.rs</path>
+        <kind>service</kind>
+        <symbol>Camera</symbol>
+        <lines>1-300</lines>
+        <reason>Nokhwa camera wrapper for webcam capture. Will be coordinated with screen capture for simultaneous recording</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingPanel</symbol>
+        <lines>1-200</lines>
+        <reason>Recording UI. Needs "Screen + Webcam" mode option and PiP configuration display</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/recording.ts</path>
+        <kind>interface</kind>
+        <symbol>RecordingConfig</symbol>
+        <lines>62-100</lines>
+        <reason>Recording configuration interface. Needs extension for PiP mode settings (position, size)</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/recordingStore.ts</path>
+        <kind>store</kind>
+        <symbol>recordingStore</symbol>
+        <lines>1-300</lines>
+        <reason>Recording state management. Needs PiP recording state tracking</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <dep name="tokio" version="1.x" features="full">Async runtime for multi-stream coordination with mpsc channels</dep>
+        <dep name="ffmpeg-sidecar" version="2.1">FFmpeg CLI wrapper for PiP composition with overlay filter</dep>
+        <dep name="screencapturekit" version="0.3">macOS ScreenCaptureKit bindings for screen capture</dep>
+        <dep name="nokhwa" version="0.10" features="input-avfoundation">Cross-platform camera library with AVFoundation backend</dep>
+        <dep name="anyhow" version="1.x">Error handling for async recording operations</dep>
+        <dep name="serde" version="1.x" features="derive">Serialization for RecordingConfig and IPC</dep>
+        <dep name="tracing" version="0.1">Logging for frame drops and sync issues</dep>
+      </rust>
+      <node>
+        <dep name="react" version="^19.1.0">UI framework for RecordingPanel component</dep>
+        <dep name="zustand" version="^4">State management for recordingStore</dep>
+        <dep name="@tauri-apps/api" version="^2">Tauri IPC for cmd_start_pip_recording</dep>
+        <dep name="react-konva" version="^19.2.0">Canvas rendering for PiP preview overlay</dep>
+        <dep name="vitest" version="^2">Unit testing framework</dep>
+        <dep name="@playwright/test" version="^1.56.1">E2E testing for recording workflow</dep>
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Follow Novel Pattern 1 from architecture.md (lines 335-498): Simultaneous Multi-Stream Recording with Real-Time PiP Composition
+    - Use bounded channels (30 frames) for backpressure management per memory management pattern
+    - Frame synchronization must use 16ms tolerance for 60fps (architecture.md line 460)
+    - FFmpeg overlay filter syntax: [0:v][1:v]overlay=x={pip_x}:y={pip_y} (architecture.md line 400)
+    - Target frame drop rate &lt; 1% during 5+ minute recordings (story AC #7)
+    - Use ADR-001: ffmpeg-sidecar crate for CLI-based composition (architecture.md lines 1837-1860)
+    - Real-time encoding prevents unbounded memory growth - maximum buffer: ~240MB (30 frames × 8MB per 1080p BGRA)
+    - Target CPU usage &lt; 70% on M1 MacBook Pro (screen 10-15%, camera 5-10%, FFmpeg 30-40%)
+    - Testing: comprehensive unit tests for synchronization logic, integration tests for full recording flow
+    - Code pattern: Tokio async with mpsc::channel for multi-stream coordination
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>RecordingOrchestrator::start_pip_recording</name>
+      <kind>Rust method</kind>
+      <signature>pub async fn start_pip_recording(&amp;mut self, config: RecordingConfig) -> Result&lt;()&gt;</signature>
+      <path>src-tauri/src/services/recording/orchestrator.rs</path>
+    </interface>
+    <interface>
+      <name>FFmpegCompositor</name>
+      <kind>Rust struct (new)</kind>
+      <signature>pub struct FFmpegCompositor { screen_pipe: ChildStdin, camera_pipe: ChildStdin, process: Child }</signature>
+      <path>src-tauri/src/services/ffmpeg/compositor.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_start_pip_recording</name>
+      <kind>Tauri command</kind>
+      <signature>#[tauri::command] async fn cmd_start_pip_recording(config: RecordingConfig) -> Result&lt;String, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>RecordingConfig extension</name>
+      <kind>TypeScript interface</kind>
+      <signature>mode: RecordingMode ('screen' | 'webcam' | 'pip'), pipPosition?: { x: number, y: number }, pipSize?: { width: number, height: number }</signature>
+      <path>src/types/recording.ts</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Project uses Vitest for frontend unit tests with React Testing Library patterns, Playwright for E2E tests, and Rust #[cfg(test)] modules for backend unit tests. Frontend tests use explicit assertions with getByRole/getByTestId, avoid implementation details, and test user-facing behavior. Rust tests use tokio::test for async operations, comprehensive edge cases (long recordings, drift scenarios), and integration tests for full workflows. Test coverage targets: unit tests for all synchronization logic, integration tests for recording flow, E2E tests for user workflows.
+    </standards>
+    <locations>
+- Frontend unit tests: src/components/**/*.test.tsx, src/stores/**/*.test.ts, src/lib/**/*.test.ts
+- Rust unit tests: src-tauri/src/**/*.rs (#[cfg(test)] modules at file end)
+- E2E tests: tests/e2e/*.spec.ts
+- Specific to Story 4.6:
+  - src/components/recording/RecordingPanel.test.tsx (PiP mode UI)
+  - src/stores/recordingStore.test.ts (PiP state management)
+  - src-tauri/src/services/recording/orchestrator.rs (dual-stream coordination tests)
+  - src-tauri/src/services/recording/frame_synchronizer.rs (sync logic tests)
+  - src-tauri/src/services/ffmpeg/compositor.rs (FFmpeg composition tests)
+  - tests/e2e/4.6-pip-recording.spec.ts (full PiP workflow)
+    </locations>
+    <ideas>
+**Unit Tests (Rust):**
+- AC#3: Test synchronous start mechanism - verify both streams start within 100ms variance
+- AC#4: FFmpeg overlay filter command generation with correct PiP coordinates
+- AC#7: Frame synchronization logic with 16ms tolerance for 60fps
+- AC#7: Bounded channel backpressure (30 frames) prevents memory bloat
+- AC#7: Frame drop detection and logging under simulated load
+- Edge case: One stream fails to start - graceful error handling
+- Edge case: Streams drift beyond tolerance - discard out-of-sync frames
+
+**Unit Tests (Frontend):**
+- AC#1: "Screen + Webcam" mode toggle renders PiP configuration options
+- AC#1: RecordingPanel shows both screen preview and webcam preview in PiP mode
+- AC#5: PiP position/size from config applied to preview overlay
+- RecordingStore: PiP recording state transitions (idle → recording → stopped)
+- RecordingConfig validation: ensure PiP stays within screen bounds
+
+**Integration Tests (Rust):**
+- AC#1-7: Full PiP recording flow (start → dual capture → sync → compose → save)
+- AC#3: Multi-stream timing variance validation across 30-second recording
+- AC#6: Verify single MP4 output contains composited video with correct PiP overlay
+- AC#7: Performance test - maintain 30 FPS across 5+ minute recording with &lt;1% drops
+
+**E2E Tests (Playwright):**
+- AC#1: User selects "Screen + Webcam" mode, configures PiP, starts recording
+- AC#2-6: Record 30-second PiP video, verify composited output file exists
+- AC#7: Verify recording UI shows no frame drop warnings during 5-minute test
+- Manual test: Play back composited video to verify visual quality and synchronization
+    </ideas>
+  </tests>
+</story-context>

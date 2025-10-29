@@ -1,0 +1,347 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>3.9</storyId>
+    <title>Per-Clip Volume Control</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-9-per-clip-volume-control.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to adjust volume for individual clips</iWant>
+    <soThat>I can balance audio levels across my timeline</soThat>
+    <tasks>
+      - Task 1: Add volume property to Clip data model (AC: #1, #3, #4, #6)
+        - Subtask 1.1: Update `Clip` interface in `src/types/timeline.ts` to include `volume: number` (default 100)
+        - Subtask 1.2: Update Rust `Clip` struct in `src-tauri/src/models/timeline.rs` to include `volume: f32` field
+        - Subtask 1.3: Add mute boolean to both TypeScript and Rust models (`muted: boolean/bool`)
+        - Subtask 1.4: Update timelineStore actions to handle volume changes
+
+      - Task 2: Implement volume control UI component (AC: #1, #4, #5)
+        - Subtask 2.1: Create `ClipVolumeControl.tsx` component with volume slider (0-200%)
+        - Subtask 2.2: Add mute/unmute toggle button
+        - Subtask 2.3: Display current volume percentage in UI
+        - Subtask 2.4: Integrate volume control into clip properties panel or timeline clip UI
+        - Subtask 2.5: Add visual indicator on timeline clip (volume icon with percentage or color)
+
+      - Task 3: Apply volume during preview playback (AC: #2)
+        - Subtask 3.1: Research MPV volume control API for per-clip audio adjustment
+        - Subtask 3.2: Update `services/mpv_player.rs` to support volume adjustment commands
+        - Subtask 3.3: Add Tauri command `cmd_set_clip_volume(clip_id, volume)` in `commands/mpv.rs`
+        - Subtask 3.4: Update playerStore to apply clip volume when playback position changes
+        - Subtask 3.5: Handle volume crossfades between clips during playback
+
+      - Task 4: Apply volume during FFmpeg export (AC: #3, #6)
+        - Subtask 4.1: Update `services/ffmpeg/exporter.rs` to generate FFmpeg volume filter
+        - Subtask 4.2: Implement volume filter syntax: `-af "volume={volume_level}dB"` for each clip
+        - Subtask 4.3: Handle muted clips by setting volume to 0 or removing audio stream
+        - Subtask 4.4: Test multi-clip export with varying volume levels
+        - Subtask 4.5: Ensure volume filters don't conflict with existing audio processing
+
+      - Task 5: Add unit and integration tests (AC: #1-6)
+        - Subtask 5.1: Unit test: Clip model volume property defaults and serialization
+        - Subtask 5.2: Component test: ClipVolumeControl slider updates clip state
+        - Subtask 5.3: Integration test: Volume changes during preview playback
+        - Subtask 5.4: Integration test: Exported video contains correct volume levels
+        - Subtask 5.5: E2E test: Full workflow from volume adjustment to export
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. Volume slider for selected clip (0-200%, with 100% as default)
+    2. Volume adjustment applies during preview playback
+    3. Volume change persists through export
+    4. Visual indicator on clip shows volume level (icon or percentage)
+    5. Mute button for quick silence (0% volume)
+    6. Volume changes applied via FFmpeg filter during export
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Epic 3: Multi-Track Timeline & Editing Maturity</title>
+        <section>Module Mapping - Epic 3 Components (lines 232-237)</section>
+        <snippet>Epic 3 uses components/timeline/ (all components), stores/timelineStore (expanded), lib/timeline/, and lib/waveform/. Integration via Konva.js canvas rendering, Web Audio API waveform generation, and Zustand state updates.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>FFmpeg Integration - Volume Filter Patterns</title>
+        <section>Media Processing Dependencies (lines 265-273)</section>
+        <snippet>ffmpeg-sidecar 2.1.0 used for multi-track timeline export, audio extraction, and audio processing. FFmpeg downloaded at runtime (~100MB).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>State Management - Zustand Store Patterns</title>
+        <section>Zustand Store Structure (lines 850-945)</section>
+        <snippet>Zustand stores use immutable updates via set() function. Timeline state includes tracks array, clips with properties, and actions for clip manipulation. Optimized re-renders with selectors.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Timeline Data Consistency</title>
+        <section>Shared Type Definitions Rust/TypeScript (lines 978-1050)</section>
+        <snippet>Clip interface synchronized between Rust (models/timeline.rs) and TypeScript (types/timeline.ts). Serde converts snake_case to camelCase. Properties include id, file_path/filePath, trim_in/trimIn, trim_out/trimOut.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Story 3.9: Per-Clip Volume Control</title>
+        <section>Epic 3 Stories (Story 3.9)</section>
+        <snippet>Volume slider 0-200% with 100% default. Volume applies during preview playback and persists through export. Visual indicator on clip. Mute button for quick silence. Volume changes via FFmpeg filter during export.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>FFmpeg Audio Integration Patterns</title>
+        <section>Audio Capture and FFmpeg Muxing (AC 2.4.5)</section>
+        <snippet>FFmpeg muxes audio and video into single MP4 with multiple audio tracks. Audio streams synchronized with nanosecond timestamps. FFmpeg handles timestamp-based muxing with -async 1 flag.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>MPV Player Integration</title>
+        <section>Technical Stack Decision Table (line 100)</section>
+        <snippet>MPV (libmpv2 5.0.1) used for video playback. Supports universal codec support (H.264, HEVC, VP9, ProRes), event-based architecture, frame-accurate seeking. Version matches system MPV 0.40.0.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-8-audio-waveform-visualization.md</path>
+        <title>Related Story: Audio Waveform Visualization</title>
+        <section>Story 3.8 - Acceptance Criteria</section>
+        <snippet>Waveform visualization uses Web Audio API for generation. Waveform should reflect volume changes visually. Story 3.9 builds on this foundation.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>interface</kind>
+        <symbol>Clip</symbol>
+        <lines>5-12</lines>
+        <reason>Core Clip interface that needs volume and muted properties added. Currently has: id, filePath, startTime, duration, trimIn, trimOut</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/models/timeline.rs</path>
+        <kind>struct</kind>
+        <symbol>Clip</symbol>
+        <lines>7-25</lines>
+        <reason>Rust Clip struct that must mirror TypeScript interface. Needs volume: f32 and muted: bool fields added with serde camelCase serialization</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>TimelineState</symbol>
+        <lines>7-85</lines>
+        <reason>Zustand store managing timeline state. Needs new actions: setClipVolume(clipId, volume) and toggleClipMute(clipId)</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>1-400</lines>
+        <reason>Timeline clip visualization component. Needs visual volume indicator overlay (speaker icon with opacity/percentage)</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>PlayerStore</symbol>
+        <lines>1-200</lines>
+        <reason>Player state management. Needs to apply clip volume when playback position changes between clips</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+        <kind>service</kind>
+        <symbol>FFmpegExporter</symbol>
+        <lines>1-500</lines>
+        <reason>FFmpeg export service that generates export commands. Needs to generate volume filter for each clip: -af "volume={volume_linear}"</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/models/timeline.rs</path>
+        <kind>helper</kind>
+        <symbol>Timeline::ms_to_ffmpeg_time</symbol>
+        <lines>72-80</lines>
+        <reason>Utility for converting milliseconds to FFmpeg time format. Useful pattern for volume filter generation</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="zustand" version="^4" note="State management for timeline and player stores" />
+        <package name="konva" version="^9.3.22" note="Canvas rendering for timeline visualization" />
+        <package name="react-konva" version="^19.2.0" note="React wrapper for Konva" />
+        <package name="@radix-ui/react-slider" version="^1.3.6" note="Accessible slider component for volume control" />
+        <package name="lucide-react" version="^0.548.0" note="Icon library for volume indicators" />
+        <package name="uuid" version="^13.0.0" note="Clip ID generation" />
+        <package name="@tauri-apps/api" version="^2" note="Tauri frontend API" />
+      </frontend>
+      <backend>
+        <package name="tauri" version="2" />
+        <package name="serde" version="1" features="derive" note="Serialization for Clip struct" />
+        <package name="serde_json" version="1" />
+        <package name="ffmpeg-sidecar" version="2.1" note="FFmpeg CLI wrapper for export with volume filters" />
+        <package name="libmpv2" version="5.0" note="MPV player for preview playback with volume control" />
+        <package name="tokio" version="1" features="full" note="Async runtime" />
+        <package name="anyhow" version="1" note="Error handling" />
+        <package name="tracing" version="0.1" note="Logging" />
+      </backend>
+      <testing>
+        <package name="vitest" version="^2" note="Unit and integration tests" />
+        <package name="@testing-library/react" version="^16" note="Component testing" />
+        <package name="@playwright/test" version="^1.56.1" note="E2E testing" />
+      </testing>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Volume stored as numeric percentage (0-200) in timeline state, representing 0% to 200% of original volume
+    - Mute state stored as separate boolean flag for easy toggle without losing volume setting
+    - Volume changes trigger both UI updates and playback adjustments
+    - FFmpeg volume filter syntax: volume={volume_linear} where volume_linear = volume_percent / 100 (e.g., 1.5 for 150%, 0.5 for 50%)
+    - Muted clips handled by setting volume=0 in FFmpeg filter
+    - Timeline clip volume indicator must be visible but not clutter timeline (use speaker icon with opacity)
+    - Properties panel serves as primary volume adjustment interface, timeline indicator as quick visual reference
+    - All clip properties must stay synchronized between TypeScript (camelCase) and Rust (snake_case with serde rename)
+    - Follow existing Zustand immutable update patterns in timelineStore
+    - Follow existing Konva.js rendering patterns in TimelineClip component
+    - MPV player integration deferred to Task 3 (preview playback) - focus on data model and export first
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>Clip (Extended)</name>
+      <kind>TypeScript Interface</kind>
+      <signature>export interface Clip {
+  id: string;
+  filePath: string;
+  startTime: number;
+  duration: number;
+  trimIn: number;
+  trimOut: number;
+  volume: number;  // NEW: 0-200, default 100
+  muted: boolean;  // NEW: default false
+}</signature>
+      <path>src/types/timeline.ts</path>
+    </interface>
+    <interface>
+      <name>Clip (Extended Rust)</name>
+      <kind>Rust Struct</kind>
+      <signature>#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Clip {
+    pub id: String,
+    pub file_path: String,
+    pub start_time: u64,
+    pub duration: u64,
+    pub trim_in: u64,
+    pub trim_out: u64,
+    pub volume: f32,  // NEW: 0.0-200.0, default 100.0
+    pub muted: bool,  // NEW: default false
+}</signature>
+      <path>src-tauri/src/models/timeline.rs</path>
+    </interface>
+    <interface>
+      <name>TimelineState Actions</name>
+      <kind>Zustand Store Methods</kind>
+      <signature>setClipVolume: (clipId: string, volume: number) => void;
+toggleClipMute: (clipId: string) => void;</signature>
+      <path>src/stores/timelineStore.ts</path>
+    </interface>
+    <interface>
+      <name>FFmpeg Volume Filter</name>
+      <kind>FFmpeg Filter Syntax</kind>
+      <signature>// For individual clip audio processing:
+-af "volume={volume_linear}"
+// Where volume_linear = clip.volume / 100.0
+// Example: 150% volume = -af "volume=1.5"
+// Example: 50% volume = -af "volume=0.5"
+// Muted: -af "volume=0"</signature>
+      <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Frontend testing uses Vitest with React Testing Library for unit and component tests. Backend uses cargo test for Rust unit tests. E2E tests use Playwright for full user workflows. Test patterns follow existing conventions: describe/it blocks, beforeEach for state reset, expect assertions. Component tests use render() from @testing-library/react and userEvent for interactions. Store tests directly call actions and assert state changes. FFmpeg output verification requires FFprobe analysis. Test coverage targets: unit tests for all data model changes, component tests for UI elements, integration tests for store-component interactions, E2E test for full volume adjustment workflow.
+    </standards>
+    <locations>
+      <location>src/types/timeline.ts - Clip interface changes</location>
+      <location>src-tauri/src/models/timeline.rs - Rust Clip struct tests</location>
+      <location>src/stores/timelineStore.test.ts - Volume action tests</location>
+      <location>src/components/timeline/ClipVolumeControl.test.tsx - NEW component tests</location>
+      <location>src/components/timeline/TimelineClip.test.tsx - Visual indicator tests</location>
+      <location>src-tauri/src/services/ffmpeg/exporter.rs - Volume filter generation tests (cargo test)</location>
+      <location>tests/e2e/3.9-volume-control.spec.ts - NEW E2E workflow test</location>
+    </locations>
+    <ideas>
+      <test ac="1">
+        <id>3.9.T1</id>
+        <description>Unit test: Clip interface includes volume (default 100) and muted (default false) properties</description>
+        <type>Unit</type>
+        <location>src/types/timeline.ts</location>
+      </test>
+      <test ac="1,4">
+        <id>3.9.T2</id>
+        <description>Component test: ClipVolumeControl renders slider with 0-200 range, shows current percentage</description>
+        <type>Component</type>
+        <location>src/components/timeline/ClipVolumeControl.test.tsx</location>
+      </test>
+      <test ac="1">
+        <id>3.9.T3</id>
+        <description>Unit test: timelineStore.setClipVolume updates clip volume property (50, 100, 150, 200)</description>
+        <type>Unit</type>
+        <location>src/stores/timelineStore.test.ts</location>
+      </test>
+      <test ac="5">
+        <id>3.9.T4</id>
+        <description>Unit test: timelineStore.toggleClipMute toggles muted flag without changing volume value</description>
+        <type>Unit</type>
+        <location>src/stores/timelineStore.test.ts</location>
+      </test>
+      <test ac="4">
+        <id>3.9.T5</id>
+        <description>Component test: TimelineClip displays volume indicator (speaker icon) with visual feedback based on volume level</description>
+        <type>Component</type>
+        <location>src/components/timeline/TimelineClip.test.tsx</location>
+      </test>
+      <test ac="3,6">
+        <id>3.9.T6</id>
+        <description>Integration test (Rust): FFmpeg exporter generates correct volume filter syntax for clips with various volume levels (50%, 100%, 150%)</description>
+        <type>Unit (Rust)</type>
+        <location>src-tauri/src/services/ffmpeg/exporter.rs</location>
+      </test>
+      <test ac="3,6">
+        <id>3.9.T7</id>
+        <description>Integration test (Rust): FFmpeg exporter handles muted clips (volume=0 filter)</description>
+        <type>Unit (Rust)</type>
+        <location>src-tauri/src/services/ffmpeg/exporter.rs</location>
+      </test>
+      <test ac="3,6">
+        <id>3.9.T8</id>
+        <description>Integration test: Export video with multiple clips at different volumes, verify output with FFprobe audio levels</description>
+        <type>Integration</type>
+        <location>tests/integration/export-volume.test.ts</location>
+      </test>
+      <test ac="1,2,3,4,5,6">
+        <id>3.9.T9</id>
+        <description>E2E test: Full workflow - import video, add to timeline, adjust volume slider to 150%, mute/unmute, verify indicator, export, check output file</description>
+        <type>E2E</type>
+        <location>tests/e2e/3.9-volume-control.spec.ts</location>
+      </test>
+      <test ac="1">
+        <id>3.9.T10</id>
+        <description>Unit test (Rust): Clip struct serialization/deserialization includes volume and muted fields with correct camelCase</description>
+        <type>Unit (Rust)</type>
+        <location>src-tauri/src/models/timeline.rs</location>
+      </test>
+      <test ac="2">
+        <id>3.9.T11</id>
+        <description>Integration test: Volume changes during preview playback (playerStore applies clip volume when position changes) - DEFERRED to Task 3 implementation</description>
+        <type>Integration</type>
+        <location>src/stores/playerStore.test.ts</location>
+      </test>
+      <test ac="6">
+        <id>3.9.T12</id>
+        <description>Integration test: Edge cases - 0% volume, 200% volume, rapid volume changes don't break FFmpeg command generation</description>
+        <type>Integration</type>
+        <location>src-tauri/src/services/ffmpeg/exporter.rs</location>
+      </test>
+    </ideas>
+  </tests>
+</story-context>

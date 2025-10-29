@@ -1,0 +1,366 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>3</storyId>
+    <title>Drag Clips Between Tracks</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-3-drag-clips-between-tracks.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>to move clips between tracks by dragging</iWant>
+    <soThat>I can reorganize my composition easily</soThat>
+    <tasks>
+- Task 1: Implement inter-track clip dragging (AC: #1, #3)
+  - Update TimelineClip.tsx to handle vertical drag detection (Y-axis movement)
+  - Add track boundary detection based on mouse Y position
+  - Implement clip transfer logic: remove from source track, add to target track
+  - Preserve clip startTime when moving between tracks (no horizontal repositioning)
+  - Add collision detection for target track at clip's timeline position
+  - Test drag from Track 1 → Track 2 and Track 2 → Track 1
+
+- Task 2: Add visual drag feedback for track targeting (AC: #2)
+  - Implement track highlight/hover state when clip is dragged over it
+  - Show drop zone indicator (border, background color change, or shadow)
+  - Display "Cannot drop here" visual if target track has collision at that time
+  - Add cursor styles for drag states (grab, grabbing, not-allowed)
+  - Update TimelineTrack.tsx to render highlight when being targeted
+  - Test visual feedback with multiple tracks and edge cases
+
+- Task 3: Update preview compositing for track changes (AC: #4)
+  - Ensure playerStore reflects current track arrangement after move
+  - Trigger preview re-render when clip changes tracks
+  - Verify track layering order maintained (Track 2 overlays Track 1)
+  - Test playback during timeline mode to confirm composition updates
+  - Handle edge case: clip moved while playhead is over that clip
+
+- Task 4: Implement basic undo functionality for track moves (AC: #5)
+  - Add history state to timelineStore (store previous state snapshot)
+  - Implement undo() action that reverts to previous timeline state
+  - Add keyboard shortcut for undo (Cmd+Z / Ctrl+Z)
+  - Limit history depth to last 10 actions (memory management)
+  - Update all clip modification actions to record history
+  - Test undo after: clip move, clip add, clip delete, clip reposition
+
+- Task 5: Add comprehensive tests for inter-track dragging (AC: #1-5)
+  - Unit test: moveClipToTrack(clipId, targetTrackId) action
+  - Unit test: Undo state management (history push/pop)
+  - Integration test: Drag clip from Track 1 → Track 2, verify clip on Track 2
+  - Integration test: Drag clip to track with collision, verify rejection
+  - Integration test: Undo clip move, verify clip returns to original track
+  - Visual/E2E test: Verify track highlight appears during drag over
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Can drag clip from one track to another track
+2. Visual feedback shows target track while dragging
+3. Clip maintains its timeline position when moved between tracks
+4. Preview updates to reflect new track arrangement
+5. Undo capability for track moves (basic - can be simple state revert)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR005: Multi-Track Timeline Editor</section>
+        <snippet>System shall provide visual timeline with playhead, multiple tracks (minimum 2, expandable to 4+), time ruler, zoom/scroll capabilities. System shall support drag-drop clip arrangement, trimming, splitting, deletion, track movement, and snap-to-grid editing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Konva.js Canvas-Based Timeline</section>
+        <snippet>Konva.js selected for canvas-based timeline rendering with 60 FPS target performance. React-konva wrapper provides React integration for interactive drag-and-drop clip manipulation.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Zustand State Management Patterns (lines 850-945)</section>
+        <snippet>Zustand provides immutable state updates with optimized re-renders via selectors. Actions modify state immutably. Devtools enabled for debugging. Timeline store manages tracks, clips, playhead position, and selection state.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>ADR-005: Store Timeline Timestamps in Milliseconds (lines 1914-1932)</section>
+        <snippet>Always use milliseconds (u64 in Rust, number in TypeScript) for consistent time unit across video APIs, FFmpeg, and Web Audio. Single source of truth with easy conversion to other units.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Epic 3: Multi-Track Timeline & Editing Maturity (lines 154-158)</section>
+        <snippet>Expand timeline to support multiple tracks, enhanced clip manipulation, and audio track management. Delivers professional multi-track editing with drag-drop arrangement and split/delete operations.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Story 3.3: Drag Clips Between Tracks (lines 516-530)</section>
+        <snippet>User story and acceptance criteria for inter-track clip dragging. Prerequisites: Story 3.2 complete.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-1-multi-track-timeline-foundation.md</path>
+        <title>Story 3.1: Multi-Track Timeline Foundation</title>
+        <section>Full Story</section>
+        <snippet>Establishes multi-track data model with Track interface including track number, type, and clip arrays. Implements track layering order (Track 2 overlays Track 1).</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-2-multiple-clips-per-track-with-sequencing.md</path>
+        <title>Story 3.2: Multiple Clips Per Track with Sequencing</title>
+        <section>Full Story</section>
+        <snippet>Implements multi-clip sequencing with collision detection, gap detection, and manual clip positioning. Provides foundation for Story 3.3 inter-track dragging.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>interface</kind>
+        <symbol>Clip</symbol>
+        <lines>5-12</lines>
+        <reason>Core Clip interface defining id, filePath, startTime, duration, trimIn, trimOut. startTime MUST remain unchanged when moving between tracks (AC #3).</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>interface</kind>
+        <symbol>Track</symbol>
+        <lines>14-21</lines>
+        <reason>Track interface with clips array, trackNumber for layering, and trackType. Clips organized per track.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>TimelineState</symbol>
+        <lines>7-58</lines>
+        <reason>Zustand store interface with existing actions: addClip, removeClip, updateClip, moveClip (horizontal repositioning only). Need to ADD: moveClipToTrack, undo, recordHistory for inter-track dragging and undo functionality.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>method</kind>
+        <symbol>moveClip</symbol>
+        <lines>385-452</lines>
+        <reason>Existing horizontal clip repositioning logic with validation via validateClipPosition. Pattern to follow for inter-track move with collision detection.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>all</lines>
+        <reason>Clip visualization component with Konva.js drag handlers. Currently handles horizontal (X-axis) dragging. Need to ADD: vertical (Y-axis) drag detection for inter-track movement.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineTrack.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineTrack</symbol>
+        <lines>all</lines>
+        <reason>Track rendering component. Need to ADD: hover state and drop zone visual feedback when clip dragged over track.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/clipOperations.ts</path>
+        <kind>utility</kind>
+        <symbol>validateClipPosition</symbol>
+        <lines>various</lines>
+        <reason>Collision detection utilities (validateClipPosition, detectClipOverlap, detectGaps) used in Story 3.2. Reuse for inter-track collision checking.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>PlayerStore</symbol>
+        <lines>all</lines>
+        <reason>Playback state management. Needs to reflect track arrangement changes for proper compositing (AC #4).</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package>react</package>
+        <version>^19.1.0</version>
+        <usage>Core UI framework</usage>
+      </node>
+      <node>
+        <package>react-konva</package>
+        <version>^19.2.0</version>
+        <usage>React wrapper for Konva.js canvas library - provides drag-and-drop event handling for timeline clips</usage>
+      </node>
+      <node>
+        <package>konva</package>
+        <version>^9.3.22</version>
+        <usage>Canvas-based rendering engine for interactive timeline - handles drag events with X/Y position tracking</usage>
+      </node>
+      <node>
+        <package>zustand</package>
+        <version>^4</version>
+        <usage>State management for timeline store - immutable updates with devtools support</usage>
+      </node>
+      <node>
+        <package>uuid</package>
+        <version>^13.0.0</version>
+        <usage>Generate unique IDs for clips and tracks</usage>
+      </node>
+      <node>
+        <package>typescript</package>
+        <version>~5.8.3</version>
+        <usage>Type safety for clip/track interfaces and store actions</usage>
+      </node>
+      <node>
+        <package>vitest</package>
+        <version>^2</version>
+        <usage>Testing framework for unit and integration tests</usage>
+      </node>
+      <node>
+        <package>@testing-library/react</package>
+        <version>^16</version>
+        <usage>React component testing utilities</usage>
+      </node>
+      <rust>
+        <package>tauri</package>
+        <version>2</version>
+        <usage>Cross-platform desktop app framework</usage>
+      </rust>
+      <rust>
+        <package>serde</package>
+        <version>1</version>
+        <usage>Serialization for IPC communication</usage>
+      </rust>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Timeline timestamps always in MILLISECONDS (ADR-005). No conversion needed for internal operations.</constraint>
+    <constraint>Zustand immutable state updates required. Use set() with state mapping, never mutate directly.</constraint>
+    <constraint>Konva.js drag events provide both X and Y positions. Use Y-axis to detect target track via Math.floor(mouseY / TRACK_HEIGHT).</constraint>
+    <constraint>Clip startTime MUST remain unchanged when moving between tracks (preserve timeline position).</constraint>
+    <constraint>Collision detection REQUIRED before allowing inter-track move. Reject move if target track has overlapping clip at same timeline position.</constraint>
+    <constraint>History recording MUST occur before state-modifying actions for undo capability.</constraint>
+    <constraint>Track layering order: Track 1 = bottom layer, Track 2+ = overlay layers. Maintain this during moves.</constraint>
+    <constraint>Keyboard shortcut: Cmd+Z (macOS) / Ctrl+Z (fallback) for undo (PRD FR012).</constraint>
+    <constraint>Clips maintained in sorted order by startTime within each track.</constraint>
+    <constraint>Maximum history depth: 10 states for memory management.</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>TimelineState (NEW ACTIONS TO ADD)</name>
+      <kind>Zustand store interface extension</kind>
+      <signature>
+moveClipToTrack: (clipId: string, targetTrackId: string) => boolean;
+undo: () => void;
+recordHistory: (state: TimelineState) => void;
+history: TimelineState[];
+historyIndex: number;
+      </signature>
+      <path>src/stores/timelineStore.ts</path>
+    </interface>
+    <interface>
+      <name>Konva.js Drag Event Handler Pattern</name>
+      <kind>Event handler</kind>
+      <signature>
+handleDragMove(e: KonvaEventObject&lt;DragEvent&gt;): void {
+  const mouseY = e.target.getStage()?.getPointerPosition()?.y ?? 0;
+  const targetTrackIndex = Math.floor(mouseY / TRACK_HEIGHT);
+  // Update hover state for visual feedback
+}
+
+handleDragEnd(e: KonvaEventObject&lt;DragEvent&gt;): void {
+  const mouseY = e.target.getStage()?.getPointerPosition()?.y ?? 0;
+  const targetTrackIndex = Math.floor(mouseY / TRACK_HEIGHT);
+  // Call moveClipToTrack or moveClip based on vertical vs horizontal drag
+}
+      </signature>
+      <path>src/components/timeline/TimelineClip.tsx</path>
+    </interface>
+    <interface>
+      <name>Keyboard Event Handler for Undo</name>
+      <kind>Keyboard shortcut</kind>
+      <signature>
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) &amp;&amp; e.key === 'z') {
+      e.preventDefault();
+      undo();
+    }
+  };
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [undo]);
+      </signature>
+      <path>src/components/timeline/Timeline.tsx or dedicated hook</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Testing Framework: Vitest + React Testing Library for frontend unit/integration tests. Playwright for E2E tests.
+
+Unit Test Pattern (from architecture.md lines 1169-1213):
+- Use describe/it blocks with clear test names
+- beforeEach to reset store state to known initial conditions
+- Import from 'vitest': describe, it, expect, beforeEach
+- Test Zustand stores via getState() and setState() methods
+- Mock Tauri commands when testing components that invoke backend
+
+Integration Test Pattern (from existing tests):
+- Test interactions between store actions and components
+- Use @testing-library/react render() and fireEvent
+- Validate state changes propagate correctly
+- Test edge cases: empty states, collisions, boundary conditions
+
+Test Helpers (from clipOperations.test.ts):
+- Create test fixtures: createClip(id, startTime, duration, trimIn, trimOut)
+- Create test tracks: createTrack(clips)
+- Reuse helpers across test suites for consistency
+
+Validation Standards:
+- All store actions have corresponding unit tests
+- Collision detection validated with multiple scenarios
+- Undo/redo history tested with sequential operations
+- Component drag handlers tested with mock Konva events
+    </standards>
+    <locations>
+- Unit tests: src/stores/timelineStore.test.ts
+- Component tests: src/components/timeline/TimelineClip.test.tsx, src/components/timeline/TimelineTrack.test.tsx
+- Utility tests: src/lib/timeline/clipOperations.test.ts
+- E2E tests: tests/e2e/ (Playwright specs)
+    </locations>
+    <ideas>
+AC #1 (Can drag clip from one track to another):
+- Unit test: moveClipToTrack(clipId, targetTrackId) - verify clip removed from source track and added to target track
+- Unit test: moveClipToTrack with invalid clipId - verify returns false/no-op
+- Unit test: moveClipToTrack with invalid targetTrackId - verify returns false/no-op
+- Integration test: Drag clip from Track 1 → Track 2, verify clip appears in Track 2 with same startTime
+
+AC #2 (Visual feedback shows target track):
+- Component test: TimelineTrack renders with hover state when isHovered=true
+- Component test: Drop zone indicator displays when canDrop=true
+- Component test: "Cannot drop here" indicator displays when canDrop=false and isHovered=true
+- Visual test: Mock drag event over Track 2, verify track highlight renders
+
+AC #3 (Clip maintains timeline position):
+- Unit test: moveClipToTrack preserves clip.startTime before and after move
+- Unit test: Verify clip at startTime=5000ms on Track 1 moves to Track 2 at startTime=5000ms
+
+AC #4 (Preview updates to reflect new track arrangement):
+- Integration test: After moveClipToTrack, verify playerStore reflects updated track arrangement
+- Integration test: Move clip while playhead over clip position, verify playback updates correctly
+
+AC #5 (Undo capability):
+- Unit test: recordHistory() adds state snapshot to history array
+- Unit test: undo() reverts to previous state from history
+- Unit test: Multiple sequential operations, then undo restores previous state
+- Unit test: undo() when historyIndex=0 - verify no-op (cannot undo past initial state)
+- Unit test: History depth capped at 10 - verify oldest state removed when exceeding limit
+- Integration test: moveClipToTrack → undo → verify clip returns to original track
+- Integration test: Keyboard shortcut Cmd+Z triggers undo action
+
+Collision Detection:
+- Unit test: moveClipToTrack with collision on target track - verify returns false, move rejected
+- Unit test: Clip at 0-5000ms on Track 1, existing clip at 2000-7000ms on Track 2 - verify collision detected
+- Unit test: Clip at 0-5000ms on Track 1, existing clip at 5000-10000ms on Track 2 - verify NO collision (end-to-end)
+- Unit test: Reuse validateClipPosition from clipOperations.ts for collision checking
+
+Edge Cases:
+- Unit test: Drag clip to same track (no-op, should maintain existing moveClip behavior)
+- Unit test: Move clip while history is at max depth - verify oldest history entry removed
+- Unit test: Sequential undo operations maintain correct historyIndex
+    </ideas>
+  </tests>
+</story-context>

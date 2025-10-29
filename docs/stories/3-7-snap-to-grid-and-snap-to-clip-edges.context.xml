@@ -1,0 +1,290 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>7</storyId>
+    <title>Snap-to-Grid and Snap-to-Clip Edges</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-7-snap-to-grid-and-snap-to-grid-and-snap-to-clip-edges.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>clips to snap to grid lines and other clip edges</iWant>
+    <soThat>I can align clips precisely without pixel-perfect manual positioning</soThat>
+    <tasks>
+- Implement snap toggle UI control (AC: #1)
+  - Add snap toggle button to timeline toolbar
+  - Store snap enabled state in timelineStore
+  - Add keyboard shortcut for toggling snap (e.g., Cmd+Shift+S)
+  - Visual indicator when snap is enabled
+  - Update tests for snap toggle state
+
+- Implement grid-based snapping logic (AC: #2, #5)
+  - Calculate grid intervals based on timeline zoom level
+  - Add snapToGrid utility function with configurable threshold
+  - Default snap threshold: 100ms (3-4 pixels at typical zoom)
+  - During clip drag, calculate nearest grid line
+  - Apply snap when within threshold distance
+  - Unit tests for snapToGrid calculation
+
+- Implement clip edge snapping logic (AC: #3, #5, #6)
+  - Add snapToClipEdges utility function
+  - Find all clip boundaries on same track and adjacent tracks
+  - Calculate distance to each boundary (start and end times)
+  - Prioritize closest snap target within threshold
+  - Snap to clip edges before grid lines (higher priority)
+  - Handle multi-track snapping (Track 1 ↔ Track 2)
+  - Unit tests for clip edge detection and snapping
+
+- Add visual snap indicators (AC: #4)
+  - Render vertical snap line when snap occurs
+  - Distinct color for grid snap vs clip edge snap
+  - Show snap line across all tracks (full timeline height)
+  - Hide snap line when not actively snapping
+  - Ensure snap line renders above clips (z-index)
+  - Test snap line visibility during drag operations
+
+- Integrate snapping into clip drag handlers (AC: #1-6)
+  - Update TimelineClip.tsx drag logic to apply snapping
+  - Update MainLayout.tsx drop logic to apply snapping
+  - Only apply snap when snap toggle enabled
+  - Preserve original position if snap disabled
+  - Smooth drag experience (no stuttering)
+  - Test drag-drop with snap enabled/disabled
+
+- Add snap configuration and preferences (AC: #5)
+  - Add snap threshold setting to timelineStore
+  - Default threshold: 100ms
+  - Allow user configuration (future: settings panel)
+  - Store snap preference in project state
+  - Document snap behavior in user-facing tooltips
+
+- Add comprehensive tests for snapping (AC: #1-6)
+  - Unit test: snapToGrid with various thresholds
+  - Unit test: snapToClipEdges on same track
+  - Unit test: snapToClipEdges between tracks
+  - Unit test: snap priority (clip edge > grid)
+  - Integration test: drag clip with snap enabled, verify position
+  - Integration test: toggle snap on/off during session
+  - Visual test: snap line appears at correct position
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Toggle button enables/disables snapping
+2. When enabled, dragging clips snaps to time ruler gridlines
+3. Clips snap to edges of adjacent clips (for seamless sequencing)
+4. Visual snap indicator (highlight or line) shows when snap occurs
+5. Snap threshold configurable or reasonable default (e.g., 100ms)
+6. Snapping works on both single track and between tracks
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <artifact>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR005: Multi-Track Timeline Editor</section>
+        <snippet>System shall provide visual timeline with playhead, multiple tracks, time ruler, zoom/scroll capabilities. System shall support drag-drop clip arrangement, trimming, splitting at playhead, deletion, track movement, and snap-to-grid editing.</snippet>
+      </artifact>
+      <artifact>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Video playback shall maintain 30+ FPS for 1080p content with smooth timeline rendering. Timeline rendering target: 60 FPS UI interactions.</snippet>
+      </artifact>
+      <artifact>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>State Management Patterns (Zustand)</section>
+        <snippet>Zustand immutable state updates with selectors. Actions modify state immutably. Use selectors to subscribe to specific state slices. Enable devtools for debugging. Timeline store manages tracks, clips, playhead position with actions like addClip, removeClip, updateClip.</snippet>
+      </artifact>
+      <artifact>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>ADR-005: Store Timeline Timestamps in Milliseconds</section>
+        <snippet>Always use milliseconds (u64 in Rust, number in TypeScript). Single source of truth for time units. Millisecond precision sufficient for video editing (frame-level at 60fps = 16ms).</snippet>
+      </artifact>
+      <artifact>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Timeline Data Consistency</section>
+        <snippet>Shared type definitions between Rust and TypeScript. Time units ALWAYS in milliseconds (never seconds or frames). IDs ALWAYS UUIDs (string type). Konva.js dirty region detection for 60 FPS rendering.</snippet>
+      </artifact>
+      <artifact>
+        <path>docs/stories/3-6-timeline-zoom-and-precision-editing.md</path>
+        <title>Story 3.6: Timeline Zoom and Precision Editing</title>
+        <section>Architecture Context</section>
+        <snippet>Zoom functionality implemented with variable grid density. Timeline ruler shows appropriate time intervals based on zoom level. Konva.js canvas rendering at 60 FPS target. Zustand state management with immutable updates.</snippet>
+      </artifact>
+      <artifact>
+        <path>docs/stories/3-2-multiple-clips-per-track-with-sequencing.md</path>
+        <title>Story 3.2: Multiple Clips Per Track with Sequencing</title>
+        <section>Dev Notes - Architecture Context</section>
+        <snippet>Multi-clip positioning patterns established. Konva.js rendering works well with dynamic elements. Keep drag logic modular and testable. Use memoization for expensive calculations. Separate logic from rendering.</snippet>
+      </artifact>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>state-store</kind>
+        <symbol>TimelineState</symbol>
+        <lines>7-61</lines>
+        <reason>Core timeline store interface - needs snap state (snapEnabled, snapThreshold) and potentially toggleSnap action</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>Clip, Track, Timeline, TimelineViewConfig</symbol>
+        <lines>6-56</lines>
+        <reason>Core type definitions for timeline data. TIMELINE_DEFAULTS already has SNAP_THRESHOLD: 5 pixels. Need to add SnapTarget interface.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>31-234</lines>
+        <reason>Implements clip drag repositioning with repositionDragRef. Needs snap logic integration in handleMouseMove during clip drag.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/Timeline.tsx</path>
+        <kind>component</kind>
+        <symbol>Timeline</symbol>
+        <lines>N/A</lines>
+        <reason>Main timeline component - needs to render snap indicator line when snapping occurs</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/layout/MainLayout.tsx</path>
+        <kind>component</kind>
+        <symbol>MainLayout</symbol>
+        <lines>N/A</lines>
+        <reason>Handles drop events from media library to timeline - needs snap logic integration on drop</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/clipOperations.ts</path>
+        <kind>utility</kind>
+        <symbol>calculateSequentialPosition, detectGaps, findClipAtTime</symbol>
+        <lines>N/A</lines>
+        <reason>Existing timeline utility functions. New snapUtils.ts should follow similar patterns for snap calculations.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <npm>
+        <package name="react" version="^19.1.0">Core UI framework</package>
+        <package name="react-dom" version="^19.1.0">React DOM rendering</package>
+        <package name="typescript" version="~5.8.3">Type safety</package>
+        <package name="konva" version="^9.3.22">Canvas rendering engine</package>
+        <package name="react-konva" version="^19.2.0">React wrapper for Konva.js</package>
+        <package name="zustand" version="^4">State management (timelineStore)</package>
+        <package name="lucide-react" version="^0.548.0">Icons (magnet icon for snap toggle)</package>
+        <package name="tailwindcss" version="^3">Styling framework</package>
+        <package name="vitest" version="^2">Unit testing framework</package>
+        <package name="@testing-library/react" version="^16">React component testing</package>
+        <package name="@playwright/test" version="^1.56.1">E2E testing (optional for snap tests)</package>
+      </npm>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - All timestamps MUST be in milliseconds (ADR-005, architecture.md lines 1914-1932)
+    - Timeline rendering MUST target 60 FPS for smooth UI interactions (PRD NFR001)
+    - Zustand store updates MUST be immutable (architecture.md lines 850-945)
+    - Snap calculations MUST NOT cause drag stuttering or performance degradation
+    - SnapTarget detection MUST check all tracks (multi-track snapping, AC #6)
+    - Clip edges MUST have higher snap priority than grid lines (Dev Notes)
+    - Default snap threshold: 100ms (configurable, AC #5)
+    - Use existing clipOperations.ts patterns for new snapUtils.ts module
+    - Follow camelCase naming for TypeScript functions and interfaces
+    - All clip IDs MUST be UUIDs (string type)
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>SnapTarget</name>
+      <kind>TypeScript interface</kind>
+      <signature>interface SnapTarget { position: number; type: 'grid' | 'clip-start' | 'clip-end'; trackId?: string; clipId?: string; }</signature>
+      <path>src/types/timeline.ts (to be added)</path>
+    </interface>
+    <interface>
+      <name>TimelineState.toggleSnap</name>
+      <kind>Zustand action</kind>
+      <signature>toggleSnap: () => void</signature>
+      <path>src/stores/timelineStore.ts (to be added)</path>
+    </interface>
+    <interface>
+      <name>TimelineState.setSnapThreshold</name>
+      <kind>Zustand action</kind>
+      <signature>setSnapThreshold: (threshold: number) => void</signature>
+      <path>src/stores/timelineStore.ts (to be added)</path>
+    </interface>
+    <interface>
+      <name>findSnapTargets</name>
+      <kind>Utility function</kind>
+      <signature>findSnapTargets(timeline: Timeline, excludeClipId: string, zoom: number): SnapTarget[]</signature>
+      <path>src/lib/timeline/snapUtils.ts (to be created)</path>
+    </interface>
+    <interface>
+      <name>applySnap</name>
+      <kind>Utility function</kind>
+      <signature>applySnap(targetPosition: number, snapTargets: SnapTarget[], threshold: number, snapEnabled: boolean): { snappedPosition: number; snapIndicator: SnapTarget | null }</signature>
+      <path>src/lib/timeline/snapUtils.ts (to be created)</path>
+    </interface>
+    <interface>
+      <name>calculateGridInterval</name>
+      <kind>Utility function</kind>
+      <signature>calculateGridInterval(zoomLevel: number): number</signature>
+      <path>src/lib/timeline/snapUtils.ts (to be created)</path>
+    </interface>
+    <interface>
+      <name>TimelineClip repositionDragRef</name>
+      <kind>React ref (drag state)</kind>
+      <signature>repositionDragRef.current = { isDragging: boolean; startX: number; startY: number; originalStartTime: number; }</signature>
+      <path>src/components/timeline/TimelineClip.tsx (existing, lines 68-77)</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Testing framework: Vitest with @testing-library/react for component tests. Unit tests for pure functions (utilities) use describe/it/expect pattern. Helper functions (createClip, createTrack) create test data. Store tests use beforeEach to reset state. Integration tests verify component behavior. E2E tests use Playwright (optional, in tests/e2e/). All timeline tests use milliseconds for time values. Test files colocated with source (*.test.ts, *.test.tsx).
+    </standards>
+    <locations>
+src/lib/timeline/*.test.ts - Timeline utility tests
+src/stores/*.test.ts - Store tests
+src/components/timeline/*.test.tsx - Timeline component tests
+tests/e2e/*.spec.ts - E2E tests (optional)
+    </locations>
+    <ideas>
+<!-- Unit Tests for snapUtils.ts (AC #1-6) -->
+- snapToGrid: Returns correct grid position when within threshold
+- snapToGrid: Returns original position when outside threshold
+- snapToGrid: Handles edge case at timeline start (position 0)
+- findSnapTargets: Returns all clip start/end positions from all tracks
+- findSnapTargets: Excludes current clip from snap targets
+- findSnapTargets: Generates grid targets based on zoom level
+- applySnap: Prioritizes clip edges over grid lines
+- applySnap: Returns null snapIndicator when snap disabled
+- applySnap: Snaps to closest target within threshold
+- calculateGridInterval: Returns appropriate interval for zoom level
+
+<!-- Store Tests (AC #1) -->
+- toggleSnap: Toggles snapEnabled state true/false
+- setSnapThreshold: Updates snapThreshold value
+- snapEnabled defaults to false (or true based on UX decision)
+- snapThreshold defaults to 100ms
+
+<!-- Integration Tests (AC #2-6) -->
+- TimelineClip: Drag clip with snap enabled, position snaps to grid
+- TimelineClip: Drag clip with snap disabled, no snapping occurs
+- TimelineClip: Drag clip near another clip edge, snaps to clip edge
+- Timeline: Renders snap indicator line when snap occurs
+- Timeline: Snap indicator disappears after drag ends
+- Timeline: Snap works across multiple tracks (AC #6)
+
+<!-- Visual/E2E Tests (AC #4) -->
+- Toggle snap button changes visual state (enabled/disabled)
+- Snap indicator line appears at correct position during drag
+- Snap line color differs for grid vs clip edge snap
+- Keyboard shortcut (Cmd+Shift+S) toggles snap
+    </ideas>
+  </tests>
+</story-context>

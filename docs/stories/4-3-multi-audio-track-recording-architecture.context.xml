@@ -1,0 +1,297 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>4</epicId>
+    <storyId>3</storyId>
+    <title>Multi-Audio Track Recording Architecture</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/4-3-multi-audio-track-recording-architecture.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a developer</asA>
+    <iWant>to record system audio and microphone as separate audio tracks</iWant>
+    <soThat>users can adjust levels independently during editing</soThat>
+    <tasks>
+      <task id="1" ac="1,6">
+        <description>Design multi-track audio architecture</description>
+        <subtasks>
+          <subtask>Research FFmpeg multi-track encoding command structure</subtask>
+          <subtask>Define AudioTrack data model (track_id, source, sync_offset)</subtask>
+          <subtask>Update RecordingConfig to support multi-track audio configuration</subtask>
+          <subtask>Design track synchronization strategy (timestamp-based or frame-based)</subtask>
+        </subtasks>
+      </task>
+      <task id="2" ac="1,2">
+        <description>Implement FFmpeg multi-track encoding</description>
+        <subtasks>
+          <subtask>Update encoder.rs to accept multiple audio input streams</subtask>
+          <subtask>Configure FFmpeg command to map multiple audio tracks to single MP4</subtask>
+          <subtask>Test FFmpeg `-map` flag usage for Track 1 (system) and Track 2 (microphone)</subtask>
+          <subtask>Validate MP4 contains separate audio streams via ffprobe</subtask>
+        </subtasks>
+      </task>
+      <task id="3" ac="2,3">
+        <description>Refactor screen recording to use multi-track pattern</description>
+        <subtasks>
+          <subtask>Update screen capture orchestrator to track system audio separately</subtask>
+          <subtask>Update microphone capture to write to dedicated track</subtask>
+          <subtask>Implement frame synchronization for multiple audio streams</subtask>
+          <subtask>Test synchronization accuracy (target: &lt;50ms drift)</subtask>
+        </subtasks>
+      </task>
+      <task id="4" ac="2,4">
+        <description>Update recording commands for multi-track support</description>
+        <subtasks>
+          <subtask>Modify cmd_start_recording to initialize multi-track audio capture</subtask>
+          <subtask>Update RecordingHandle to track multiple audio streams</subtask>
+          <subtask>Ensure backward compatibility with existing single-track recordings</subtask>
+          <subtask>Add validation to ensure track IDs are unique</subtask>
+        </subtasks>
+      </task>
+      <task id="5" ac="5">
+        <description>Frontend integration for multi-track display</description>
+        <subtasks>
+          <subtask>Update MediaFile type to include audioTracks array</subtask>
+          <subtask>Modify mediaLibraryStore to parse multi-track audio metadata</subtask>
+          <subtask>Update Timeline component to render multiple audio tracks per clip</subtask>
+          <subtask>Add UI controls for track visibility toggle (future: Epic 3)</subtask>
+        </subtasks>
+      </task>
+      <task id="6" ac="all">
+        <description>Testing and validation</description>
+        <subtasks>
+          <subtask>Unit tests: Verify AudioTrack model serialization/deserialization</subtask>
+          <subtask>Integration tests: Record screen with multi-track audio → Verify 2 tracks in MP4</subtask>
+          <subtask>Integration tests: Verify track synchronization (system + mic drift &lt;50ms)</subtask>
+          <subtask>Integration tests: Test backward compatibility with single-track recordings</subtask>
+          <subtask>E2E tests: Multi-track recording → Import to media library → Display in timeline</subtask>
+          <subtask>Manual test: Play multi-track MP4 in VLC/QuickTime to verify track independence</subtask>
+        </subtasks>
+      </task>
+      <task id="7" ac="2,3">
+        <description>Error handling and edge cases</description>
+        <subtasks>
+          <subtask>Handle microphone unavailable (record system audio only, single track)</subtask>
+          <subtask>Handle system audio unavailable (record microphone only, single track)</subtask>
+          <subtask>Handle track synchronization failure (log warning, attempt best-effort mux)</subtask>
+          <subtask>Validate track count matches expected sources</subtask>
+        </subtasks>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="1">FFmpeg encoding pipeline supports multiple audio tracks in single MP4</criterion>
+    <criterion id="2">System audio recorded to Track 1, microphone to Track 2</criterion>
+    <criterion id="3">Both audio tracks synchronized with video</criterion>
+    <criterion id="4">Exported MP4 contains both audio tracks as separate streams</criterion>
+    <criterion id="5">Timeline editor can display and manipulate both audio tracks independently</criterion>
+    <criterion id="6">Audio track architecture future-ready for additional sources (e.g., webcam mic)</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic 4: Advanced Recording &amp; PiP Composition</title>
+        <section>Story 4.3: Multi-Audio Track Recording Architecture</section>
+        <snippet>Story 4.3 defines multi-track audio recording architecture with FFmpeg encoding pipeline supporting multiple audio tracks in single MP4, system audio on Track 1, microphone on Track 2, synchronized with video, and timeline editor support for independent track manipulation.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR002: Screen Recording Capabilities</section>
+        <snippet>System captures screen recordings with system audio and microphone audio using macOS ScreenCaptureKit API. Provides recording controls and saves recordings to timeline or media library.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR007: Audio Track Management</section>
+        <snippet>System provides separate audio visualization, per-clip volume control, mute/unmute tracks, and audio fade in/out capabilities for independent audio track management.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR004: Simultaneous Screen and Webcam Recording</section>
+        <snippet>System records screen and webcam simultaneously in PiP style with configurable position/size, independent audio tracks, and real-time preview.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>FFmpeg Integration</section>
+        <snippet>ffmpeg-sidecar 2.1.0 for Epic 1, 2, 4, 5 - Auto-download binary, proven performance for multi-stream processing and real-time encoding.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Novel Pattern 1: Multi-Stream Recording Orchestration</section>
+        <snippet>Parallel Tokio tasks for video/audio capture with frame synchronization via nanosecond timestamps (tolerance: 16ms for 60fps). FFmpeg muxes multiple audio tracks into single MP4. Bounded channels prevent memory bloat.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>Epic 2 Technical Specification</title>
+        <section>Audio Capture Services (Story 2.4)</section>
+        <snippet>System audio via ScreenCaptureKit audio APIs, microphone via CoreAudio/AVFoundation with synchronized muxing. FFmpeg receives audio streams through channels and pipes for real-time encoding.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/src/models/recording.rs</path>
+        <kind>model</kind>
+        <symbol>ScreenRecordingMode (enum)</symbol>
+        <lines>entire file</lines>
+        <reason>Needs AudioTrack struct addition and RecordingConfig enhancement to support multi-track audio configuration</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+        <kind>service</kind>
+        <symbol>Encoder struct and methods</symbol>
+        <lines>entire file</lines>
+        <reason>Core encoder that must be extended to accept multiple audio input streams and configure FFmpeg `-map` flags for multi-track MP4</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/recording/orchestrator.rs</path>
+        <kind>service</kind>
+        <symbol>Recording orchestrator</symbol>
+        <lines>entire file</lines>
+        <reason>Orchestrates parallel capture tasks; needs refactoring to manage system audio and microphone as separate tracks with frame synchronization</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/recording/frame_synchronizer.rs</path>
+        <kind>service</kind>
+        <symbol>Frame synchronizer</symbol>
+        <lines>entire file</lines>
+        <reason>Handles timestamp-based synchronization; must be extended to synchronize multiple audio streams with video</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_start_recording, cmd_stop_recording</symbol>
+        <lines>entire file</lines>
+        <reason>Tauri commands that initialize recording; need updates to pass multi-track configuration and handle RecordingHandle with multiple audio streams</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/audio_capture.rs</path>
+        <kind>service</kind>
+        <symbol>Audio capture service</symbol>
+        <lines>entire file</lines>
+        <reason>Existing audio capture service from Story 2.4; provides foundation for microphone capture that will become dedicated Track 2</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/media.ts</path>
+        <kind>type</kind>
+        <symbol>MediaFile interface</symbol>
+        <lines>36-66</lines>
+        <reason>Frontend type definition that must be extended with audioTracks array to represent multi-track audio metadata</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/mediaLibraryStore.ts</path>
+        <kind>store</kind>
+        <symbol>mediaLibraryStore</symbol>
+        <lines>entire file</lines>
+        <reason>Zustand store managing media library; needs enhancement to parse and store multi-track audio metadata from ffprobe</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/Timeline.tsx</path>
+        <kind>component</kind>
+        <symbol>Timeline component</symbol>
+        <lines>entire file</lines>
+        <reason>Main timeline component that must be updated to render multiple audio tracks per clip with independent visualization</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/recording.ts</path>
+        <kind>api</kind>
+        <symbol>Recording API wrapper</symbol>
+        <lines>entire file</lines>
+        <reason>TypeScript wrapper for Tauri recording commands; likely requires minimal changes but should be reviewed for type safety with multi-track config</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <package name="tokio" version="1" features="full">Async runtime for parallel recording tasks (video, system audio, microphone)</package>
+        <package name="ffmpeg-sidecar" version="2.1">FFmpeg CLI wrapper for multi-track audio encoding and MP4 muxing</package>
+        <package name="screencapturekit" version="0.3">macOS ScreenCaptureKit API for screen capture and system audio</package>
+        <package name="cpal" version="0.16">Cross-platform audio library for microphone capture via CoreAudio</package>
+        <package name="serde" version="1" features="derive">Serialization for AudioTrack and RecordingConfig structs</package>
+        <package name="anyhow" version="1">Error handling for recording workflows</package>
+        <package name="tracing" version="0.1">Logging for frame synchronization and encoding pipeline</package>
+        <package name="chrono" version="0.4">Timestamp generation for audio/video synchronization</package>
+      </rust>
+      <node>
+        <package name="react" version="^19.1.0">UI framework for timeline and recording components</package>
+        <package name="zustand" version="^4">State management for media library and multi-track audio metadata</package>
+        <package name="react-konva" version="^19.2.0">Canvas-based timeline rendering for audio track visualization</package>
+        <package name="@tauri-apps/api" version="^2">Frontend-backend communication for recording commands</package>
+        <package name="vitest" version="^2">Testing framework for frontend unit tests</package>
+        <package name="@playwright/test" version="^1.56.1">E2E testing framework for multi-track recording workflows</package>
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Multi-Stream Recording Orchestration: Use parallel Tokio tasks for video capture, system audio capture, and microphone capture with frame synchronization via nanosecond timestamps (tolerance: 16ms for 60fps, 33ms for 30fps)</constraint>
+    <constraint>Memory Management: Use bounded channels (mpsc::channel(30)) to prevent memory bloat during real-time encoding - maximum 30 frames × 8MB/frame = 240MB buffer</constraint>
+    <constraint>FFmpeg Multi-Track Command: Use `-map` flags to map multiple audio tracks into single MP4: -map 0:v for video, -map 1:a for system audio (Track 1), -map 2:a for microphone (Track 2)</constraint>
+    <constraint>Backward Compatibility: Ensure existing single-track recordings continue to work; multi-track should be additive enhancement, not breaking change</constraint>
+    <constraint>Track Synchronization: Maintain <50ms drift between audio tracks and video using timestamp-based synchronization strategy</constraint>
+    <constraint>Error Handling: Gracefully handle cases where microphone or system audio is unavailable by recording single-track output with appropriate user notification</constraint>
+    <constraint>Testing Requirements: Comprehensive test coverage required including unit tests for AudioTrack model, integration tests for multi-track recording → MP4 verification, and E2E tests for full workflow</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>MediaFile.audioTracks</name>
+      <kind>TypeScript interface property</kind>
+      <signature>audioTracks?: Array&lt;{ id: number; source: 'system' | 'microphone' | 'webcam'; label?: string }&gt;</signature>
+      <path>src/types/media.ts</path>
+    </interface>
+    <interface>
+      <name>AudioTrack</name>
+      <kind>Rust struct (to be created)</kind>
+      <signature>pub struct AudioTrack { pub track_id: u32, pub source: AudioSource, pub sync_offset: i64 }</signature>
+      <path>src-tauri/src/models/recording.rs</path>
+    </interface>
+    <interface>
+      <name>RecordingConfig.audio_tracks</name>
+      <kind>Rust struct field (to be added)</kind>
+      <signature>pub audio_tracks: Vec&lt;AudioTrack&gt;</signature>
+      <path>src-tauri/src/models/recording.rs</path>
+    </interface>
+    <interface>
+      <name>Encoder::new with multiple audio inputs</name>
+      <kind>Rust method signature update</kind>
+      <signature>pub fn new(output_path: PathBuf, resolution: (u32, u32), audio_inputs: Vec&lt;AudioInput&gt;) -&gt; Result&lt;Self&gt;</signature>
+      <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_start_recording</name>
+      <kind>Tauri command</kind>
+      <signature>#[tauri::command] async fn cmd_start_recording(config: RecordingConfig) -&gt; Result&lt;String, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Testing follows a three-tier strategy: (1) Rust unit tests for data models and core logic (e.g., AudioTrack serialization, RecordingConfig validation), (2) Rust integration tests for recording workflows with FFmpeg validation using ffprobe to verify multi-track MP4 output, (3) Frontend unit tests using Vitest for components and stores (e.g., mediaLibraryStore parsing multi-track metadata, Timeline rendering audio tracks), and (4) E2E tests using Playwright to validate end-to-end workflows including recording, import, and timeline display. Tests should be placed colocated with source files (.test.ts/.test.tsx) for frontend, and in src-tauri/tests/ for Rust integration tests. Manual testing required for actual recording validation (play in VLC/QuickTime to verify track independence).
+    </standards>
+    <locations>
+      <location>src-tauri/tests/ - Rust integration tests for multi-track recording workflows</location>
+      <location>src/**/*.test.ts* - Frontend unit tests (Vitest) for components, stores, and utilities</location>
+      <location>tests/e2e/**/*.spec.ts - Playwright E2E tests for complete user workflows</location>
+    </locations>
+    <ideas>
+      <test ac="1,6" type="unit">Rust unit test: Verify AudioTrack struct serialization/deserialization with serde, validate track_id uniqueness, test AudioSource enum variants</test>
+      <test ac="1,2" type="integration">Rust integration test: Record screen with system audio + microphone enabled → Stop recording → Use ffprobe to verify MP4 contains exactly 2 audio streams with correct codec (aac)</test>
+      <test ac="3" type="integration">Rust integration test: Verify audio-video synchronization by analyzing timestamps with ffprobe → Assert system audio drift &lt;50ms and microphone drift &lt;50ms relative to video stream</test>
+      <test ac="4" type="integration">Rust integration test: Record with multi-track → Export MP4 → Verify using ffprobe that stream metadata shows Track 1 (system) and Track 2 (microphone) as separate audio streams</test>
+      <test ac="5" type="unit">Frontend unit test (Vitest): Test mediaLibraryStore.parseMediaMetadata() correctly extracts audioTracks array from multi-track MP4 metadata returned by backend</test>
+      <test ac="5" type="unit">Frontend unit test (Vitest): Test Timeline component renders multiple audio track lanes when clip has audioTracks array with 2+ entries</test>
+      <test ac="1,2,3,4,5" type="e2e">E2E test (Playwright): Full workflow - Enable system audio + microphone → Start recording → Wait 5s → Stop → Verify MP4 imported to media library → Open in timeline → Verify 2 audio tracks displayed with correct labels (System Audio, Microphone)</test>
+      <test ac="2,3" type="integration">Edge case integration test: Record with only microphone enabled (system audio disabled) → Verify single-track MP4 with microphone on Track 1 for backward compatibility</test>
+      <test ac="2,3" type="integration">Edge case integration test: Simulate microphone capture failure → Verify recording continues with system audio only (single track) and user receives notification about mic failure</test>
+      <test ac="6" type="unit">Architecture validation test: Verify RecordingConfig.audio_tracks accepts Vec with 3+ entries to confirm future-ready design for webcam mic addition</test>
+      <test ac="all" type="manual">Manual test: Play exported multi-track MP4 in VLC → Use Audio menu → Track selection → Verify can toggle between System Audio (Track 1) and Microphone (Track 2) independently</test>
+    </ideas>
+  </tests>
+</story-context>

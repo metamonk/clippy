@@ -1,0 +1,299 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>4</epicId>
+    <storyId>1</storyId>
+    <title>Window Selection for Screen Recording</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/4-1-window-selection-for-screen-recording.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to record a specific application window instead of the full screen</iWant>
+    <soThat>I can focus recordings on relevant content without showing my entire desktop</soThat>
+    <tasks>
+- Task 1: Add window recording mode to RecordingConfig model
+  - Subtask 1.1: Update RecordingConfig interface in src/types/recording.ts with recordingMode field
+  - Subtask 1.2: Add selectedWindowId field to store window identifier
+  - Subtask 1.3: Update Rust RecordingConfig struct in src-tauri/src/models/recording.rs
+  - Subtask 1.4: Update recordingStore to manage recording mode and selected window state
+
+- Task 2: Implement window enumeration backend
+  - Subtask 2.1: Create cmd_get_available_windows Tauri command
+  - Subtask 2.2: Use ScreenCaptureKit SCShareableContent.getExcludingDesktopWindows()
+  - Subtask 2.3: Return list with windowId, ownerName, title, isOnScreen properties
+  - Subtask 2.4: Filter out hidden/minimized windows and system UI
+  - Subtask 2.5: Create WindowInfo type in src/types/recording.ts
+
+- Task 3: Build recording mode toggle UI
+  - Subtask 3.1: Add radio button group for "Full Screen" vs "Window" mode
+  - Subtask 3.2: Create WindowSelector.tsx component
+  - Subtask 3.3: Implement dropdown showing window titles with app icons
+  - Subtask 3.4: Add search/filter input for long window lists
+  - Subtask 3.5: Display "No windows available" message if list empty
+  - Subtask 3.6: Add "Refresh Windows" button
+
+- Task 4: Configure ScreenCaptureKit for window capture
+  - Subtask 4.1: Update screencapturekit.rs to accept window mode configuration
+  - Subtask 4.2: Create SCContentFilter with initWithDesktopIndependentWindow()
+  - Subtask 4.3: Capture window at native resolution
+  - Subtask 4.4: Document decision: Follow Window (recommended) vs Fixed Capture
+  - Subtask 4.5: Verify ScreenCaptureKit tracks window movement
+  - Subtask 4.6: Test window recording with resizing
+
+- Task 5: Persist window selection in session
+  - Subtask 5.1: Update recordingStore to save lastSelectedWindowId
+  - Subtask 5.2: Pre-select last used window when switching to Window mode
+  - Subtask 5.3: Validate selected window still exists before recording
+  - Subtask 5.4: Reset to Full Screen if last window no longer available
+
+- Task 6: Handle window closed during recording error case
+  - Subtask 6.1: Add error detection for window invalidation
+  - Subtask 6.2: Handle window closure event in callback
+  - Subtask 6.3: Stop recording gracefully and emit event
+  - Subtask 6.4: Display toast notification about window closure
+  - Subtask 6.5: Save partial recording if possible
+
+- Task 7: Add unit and integration tests
+  - Subtask 7.1: Unit test RecordingConfig with window mode properties
+  - Subtask 7.2: Component test WindowSelector renders and handles selection
+  - Subtask 7.3: Component test recording mode toggle
+  - Subtask 7.4: Integration test cmd_get_available_windows
+  - Subtask 7.5: Integration test window recording captures correct content
+  - Subtask 7.6: Integration test recording stops when window closes
+  - Subtask 7.7: E2E test full workflow
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Recording panel shows "Full Screen" vs "Window" recording mode toggle
+2. Window mode displays list of open application windows to choose from
+3. ScreenCaptureKit SCContentFilter configured to capture selected window only
+4. Window recording captures window content at native resolution
+5. Recording follows window if it moves (or maintains fixed capture area - document choice)
+6. Window selection persists for subsequent recordings in session
+7. Clear error if selected window closes during recording
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR002: Screen Recording Capabilities</section>
+        <snippet>System shall capture screen recordings (full screen and window selection modes) with system audio and microphone audio using macOS ScreenCaptureKit API. System shall provide recording controls (start, stop, pause) and save recordings directly to timeline or media library.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Epic 4: Advanced Recording & PiP Composition / Story 4.1</section>
+        <snippet>Transform basic recording capabilities into a professional recording suite. Window selection allows users to record specific application windows instead of full screen, using ScreenCaptureKit SCContentFilter for window capture at native resolution.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Decision Summary - ScreenCaptureKit</section>
+        <snippet>ScreenCaptureKit crate 0.3.x provides safe Rust wrapper for macOS screen capture. Affects Epic 2 and Epic 4 stories. Used for both fullscreen and window-specific capture with SCContentFilter configuration.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/2-1-screencapturekit-setup-permissions.md</path>
+        <title>Story 2.1: ScreenCaptureKit Setup & Permissions</title>
+        <section>Lessons Learned</section>
+        <snippet>ScreenCaptureKit permissions already handled - screen recording permission covers window capture. macOS permission prompts can be intrusive. Error handling crucial as framework can fail silently. Window list enumeration should exclude system UI and hidden windows.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/2-4-system-audio-and-microphone-capture.md</path>
+        <title>Story 2.4: Audio Source Selection</title>
+        <section>Lessons Learned</section>
+        <snippet>Dropdown UI for source selection works well in RecordingPanel. Session persistence of user preferences improves workflow. Configuration validation before recording start prevents runtime errors. Clear error messages when selected source unavailable.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/recording.ts</path>
+        <kind>types</kind>
+        <symbol>RecordingMode, Camera</symbol>
+        <lines>1-28</lines>
+        <reason>Existing recording types that need extension for window mode. Currently defines 'screen' | 'webcam' | 'pip' modes.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/recordingStore.ts</path>
+        <kind>store</kind>
+        <symbol>RecordingState, AudioSourceConfig</symbol>
+        <lines>15-84</lines>
+        <reason>Zustand store managing recording state, will need to add window selection state (recordingMode, selectedWindowId, lastSelectedWindowId)</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingPanel</symbol>
+        <lines>1-200</lines>
+        <reason>Main recording UI component where window mode toggle and WindowSelector component will be integrated</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+        <kind>service</kind>
+        <symbol>ScreenCapture, ScreenCaptureError</symbol>
+        <lines>1-80</lines>
+        <reason>Core ScreenCaptureKit wrapper that creates SCContentFilter and SCStream. Will be extended to accept window mode configuration and create window-specific filters.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>check_screen_recording_permission, start_screen_recording, stop_recording</symbol>
+        <lines>1-50</lines>
+        <reason>Tauri commands for recording operations. Will add cmd_get_available_windows command for window enumeration.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/recording.ts</path>
+        <kind>api-wrapper</kind>
+        <symbol>Tauri command wrappers</symbol>
+        <lines>1-100</lines>
+        <reason>Frontend wrappers for Tauri commands. Will add getAvailableWindows() wrapper.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package>@tauri-apps/api</package>
+        <version>2.x</version>
+        <usage>Tauri invoke API for calling backend commands</usage>
+      </node>
+      <package>zustand</package>
+      <version>4.x</version>
+      <usage>State management for recording store</usage>
+      </package>
+      <package>react</package>
+      <version>18.x</version>
+      <usage>UI components and hooks</usage>
+      </package>
+    </dependencies>
+    <rust>
+      <crate>screencapturekit</crate>
+      <version>0.3.x</version>
+      <usage>ScreenCaptureKit wrapper for window enumeration (SCShareableContent) and window capture (SCContentFilter)</usage>
+      </crate>
+      <crate>tauri</crate>
+      <version>2.x</version>
+      <usage>Backend command framework</usage>
+      </crate>
+      <crate>tokio</crate>
+      <version>1.x</version>
+      <usage>Async runtime for capture tasks</usage>
+      </crate>
+    </rust>
+  </artifacts>
+
+  <constraints>
+- Extend RecordingConfig model - DO NOT create new recording type, this is a configuration option
+- Window selection is OPTIONAL - only required when recordingMode === 'window'
+- Session state persistence uses Zustand store, NOT permanent storage
+- Default to "Follow Window" approach using SCContentFilter.initWithDesktopIndependentWindow
+- Window enumeration via SCShareableContent.getExcludingDesktopWindows with excludedApps:[], onScreenWindowsOnly:true
+- Filter out hidden/minimized windows and system UI elements from window list
+- Cache window list for 5 seconds to avoid excessive ScreenCaptureKit calls
+- Recording button must be disabled until window is selected in window mode
+- Stop recording gracefully if selected window closes during recording, save partial file, notify user
+- Follow existing patterns from Story 2.4 audio source selection for UI and session persistence
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>RecordingState (Zustand Store)</name>
+      <kind>TypeScript Interface</kind>
+      <signature>
+interface RecordingState {
+  status: RecordingStatus;
+  recordingId: string | null;
+  audioSources: AudioSourceConfig;
+  cameras: Camera[];
+  selectedCamera: Camera | null;
+  // TO ADD:
+  // recordingMode?: 'fullscreen' | 'window';
+  // selectedWindowId?: number;
+  // lastSelectedWindowId?: number;
+  // availableWindows?: WindowInfo[];
+}
+      </signature>
+      <path>src/stores/recordingStore.ts</path>
+    </interface>
+
+    <interface>
+      <name>cmd_get_available_windows (Tauri Command)</name>
+      <kind>Tauri Command</kind>
+      <signature>
+#[tauri::command]
+pub async fn cmd_get_available_windows() -> Result&lt;Vec&lt;WindowInfo&gt;, String&gt; {
+  // Returns list of capturable windows from ScreenCaptureKit
+  // WindowInfo: { windowId: number, ownerName: string, title: string, isOnScreen: bool }
+}
+      </signature>
+      <path>src-tauri/src/commands/recording.rs (TO CREATE)</path>
+    </interface>
+
+    <interface>
+      <name>ScreenCapture::new (Constructor Extension)</name>
+      <kind>Rust Method</kind>
+      <signature>
+impl ScreenCapture {
+  // Current: Creates SCContentFilter with display-based filter
+  // TO EXTEND: Accept optional window_id parameter
+  // If window_id provided, use SCContentFilter::initWithDesktopIndependentWindow
+  // Else use existing display-based filter
+  pub fn new(window_id: Option&lt;u32&gt;) -> Result&lt;Self, ScreenCaptureError&gt; { ... }
+}
+      </signature>
+      <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Project uses Vitest for frontend unit/component tests and Playwright for E2E tests. Component tests use React Testing Library with userEvent for interactions. Tauri API mocked with vi.mock('@tauri-apps/api/core'). Tests follow arrange-act-assert pattern with descriptive test names. Rust backend tests use cargo test with standard test module pattern. Each story requires unit tests for new code, component tests for UI, integration tests for Tauri commands, and E2E test for full workflow.
+    </standards>
+
+    <locations>
+      <location>src/components/recording/*.test.tsx - Component tests</location>
+      <location>src/stores/*.test.ts - Store tests</location>
+      <location>src-tauri/src/**/*_test.rs - Rust unit tests (inline test modules)</location>
+      <location>tests/e2e/*.spec.ts - Playwright E2E tests</location>
+    </locations>
+
+    <ideas>
+      <test ac="1,2" type="component">
+        <file>src/components/recording/WindowSelector.test.tsx</file>
+        <description>Test WindowSelector component renders window list, handles selection, shows "No windows available" message, refresh button works, search/filter input filters results</description>
+      </test>
+
+      <test ac="1" type="component">
+        <file>src/components/recording/RecordingModeToggle.test.tsx</file>
+        <description>Test mode toggle switches between fullscreen and window modes, disables recording when window mode selected but no window chosen</description>
+      </test>
+
+      <test ac="1,2,6" type="unit">
+        <file>src/stores/recordingStore.test.ts</file>
+        <description>Test recordingMode state management, selectedWindowId persistence, lastSelectedWindowId session state, window validation before recording start</description>
+      </test>
+
+      <test ac="2,3" type="integration">
+        <file>src-tauri/src/commands/recording.rs (inline test module)</file>
+        <description>Test cmd_get_available_windows returns valid window list with correct WindowInfo structure, filters hidden windows, excludes system UI</description>
+      </test>
+
+      <test ac="3,4,5" type="integration">
+        <file>src-tauri/src/services/screen_capture/screencapturekit.rs (inline test module)</file>
+        <description>Test ScreenCapture::new with window_id creates window-specific SCContentFilter, captures at native resolution, follows window movement</description>
+      </test>
+
+      <test ac="7" type="integration">
+        <file>src-tauri/src/services/screen_capture/screencapturekit.rs (inline test module)</file>
+        <description>Test window closure during recording triggers graceful stop, emits error event, saves partial recording file</description>
+      </test>
+
+      <test ac="1-7" type="e2e">
+        <file>tests/e2e/4.1-window-recording.spec.ts</file>
+        <description>E2E test: Open RecordingPanel, toggle to window mode, select window from list, verify window selection persists, start recording, verify capture works, stop recording, verify file saved. Test error case: simulate window closure during recording.</description>
+      </test>
+    </ideas>
+  </tests>
+</story-context>

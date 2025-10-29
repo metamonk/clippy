@@ -1,0 +1,250 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>4</storyId>
+    <title>Split Clip at Playhead</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-4-split-clip-at-playhead.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to split clips at the playhead position</iWant>
+    <soThat>I can cut clips into segments for rearranging or removal</soThat>
+    <tasks>
+- Task 1: Implement split clip logic in timeline utilities (AC: #2, #4, #6)
+  - Create `splitClipAtTime()` function in `src/lib/timeline/clipOperations.ts`
+  - Calculate split point within clip based on playhead position
+  - Generate two new clip objects with adjusted startTime and trim values
+  - Ensure original clip data preserved (duration, filePath unchanged)
+  - Validate split only occurs if playhead is within clip bounds
+  - Add unit tests for split logic with various playhead positions
+
+- Task 2: Add splitClip action to timelineStore (AC: #2, #3, #6)
+  - Implement `splitClip(clipId: string, splitTime: number)` action in timelineStore
+  - Find clip by ID and verify playhead is within clip bounds
+  - Remove original clip from track
+  - Add two new clips to same track at calculated positions
+  - Maintain clip sorting by startTime after split
+  - Record history for undo capability
+  - Add unit tests for store action
+
+- Task 3: Add UI controls for split operation (AC: #1)
+  - Add "Split" button to timeline toolbar
+  - Implement keyboard shortcut (Cmd+B / Ctrl+B) for split
+  - Disable split button when playhead not over any clip
+  - Show tooltip: "Split clip at playhead (Cmd+B)"
+  - Add visual feedback when split button is clicked
+  - Test keyboard shortcut on macOS
+
+- Task 4: Update TimelineClip rendering for split result (AC: #3, #5)
+  - Ensure two resulting clips render correctly side-by-side
+  - Verify no visual gap between split clips
+  - Test drag-to-move functionality on both split clips
+  - Test trim handles work independently on split clips
+  - Verify playback transitions smoothly across split point
+  - Test that split clips can be deleted independently
+
+- Task 5: Add comprehensive tests for split functionality (AC: #1-6)
+  - Unit test: splitClipAtTime() with playhead at various positions
+  - Unit test: Split clip with trim points (non-zero trimIn/trimOut)
+  - Unit test: Validate split rejected if playhead outside clip bounds
+  - Integration test: Split clip via store action, verify two clips created
+  - Integration test: Undo split operation, verify single clip restored
+  - Integration test: Play across split point, verify seamless playback
+  - E2E test: Click split button, verify UI updates correctly
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. "Split" button/keyboard shortcut splits clip at current playhead position
+2. Single clip becomes two independent clips at split point
+3. Both resulting clips fully editable (can trim, move, delete independently)
+4. Split is non-destructive (original file unchanged)
+5. Preview playback works seamlessly across split point
+6. Split only affects clip under playhead
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR005: Multi-Track Timeline Editor</section>
+        <snippet>System shall provide visual timeline with playhead, multiple tracks, time ruler, zoom/scroll capabilities. System shall support drag-drop clip arrangement, trimming (in/out points), splitting at playhead, deletion, track movement, and snap-to-grid editing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR012: Native macOS Integration</section>
+        <snippet>System shall implement native menu bar, window chrome, file dialogs, keyboard shortcuts following macOS conventions.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Video playback shall maintain 30+ FPS for 1080p content with smooth timeline rendering. Application shall target 60 FPS UI interactions.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>State Management Patterns (Zustand)</section>
+        <snippet>Store structure uses Zustand with immutable state updates. Actions modify state immutably, selectors subscribe to specific state slices. TimelineStore manages tracks, clips, playhead position.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>ADR-005: Store Timeline Timestamps in Milliseconds</section>
+        <snippet>Always use milliseconds (u64 in Rust, number in TypeScript) for timeline timestamps. Single source of truth prevents floating point precision issues. Must convert for external APIs.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epics Document</title>
+        <section>Story 3.4: Split Clip at Playhead</section>
+        <snippet>AC #4: Split is non-destructive (original file unchanged). AC #6: Split only affects clip under playhead, not all clips.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/lib/timeline/clipOperations.ts</path>
+        <kind>utility</kind>
+        <symbol>findClipAtTime</symbol>
+        <lines>150-162</lines>
+        <reason>Existing function to find clip at specific time position - will be used to find clip under playhead for split operation</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/clipOperations.ts</path>
+        <kind>utility</kind>
+        <symbol>getEffectiveDuration</symbol>
+        <lines></lines>
+        <reason>Calculates effective clip duration accounting for trim points - pattern for split calculations</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>TimelineState</symbol>
+        <lines>7-58</lines>
+        <reason>Timeline state interface with all available actions - need to add splitClip action following existing patterns</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>addClip, removeClip, updateClip</symbol>
+        <lines></lines>
+        <reason>Existing clip manipulation actions demonstrating Zustand immutable update patterns to follow for splitClip</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>playerStore</symbol>
+        <lines></lines>
+        <reason>Manages playhead position tracking - needed to get current playhead position for split operation</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>types</kind>
+        <symbol>Clip, Track</symbol>
+        <lines>6-22</lines>
+        <reason>Core data types for clips and tracks - split operation creates two new Clip objects with adjusted trim points</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/Timeline.tsx</path>
+        <kind>component</kind>
+        <symbol>Timeline</symbol>
+        <lines></lines>
+        <reason>Main timeline component - may need toolbar for split button or integrate with existing toolbar</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines></lines>
+        <reason>Renders individual clips - split result should render two clips seamlessly side-by-side</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="zustand" version="^4" />
+        <package name="konva" version="^9.3.22" />
+        <package name="react-konva" version="^19.2.0" />
+        <package name="uuid" version="^13.0.0" />
+        <package name="lucide-react" version="^0.548.0" />
+        <package name="vitest" version="^2" dev="true" />
+        <package name="@playwright/test" version="^1.56.1" dev="true" />
+        <package name="@testing-library/react" version="^16" dev="true" />
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Timeline timestamps MUST always be in milliseconds per ADR-005</constraint>
+    <constraint>Clip IDs MUST be UUID v4 - use uuid library's v4() function</constraint>
+    <constraint>Zustand state updates MUST be immutable - use spreading and array methods</constraint>
+    <constraint>Split operation MUST be non-destructive - original video file unchanged, only clip metadata adjusted</constraint>
+    <constraint>Split MUST only affect single clip under playhead, not multiple clips</constraint>
+    <constraint>Timeline rendering MUST target 60 FPS for UI interactions (Konva.js canvas)</constraint>
+    <constraint>Keyboard shortcuts MUST follow macOS conventions - Cmd+B for split (matching Final Cut Pro)</constraint>
+    <constraint>Split creates two new clips with new UUIDs - original clip removed from timeline</constraint>
+    <constraint>Clips MUST be sorted by startTime after split operation to maintain timeline order</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>splitClipAtTime</name>
+      <kind>function</kind>
+      <signature>export function splitClipAtTime(clip: Clip, splitTime: number): [Clip, Clip] | null</signature>
+      <path>src/lib/timeline/clipOperations.ts</path>
+    </interface>
+    <interface>
+      <name>splitClip</name>
+      <kind>store action</kind>
+      <signature>splitClip: (clipId: string, splitTime: number) => void</signature>
+      <path>src/stores/timelineStore.ts</path>
+    </interface>
+    <interface>
+      <name>findClipAtTime</name>
+      <kind>function</kind>
+      <signature>export function findClipAtTime(track: Track, time: number): Clip | null</signature>
+      <path>src/lib/timeline/clipOperations.ts (existing)</path>
+    </interface>
+    <interface>
+      <name>Clip</name>
+      <kind>interface</kind>
+      <signature>interface Clip { id: string; filePath: string; startTime: number; duration: number; trimIn: number; trimOut: number; }</signature>
+      <path>src/types/timeline.ts (existing)</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Unit tests use Vitest framework with @testing-library/react for component tests. Test files are co-located with source files using .test.ts suffix (e.g., clipOperations.test.ts). E2E tests use Playwright in tests/e2e/ directory following story numbering pattern (e.g., 3.4-split-clip.spec.ts). Helper functions create test fixtures (createClip, createTrack). Tests verify both positive cases and edge cases (playhead outside clip bounds, zero-duration clips).
+    </standards>
+    <locations>
+      <location>src/lib/timeline/*.test.ts</location>
+      <location>src/stores/*.test.ts</location>
+      <location>src/components/**/*.test.tsx</location>
+      <location>tests/e2e/*.spec.ts</location>
+    </locations>
+    <ideas>
+      <idea ac="AC1">Unit test: Cmd+B keyboard shortcut triggers split at playhead position</idea>
+      <idea ac="AC1">Unit test: Split button click calls splitClip with correct parameters</idea>
+      <idea ac="AC1">Unit test: Split button disabled when no clip under playhead</idea>
+      <idea ac="AC2">Unit test: splitClipAtTime creates two clips with correct IDs, timestamps, trim points</idea>
+      <idea ac="AC2">Unit test: First clip ends exactly at split point, second clip starts at split point</idea>
+      <idea ac="AC3">Unit test: Both split clips have unique UUIDs and can be selected/moved independently</idea>
+      <idea ac="AC3">Unit test: Trim handles work independently on each split clip</idea>
+      <idea ac="AC4">Unit test: Split preserves original filePath and duration in both clips</idea>
+      <idea ac="AC4">Unit test: Original clip removed from timeline, only two new clips present</idea>
+      <idea ac="AC5">Integration test: Play across split point, verify seamless playback with no gap</idea>
+      <idea ac="AC5">Integration test: Seek to split point from either direction plays correctly</idea>
+      <idea ac="AC6">Unit test: Split at playhead only affects clip under playhead, other clips unchanged</idea>
+      <idea ac="AC6">Unit test: Reject split if playhead exactly at clip start or end (would create zero-duration clip)</idea>
+      <idea ac="All">E2E test: Full split workflow - select clip, position playhead mid-clip, click split, verify two clips rendered</idea>
+      <idea ac="All">E2E test: Undo split operation restores original clip (if undo implemented)</idea>
+      <idea ac="Edge">Unit test: Split clip that already has non-zero trimIn/trimOut values</idea>
+      <idea ac="Edge">Unit test: Split returns null if playhead outside clip bounds</idea>
+    </ideas>
+  </tests>
+</story-context>

@@ -1,0 +1,408 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>10</storyId>
+    <title>Audio Fade In/Out</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-10-audio-fade-in-out.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to add fade in/out to audio clips</iWant>
+    <soThat>audio transitions sound professional without abrupt starts/stops</soThat>
+    <tasks>
+- Task 1: Add fade properties to Clip data model (AC: #1, #3, #6)
+  - Subtask 1.1: Update `Clip` interface in `src/types/timeline.ts` to include `fadeIn: number` (ms) and `fadeOut: number` (ms), default 0
+  - Subtask 1.2: Update Rust `Clip` struct in `src-tauri/src/models/timeline.rs` to include `fade_in: u64` and `fade_out: u64` (milliseconds)
+  - Subtask 1.3: Update timelineStore actions: `setClipFadeIn(clipId, duration)`, `setClipFadeOut(clipId, duration)`
+  - Subtask 1.4: Add validation to enforce fade duration within clip boundaries (fadeIn + fadeOut < clip duration)
+
+- Task 2: Implement fade handle UI on timeline clips (AC: #1, #2, #3)
+  - Subtask 2.1: Add fade handles to `TimelineClip.tsx` component (draggable triangular handles at clip audio edges)
+  - Subtask 2.2: Implement drag interaction to adjust fade duration (horizontal drag, snaps to grid if enabled)
+  - Subtask 2.3: Render visual fade curve overlay on waveform (opacity gradient or curve line)
+  - Subtask 2.4: Display fade duration tooltip during drag (e.g., "Fade In: 2.5s")
+  - Subtask 2.5: Ensure fade handles don't interfere with clip trim handles
+  - Subtask 2.6: Add numeric fade duration inputs in clip properties panel for precise control
+
+- Task 3: Apply fade during preview playback (AC: #4)
+  - Subtask 3.1: Research MPV audio filter options for real-time fade effects (`afade` filter or volume automation)
+  - Subtask 3.2: Update `services/mpv_player.rs` to apply fade filters during playback
+  - Subtask 3.3: Add Tauri command `cmd_set_clip_fades(clip_id, fade_in_ms, fade_out_ms)` in `commands/mpv.rs`
+  - Subtask 3.4: Update playerStore to apply fade effects when clip playback starts/ends
+  - Subtask 3.5: Handle edge case: playhead seeking into middle of faded region
+
+- Task 4: Apply fade during FFmpeg export (AC: #5, #6)
+  - Subtask 4.1: Update `services/ffmpeg/exporter.rs` to generate FFmpeg `afade` filter for each clip
+  - Subtask 4.2: Implement fade-in filter syntax: `afade=t=in:st={start_time}:d={fade_duration}`
+  - Subtask 4.3: Implement fade-out filter syntax: `afade=t=out:st={end_time-fade_duration}:d={fade_duration}`
+  - Subtask 4.4: Combine fade filters with existing volume filters from Story 3.9
+  - Subtask 4.5: Test multi-clip export with overlapping fades and volume adjustments
+  - Subtask 4.6: Verify fade curves match preview playback behavior
+
+- Task 5: Add unit and integration tests (AC: #1-6)
+  - Subtask 5.1: Unit test: Clip model fade properties defaults and serialization
+  - Subtask 5.2: Unit test: Fade duration validation (prevent exceeding clip bounds)
+  - Subtask 5.3: Component test: Fade handle drag updates clip state correctly
+  - Subtask 5.4: Integration test: Fade effects audible during preview playback
+  - Subtask 5.5: Integration test: Exported video contains correct fade curves
+  - Subtask 5.6: E2E test: Full workflow from fade adjustment to export
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Fade in/out handles on clip audio edges (drag to set fade duration)
+2. Visual fade curve shown on waveform
+3. Fade duration adjustable (0-5 seconds range)
+4. Fade effect audible during preview playback
+5. Fade applied during export via FFmpeg audio filters
+6. Can set fade in and fade out independently
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Epic 3: Multi-Track Timeline & Editing Maturity</title>
+        <section>Technical Stack Decision Table (line 96)</section>
+        <snippet>Zustand 4.x for state management with optimized re-renders and simple API, affects Epic 1, 3, 4, 5</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>FFmpeg Integration - Audio Filter Patterns</title>
+        <section>FFmpeg CLI Integration (line 98)</section>
+        <snippet>ffmpeg-sidecar 2.1.0 for media processing with auto-download binary. Used for multi-track timeline export, audio extraction, and audio processing including fade effects.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>MPV Player Integration</title>
+        <section>Technical Stack Decision Table (line 97)</section>
+        <snippet>MPV (libmpv2 5.0.1, system MPV 0.40.0) for video playback. Universal codec support (H.264, HEVC, VP9, ProRes), event-based architecture, frame-accurate seeking. Supports afade audio filter for real-time fade effects.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-9-per-clip-volume-control.md</path>
+        <title>Related Story: Per-Clip Volume Control</title>
+        <section>Story 3.9 - FFmpeg Volume Filter Integration</section>
+        <snippet>Volume control established pattern for per-clip audio manipulation. FFmpeg audio filter chain architecture proven (volume filter). Filter chain order: volume={level},afade=... Fades apply AFTER per-clip volume adjustment.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-8-audio-waveform-visualization.md</path>
+        <title>Related Story: Audio Waveform Visualization</title>
+        <section>Story 3.8 - Waveform UI Foundation</section>
+        <snippet>Waveform visualization uses Web Audio API for generation. Fade curve overlay renders on top of waveform visualization. Fade-in: Opacity gradient from 0% (left) to 100% at fade end. Fade-out: Opacity gradient from 100% to 0% (right) at fade start.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Story 3.10: Audio Fade In/Out</title>
+        <section>Epic 3 Stories (Story 3.10)</section>
+        <snippet>Fade in/out handles on clip audio edges (drag to set fade duration). Visual fade curve shown on waveform. Fade duration adjustable (0-5 seconds range). Fade effect audible during preview playback. Fade applied during export via FFmpeg audio filters. Can set fade in and fade out independently.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Timeline Data Consistency</title>
+        <section>Shared Type Definitions Rust/TypeScript (ADR-004)</section>
+        <snippet>Clip interface synchronized between Rust (models/timeline.rs) and TypeScript (types/timeline.ts). Serde converts snake_case to camelCase. Properties include id, file_path/filePath, trim_in/trimIn, trim_out/trimOut. All new Clip properties must be added to both interfaces.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>interface</kind>
+        <symbol>Clip</symbol>
+        <lines>5-12</lines>
+        <reason>Core Clip interface that needs fadeIn: number and fadeOut: number properties added (milliseconds). Currently has: id, filePath, startTime, duration, trimIn, trimOut</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/models/timeline.rs</path>
+        <kind>struct</kind>
+        <symbol>Clip</symbol>
+        <lines>N/A</lines>
+        <reason>Rust Clip struct that must mirror TypeScript interface. Needs fade_in: u64 and fade_out: u64 fields added with serde camelCase serialization. Story 3.9 established pattern for adding volume/muted fields.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>TimelineState</symbol>
+        <lines>N/A</lines>
+        <reason>Zustand store managing timeline state. Needs new actions: setClipFadeIn(clipId, duration) and setClipFadeOut(clipId, duration). Follow existing pattern from setClipVolume action in Story 3.9.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>N/A</lines>
+        <reason>Timeline clip visualization component. Needs fade handles at clip edges (triangular handles, 8-12px, distinct from square trim handles) and fade curve overlay on waveform (opacity gradient).</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>PlayerStore</symbol>
+        <lines>N/A</lines>
+        <reason>Player state management. Needs to apply clip fade effects when playback position changes. Pattern similar to volume control integration from Story 3.9.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+        <kind>service</kind>
+        <symbol>FFmpegExporter</symbol>
+        <lines>N/A</lines>
+        <reason>FFmpeg export service that generates export commands. Needs to generate afade filter for each clip: afade=t=in:st={start}:d={duration} and afade=t=out:st={end-duration}:d={duration}. Combine with volume filter from Story 3.9 using filter chain.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/clipOperations.ts</path>
+        <kind>utility</kind>
+        <symbol>clipOperations</symbol>
+        <lines>N/A</lines>
+        <reason>Clip manipulation utilities. Needs fade duration validation utility to ensure fadeIn + fadeOut &lt;= clipDuration. Prevent overlapping fades that exceed clip boundaries.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="zustand" version="^4" note="State management for timeline and player stores" />
+        <package name="konva" version="^9.3.22" note="Canvas rendering for timeline visualization and fade handles" />
+        <package name="react-konva" version="^19.2.0" note="React wrapper for Konva" />
+        <package name="lucide-react" version="^0.548.0" note="Icon library for fade indicators" />
+        <package name="uuid" version="^13.0.0" note="Clip ID generation" />
+        <package name="@tauri-apps/api" version="^2" note="Tauri frontend API" />
+      </frontend>
+      <backend>
+        <package name="tauri" version="2" />
+        <package name="serde" version="1" features="derive" note="Serialization for Clip struct with fade properties" />
+        <package name="serde_json" version="1" />
+        <package name="ffmpeg-sidecar" version="2.1" note="FFmpeg CLI wrapper for export with afade audio filters" />
+        <package name="libmpv2" version="5.0" note="MPV player for preview playback with afade filter support" />
+        <package name="tokio" version="1" features="full" note="Async runtime" />
+        <package name="anyhow" version="1" note="Error handling" />
+        <package name="tracing" version="0.1" note="Logging" />
+      </backend>
+      <testing>
+        <package name="vitest" version="^2" note="Unit and integration tests" />
+        <package name="@testing-library/react" version="^16" note="Component testing" />
+        <package name="@testing-library/user-event" version="^14.6.1" note="User interaction simulation" />
+        <package name="@playwright/test" version="^1.56.1" note="E2E testing" />
+      </testing>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Fade durations stored in milliseconds (consistent with timeline time units per ADR-005)
+    - Fade in/out are independent properties, allowing asymmetric fades
+    - Validation ensures: fadeIn + fadeOut &lt;= clipDuration to prevent overlapping fades
+    - Fade state managed in timelineStore alongside volume, trim, and other clip properties
+    - Fade handles positioned at clip edges (left edge for fade-in, right edge for fade-out)
+    - Fade handle size: 8-12px triangular handles, distinct from trim handles (square)
+    - Visual fade curve overlay must not obscure waveform completely (semi-transparent gradient)
+    - Dragging fade handle constrains to clip boundaries (can't drag beyond clip edges)
+    - Snap-to-grid applies to fade duration if snap enabled (e.g., snap to 0.5s intervals)
+    - Fade curve overlay renders on top of waveform visualization from Story 3.8
+    - Fades apply AFTER per-clip volume adjustment (FFmpeg filter chain order: volume={level},afade=...)
+    - All clip properties must stay synchronized between TypeScript (camelCase) and Rust (snake_case with serde rename)
+    - Follow existing Zustand immutable update patterns in timelineStore
+    - Follow existing Konva.js rendering patterns in TimelineClip component
+    - FFmpeg afade filter syntax: afade=t=in:st={start_time}:d={fade_duration} for fade-in
+    - FFmpeg afade filter syntax: afade=t=out:st={end_time-fade_duration}:d={fade_duration} for fade-out
+    - MPV supports afade audio filter for real-time preview playback
+    - Test edge cases: 0s fade (no fade), 5s fade (maximum), very short clips, overlapping fades between adjacent clips
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>Clip (Extended)</name>
+      <kind>TypeScript Interface</kind>
+      <signature>export interface Clip {
+  id: string;
+  filePath: string;
+  startTime: number;
+  duration: number;
+  trimIn: number;
+  trimOut: number;
+  fadeIn: number;  // NEW: fade-in duration in ms, default 0
+  fadeOut: number; // NEW: fade-out duration in ms, default 0
+}</signature>
+      <path>src/types/timeline.ts</path>
+    </interface>
+
+    <interface>
+      <name>Clip (Extended Rust)</name>
+      <kind>Rust Struct</kind>
+      <signature>#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Clip {
+    pub id: String,
+    pub file_path: String,
+    pub start_time: u64,
+    pub duration: u64,
+    pub trim_in: u64,
+    pub trim_out: u64,
+    pub fade_in: u64,  // NEW: fade-in duration in ms, default 0
+    pub fade_out: u64, // NEW: fade-out duration in ms, default 0
+}</signature>
+      <path>src-tauri/src/models/timeline.rs</path>
+    </interface>
+
+    <interface>
+      <name>TimelineState Actions</name>
+      <kind>Zustand Store Methods</kind>
+      <signature>setClipFadeIn: (clipId: string, duration: number) => void;
+setClipFadeOut: (clipId: string, duration: number) => void;</signature>
+      <path>src/stores/timelineStore.ts</path>
+    </interface>
+
+    <interface>
+      <name>FFmpeg Fade Filter</name>
+      <kind>FFmpeg Filter Syntax</kind>
+      <signature>// For individual clip audio fade processing:
+// Fade-in: afade=t=in:st={clip_start_time_sec}:d={fade_in_duration_sec}
+// Fade-out: afade=t=out:st={clip_end_time_sec - fade_out_duration_sec}:d={fade_out_duration_sec}
+// Combined with volume: volume={volume_linear},afade=t=in:d=2.5,afade=t=out:d=2.0
+// Example: 2.5s fade-in at clip start (0s): afade=t=in:st=0:d=2.5
+// Example: 2s fade-out at clip end (10s clip): afade=t=out:st=8:d=2</signature>
+      <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+    </interface>
+
+    <interface>
+      <name>MPV Fade Filter</name>
+      <kind>MPV Audio Filter</kind>
+      <signature>// MPV afade filter for preview playback:
+// --af=afade=t=in:st=0:d=2.5 for 2.5s fade-in
+// --af=afade=t=out:st=8:d=2 for 2s fade-out starting at 8s
+// Note: May use volume automation via --volume property with time-based interpolation as alternative</signature>
+      <path>src-tauri/src/services/mpv_player.rs</path>
+    </interface>
+
+    <interface>
+      <name>validateFadeDuration</name>
+      <kind>Utility Function</kind>
+      <signature>function validateFadeDuration(clip: Clip, fadeIn: number, fadeOut: number): boolean {
+  return fadeIn + fadeOut &lt;= clip.duration;
+}</signature>
+      <path>src/lib/timeline/clipOperations.ts</path>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Frontend testing uses Vitest with React Testing Library for unit and component tests. Backend uses cargo test for Rust unit tests. E2E tests use Playwright for full user workflows. Test patterns follow existing conventions: describe/it blocks, beforeEach for state reset, expect assertions. Component tests use render() from @testing-library/react and userEvent for interactions. Store tests directly call actions and assert state changes. FFmpeg output verification requires FFprobe loudness analysis of exported files. Audio fade verification may need manual auditory verification for preview playback. Test coverage targets: unit tests for all data model changes, component tests for UI elements, integration tests for store-component interactions, E2E test for full fade adjustment workflow.
+    </standards>
+
+    <locations>
+      <location>src/types/timeline.ts - Clip interface fade properties</location>
+      <location>src-tauri/src/models/timeline.rs - Rust Clip struct tests</location>
+      <location>src/stores/timelineStore.test.ts - Fade action tests</location>
+      <location>src/lib/timeline/clipOperations.test.ts - Fade validation tests</location>
+      <location>src/components/timeline/FadeHandle.test.tsx - NEW component tests for fade handles</location>
+      <location>src/components/timeline/TimelineClip.test.tsx - Fade curve overlay tests</location>
+      <location>src-tauri/src/services/ffmpeg/exporter.rs - Fade filter generation tests (cargo test)</location>
+      <location>tests/e2e/3.10-audio-fade.spec.ts - NEW E2E workflow test</location>
+    </locations>
+
+    <ideas>
+      <test ac="1,3,6">
+        <id>3.10.T1</id>
+        <description>Unit test: Clip interface includes fadeIn (default 0) and fadeOut (default 0) properties in milliseconds</description>
+        <type>Unit</type>
+        <location>src/types/timeline.ts</location>
+      </test>
+      <test ac="1,3,6">
+        <id>3.10.T2</id>
+        <description>Unit test (Rust): Clip struct serialization/deserialization includes fade_in and fade_out fields with correct camelCase mapping</description>
+        <type>Unit (Rust)</type>
+        <location>src-tauri/src/models/timeline.rs</location>
+      </test>
+      <test ac="1,3">
+        <id>3.10.T3</id>
+        <description>Unit test: timelineStore.setClipFadeIn updates clip fadeIn property (values: 0, 1000, 2500, 5000 ms)</description>
+        <type>Unit</type>
+        <location>src/stores/timelineStore.test.ts</location>
+      </test>
+      <test ac="1,3">
+        <id>3.10.T4</id>
+        <description>Unit test: timelineStore.setClipFadeOut updates clip fadeOut property independently from fadeIn</description>
+        <type>Unit</type>
+        <location>src/stores/timelineStore.test.ts</location>
+      </test>
+      <test ac="3">
+        <id>3.10.T5</id>
+        <description>Unit test: validateFadeDuration returns false when fadeIn + fadeOut exceeds clip duration</description>
+        <type>Unit</type>
+        <location>src/lib/timeline/clipOperations.test.ts</location>
+      </test>
+      <test ac="1,2">
+        <id>3.10.T6</id>
+        <description>Component test: FadeHandle renders triangular handle at clip edge, distinct from square trim handles</description>
+        <type>Component</type>
+        <location>src/components/timeline/FadeHandle.test.tsx</location>
+      </test>
+      <test ac="1,2">
+        <id>3.10.T7</id>
+        <description>Component test: Drag fade handle updates clip fade duration, constrained to clip boundaries</description>
+        <type>Component</type>
+        <location>src/components/timeline/FadeHandle.test.tsx</location>
+      </test>
+      <test ac="2">
+        <id>3.10.T8</id>
+        <description>Component test: Fade curve overlay renders on waveform as semi-transparent gradient (opacity from 0% to 100% for fade-in)</description>
+        <type>Component</type>
+        <location>src/components/timeline/TimelineClip.test.tsx</location>
+      </test>
+      <test ac="5,6">
+        <id>3.10.T9</id>
+        <description>Integration test (Rust): FFmpeg exporter generates correct afade filter syntax for fade-in (afade=t=in:st=X:d=Y)</description>
+        <type>Unit (Rust)</type>
+        <location>src-tauri/src/services/ffmpeg/exporter.rs</location>
+      </test>
+      <test ac="5,6">
+        <id>3.10.T10</id>
+        <description>Integration test (Rust): FFmpeg exporter generates correct afade filter syntax for fade-out (afade=t=out:st=X:d=Y)</description>
+        <type>Unit (Rust)</type>
+        <location>src-tauri/src/services/ffmpeg/exporter.rs</location>
+      </test>
+      <test ac="5,6">
+        <id>3.10.T11</id>
+        <description>Integration test (Rust): FFmpeg exporter combines fade filters with volume filter in correct order (volume, then afade)</description>
+        <type>Unit (Rust)</type>
+        <location>src-tauri/src/services/ffmpeg/exporter.rs</location>
+      </test>
+      <test ac="4">
+        <id>3.10.T12</id>
+        <description>Integration test: Fade effects audible during preview playback (MPV applies afade filter)</description>
+        <type>Integration</type>
+        <location>src/stores/playerStore.test.ts</location>
+      </test>
+      <test ac="5">
+        <id>3.10.T13</id>
+        <description>Integration test: Export video with fade-in and fade-out, verify output with FFprobe audio levels</description>
+        <type>Integration</type>
+        <location>tests/integration/export-fade.test.ts</location>
+      </test>
+      <test ac="5,6">
+        <id>3.10.T14</id>
+        <description>Integration test: Edge cases - 0s fade (no fade), 5s fade (maximum), very short clip where fadeIn + fadeOut = clipDuration</description>
+        <type>Integration</type>
+        <location>src-tauri/src/services/ffmpeg/exporter.rs</location>
+      </test>
+      <test ac="1,2,3,4,5,6">
+        <id>3.10.T15</id>
+        <description>E2E test: Full workflow - import video, add to timeline, drag fade-in handle to 2.5s, drag fade-out handle to 2s, verify fade curve overlay, play preview, export, check output file</description>
+        <type>E2E</type>
+        <location>tests/e2e/3.10-audio-fade.spec.ts</location>
+      </test>
+      <test ac="4">
+        <id>3.10.T16</id>
+        <description>Integration test: Edge case - playhead seeking into middle of faded region plays correctly</description>
+        <type>Integration</type>
+        <location>src/stores/playerStore.test.ts</location>
+      </test>
+      <test ac="5">
+        <id>3.10.T17</id>
+        <description>Integration test: Multi-clip export with overlapping fades (fade-out on clip 1, fade-in on adjacent clip 2)</description>
+        <type>Integration</type>
+        <location>tests/integration/export-fade.test.ts</location>
+      </test>
+    </ideas>
+  </tests>
+</story-context>

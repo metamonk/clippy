@@ -1,0 +1,303 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>2</storyId>
+    <title>Multiple Clips Per Track with Sequencing</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-2-multiple-clips-per-track-with-sequencing.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to place multiple clips in sequence on a single track</iWant>
+    <soThat>I can create longer videos from multiple recordings</soThat>
+    <tasks>
+      <task id="1" ac="1,6">
+        <title>Extend timeline data model for multi-clip sequencing</title>
+        <subtasks>
+          <subtask>Update Clip interface in src/types/timeline.ts to ensure startTime and duration are properly tracked</subtask>
+          <subtask>Update timelineStore actions to handle clip positioning logic</subtask>
+          <subtask>Add utility function to calculate sequential positioning (end-to-end)</subtask>
+          <subtask>Implement clip collision detection (prevent overlapping on same track)</subtask>
+          <subtask>Add state validation to ensure clips maintain temporal ordering</subtask>
+        </subtasks>
+      </task>
+      <task id="2" ac="1,2">
+        <title>Implement multi-clip drag and drop</title>
+        <subtasks>
+          <subtask>Update Timeline.tsx to accept multiple clips on a single track</subtask>
+          <subtask>Modify clip drop handler to support sequential placement mode</subtask>
+          <subtask>Calculate automatic positioning: new clip starts at previous clip's end time</subtask>
+          <subtask>Add visual preview during drag showing where clip will be placed</subtask>
+          <subtask>Ensure drag-drop works for both Track 1 and Track 2</subtask>
+        </subtasks>
+      </task>
+      <task id="3" ac="3">
+        <title>Add manual clip positioning functionality</title>
+        <subtasks>
+          <subtask>Implement clip drag-to-reposition within track</subtask>
+          <subtask>Add numerical time input for precise clip positioning</subtask>
+          <subtask>Update clip position validation (prevent negative times, overlaps)</subtask>
+          <subtask>Snap to grid functionality (optional enhancement, can defer)</subtask>
+          <subtask>Update timelineStore to recalculate clip order after manual repositioning</subtask>
+        </subtasks>
+      </task>
+      <task id="4" ac="4">
+        <title>Implement gap detection and visual indicators</title>
+        <subtasks>
+          <subtask>Calculate gaps between clips on timeline rendering</subtask>
+          <subtask>Add visual gap indicator (dashed line, shaded area, or separator)</subtask>
+          <subtask>Show gap duration tooltip on hover</subtask>
+          <subtask>Update timeline rendering to highlight non-sequential clips</subtask>
+          <subtask>Ensure gap indicators update when clips are moved</subtask>
+        </subtasks>
+      </task>
+      <task id="5" ac="5">
+        <title>Implement multi-clip playback transitions</title>
+        <subtasks>
+          <subtask>Update playback logic to handle clip sequences</subtask>
+          <subtask>Implement seamless transition when playhead crosses clip boundaries</subtask>
+          <subtask>Handle gaps in playback (pause, black screen, or skip to next clip)</subtask>
+          <subtask>Ensure playhead position updates correctly across multiple clips</subtask>
+          <subtask>Test playback with 3+ clips in sequence</subtask>
+        </subtasks>
+      </task>
+      <task id="6" ac="6">
+        <title>Update timeline state management for multi-clip</title>
+        <subtasks>
+          <subtask>Refactor timelineStore to maintain clip arrays per track</subtask>
+          <subtask>Ensure clips sorted by startTime within each track</subtask>
+          <subtask>Add action: addClip(trackId, clip) with automatic positioning</subtask>
+          <subtask>Add action: moveClip(clipId, newStartTime) for manual repositioning</subtask>
+          <subtask>Add selector: getClipsForTrack(trackId) for efficient rendering</subtask>
+          <subtask>Implement totalDuration calculation based on last clip end time</subtask>
+        </subtasks>
+      </task>
+      <task id="7" ac="1-6">
+        <title>Add tests for multi-clip sequencing</title>
+        <subtasks>
+          <subtask>Unit test: Sequential clip positioning calculation</subtask>
+          <subtask>Unit test: Gap detection between clips</subtask>
+          <subtask>Unit test: Clip collision detection and prevention</subtask>
+          <subtask>Integration test: Add 3 clips to track, verify sequential placement</subtask>
+          <subtask>Integration test: Move clip manually, verify gap created</subtask>
+          <subtask>Integration test: Play timeline with 3+ clips, verify smooth transitions</subtask>
+          <subtask>Visual test: Verify gap indicators appear between non-touching clips</subtask>
+        </subtasks>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="1">Can drag multiple clips onto same track</criterion>
+    <criterion id="2">Clips arranged sequentially (end-to-end without gaps by default)</criterion>
+    <criterion id="3">Can manually position clips at specific time points</criterion>
+    <criterion id="4">Visual gap indicator if clips don't touch</criterion>
+    <criterion id="5">Playback transitions smoothly between sequential clips</criterion>
+    <criterion id="6">Timeline state tracks all clips with start times and durations</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR005: Multi-Track Timeline Editor</section>
+        <snippet>System shall provide visual timeline with playhead, multiple tracks (minimum 2, expandable to 4+), time ruler, zoom/scroll capabilities. Timeline must support drag-drop clip arrangement with visual feedback.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Video playback shall maintain 30+ FPS for 1080p content with smooth timeline rendering. WebKit rendering performance for Canvas-based timeline targeting 60 FPS UI interactions.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>State Management Patterns (Zustand) - Lines 850-945</section>
+        <snippet>Zustand store with immutable state updates. Actions modify state immutably via set((state) => ({...})). Use selectors to subscribe to specific state slices for optimized re-renders. Enable devtools for debugging.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Timeline Data Consistency - Lines 1058-1129</section>
+        <snippet>Shared type definitions between Rust and TypeScript. Rust uses snake_case, serde converts to camelCase for JSON. TypeScript uses camelCase. Time units ALWAYS in milliseconds. IDs ALWAYS UUIDs (string type).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>ADR-005: Store Timeline Timestamps in Milliseconds - Lines 1914-1932</section>
+        <snippet>Always use milliseconds (u64 in Rust, number in TypeScript). Single source of truth, easy conversion to other units, no floating point precision issues. Millisecond precision sufficient for video editing (frame-level at 60fps = 16ms).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Technology Stack - Lines 18-19, 95-96</section>
+        <snippet>Konva.js canvas-based timeline for 60 FPS interactive editing. Zustand 4.x state management for performant multi-track timeline state with optimized re-renders.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-1-multi-track-timeline-foundation.md</path>
+        <title>Story 3.1 - Multi-Track Timeline Foundation</title>
+        <section>Dev Notes - Architecture Context</section>
+        <snippet>Multi-track timeline foundation established with 2 tracks. Timeline renders multiple tracks vertically stacked. Clips can be dragged to specific tracks. Track layering and compositing implemented. Currently supports single clip per track (Story 3.2 expands to multiple).</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>interface</kind>
+        <symbol>Clip</symbol>
+        <lines>5-12</lines>
+        <reason>Core data model for clips. Contains startTime (position on timeline), duration, trimIn, trimOut - all critical for sequencing logic.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>interface</kind>
+        <symbol>Track</symbol>
+        <lines>14-21</lines>
+        <reason>Track interface with clips array. Already supports multiple clips per track - no schema changes needed for Story 3.2.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>TimelineState</symbol>
+        <lines>6-45</lines>
+        <reason>Zustand store with actions: addClip, updateClip, removeClip. Needs enhancement to support sequential positioning and gap detection.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/Timeline.tsx</path>
+        <kind>component</kind>
+        <symbol>Timeline</symbol>
+        <lines>N/A</lines>
+        <reason>Main timeline canvas component using Konva.js. Currently renders tracks and clips. Needs updates to handle multiple clips per track rendering.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineTrack.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineTrack</symbol>
+        <lines>N/A</lines>
+        <reason>Individual track component. Needs updates to render multiple clips and gap indicators.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>N/A</lines>
+        <reason>Clip visualization component. May need enhancements for click-to-select and drag-to-reposition within track.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/timeUtils.ts</path>
+        <kind>utility</kind>
+        <symbol>timeUtils</symbol>
+        <lines>N/A</lines>
+        <reason>Existing timeline utilities. Story 3.2 will add new utility module for clip operations (clipOperations.ts) with sequential positioning and gap detection.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="react" version="^19" />
+        <package name="zustand" version="^4" />
+        <package name="konva" version="^9" />
+        <package name="react-konva" version="^19.2.0" />
+        <package name="vitest" version="^2" />
+        <package name="@testing-library/react" version="^16" />
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint type="architecture">All timeline timestamps must be in milliseconds (ADR-005) - never seconds or frames</constraint>
+    <constraint type="state-management">Zustand state updates must be immutable using set((state) => ({...})) pattern</constraint>
+    <constraint type="state-management">Use Zustand selectors for optimal re-renders - subscribe only to needed state slices</constraint>
+    <constraint type="performance">Timeline rendering must target 60 FPS UI interactions using Konva.js dirty region detection</constraint>
+    <constraint type="performance">Video playback must maintain 30+ FPS for 1080p content (NFR001)</constraint>
+    <constraint type="data-model">Clip IDs must be UUIDs (string type)</constraint>
+    <constraint type="data-model">Clips within each track must be sorted by startTime for predictable behavior</constraint>
+    <constraint type="naming">TypeScript: camelCase for functions (calculateSequentialPosition), PascalCase for components (TimelineClip)</constraint>
+    <constraint type="testing">Tests in vitest using @testing-library/react for component tests</constraint>
+    <constraint type="ux">Gaps between clips are allowed and visualized - not automatically removed (professional editing pattern)</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>TimelineState.addClip</name>
+      <kind>function</kind>
+      <signature>addClip: (trackId: string, clip: Omit&lt;Clip, 'id'&gt;) =&gt; void</signature>
+      <path>src/stores/timelineStore.ts</path>
+      <note>Adds clip to specified track. Story 3.2 needs enhancement to support sequential positioning mode.</note>
+    </interface>
+    <interface>
+      <name>TimelineState.updateClip</name>
+      <kind>function</kind>
+      <signature>updateClip: (clipId: string, updates: Partial&lt;Omit&lt;Clip, 'id'&gt;&gt;) =&gt; void</signature>
+      <path>src/stores/timelineStore.ts</path>
+      <note>Updates clip properties. Used for manual repositioning (changing startTime).</note>
+    </interface>
+    <interface>
+      <name>TimelineState.getClip</name>
+      <kind>function</kind>
+      <signature>getClip: (clipId: string) =&gt; Clip | undefined</signature>
+      <path>src/stores/timelineStore.ts</path>
+      <note>Retrieves clip by ID. Useful for validation and collision detection.</note>
+    </interface>
+    <interface>
+      <name>Clip Interface</name>
+      <kind>interface</kind>
+      <signature>
+        interface Clip {
+          id: string;          // UUID
+          filePath: string;    // Absolute path to media file
+          startTime: number;   // Position on timeline (ms) - CRITICAL for sequencing
+          duration: number;    // Total clip duration (ms)
+          trimIn: number;      // Trim start point (ms)
+          trimOut: number;     // Trim end point (ms)
+        }
+      </signature>
+      <path>src/types/timeline.ts</path>
+      <note>Core clip interface. Effective duration = trimOut - trimIn. No schema changes needed for Story 3.2.</note>
+    </interface>
+    <interface>
+      <name>Track Interface</name>
+      <kind>interface</kind>
+      <signature>
+        interface Track {
+          id: string;
+          trackNumber: number;
+          clips: Clip[];           // Already supports multiple clips!
+          trackType: 'video' | 'audio';
+          label?: string;
+          isVisible?: boolean;
+        }
+      </signature>
+      <path>src/types/timeline.ts</path>
+      <note>Track interface with clips array. Already designed for multiple clips per track.</note>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Testing framework: Vitest (v2) with @testing-library/react (v16) for component tests.
+      Unit tests: Test utility functions in isolation (sequential positioning, gap detection, collision detection).
+      Integration tests: Test component interactions with timeline store, drag-drop operations.
+      Test file naming: Component tests as ComponentName.test.tsx, utility tests as utilityName.test.ts.
+      Existing test files: Timeline.test.tsx, TimelineClip.test.tsx, timeUtils.test.ts.
+      Follow existing patterns from timeUtils.test.ts for utility function tests.
+    </standards>
+    <locations>
+      src/lib/timeline/*.test.ts
+      src/stores/*.test.ts
+      src/components/timeline/*.test.tsx
+    </locations>
+    <ideas>
+      <idea ac="1,6">Unit test: calculateSequentialPosition returns correct start time for new clip (0 for first, lastClipEnd for subsequent)</idea>
+      <idea ac="4">Unit test: detectGaps correctly identifies gaps between non-touching clips and returns gap duration</idea>
+      <idea ac="1">Unit test: validateClipPosition prevents overlapping clips on same track</idea>
+      <idea ac="6">Unit test: timelineStore maintains clips sorted by startTime after addClip operation</idea>
+      <idea ac="1,2">Integration test: Add 3 clips to track, verify automatic sequential placement with no gaps</idea>
+      <idea ac="3">Integration test: Manually reposition clip, verify gap created and detected correctly</idea>
+      <idea ac="5">Integration test: Play timeline with 3+ clips, verify playhead transitions smoothly across clip boundaries</idea>
+      <idea ac="4">Visual/Component test: Render TimelineTrack with clips having gaps, verify gap indicators appear</idea>
+      <idea ac="1">Component test: Drag clip from media library, verify drop handler calculates correct sequential position</idea>
+    </ideas>
+  </tests>
+</story-context>

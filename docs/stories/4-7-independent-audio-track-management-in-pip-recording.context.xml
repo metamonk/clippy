@@ -1,0 +1,373 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>4</epicId>
+    <storyId>7</storyId>
+    <title>Independent Audio Track Management in PiP Recording</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/4-7-independent-audio-track-management-in-pip-recording.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>system audio, microphone, and webcam audio recorded as separate tracks during PiP recording</iWant>
+    <soThat>I can adjust levels independently during editing</soThat>
+    <tasks>
+- Task 1: Extend FFmpeg multi-audio muxing to support 3 audio tracks (AC: #1, #3)
+  - Subtask 1.1: Review Story 2.4 FFmpeg audio muxing implementation (`finalize_with_audio()`)
+  - Subtask 1.2: Extend `AudioInputConfig` to support 3 audio sources (system, microphone, webcam)
+  - Subtask 1.3: Update FFmpeg command to map 3 audio inputs (`-map 0:v -map 1:a -map 2:a -map 3:a`)
+  - Subtask 1.4: Test with FFprobe to verify 3 AAC audio tracks in output MP4
+  - Subtask 1.5: Write unit tests for 3-track muxing scenario
+
+- Task 2: Implement webcam audio capture alongside video (AC: #1, #2)
+  - Subtask 2.1: Review nokhwa crate audio capture capabilities for AVFoundation
+  - Subtask 2.2: Extend `Camera` service in `services/camera/nokhwa_wrapper.rs` to capture audio stream
+  - Subtask 2.3: Create separate audio channel for webcam mic samples
+  - Subtask 2.4: Integrate webcam audio into `FrameSynchronizer` for A/V sync
+  - Subtask 2.5: Write unit tests for webcam audio capture
+
+- Task 3: Update RecordingOrchestrator for 3-stream audio coordination (AC: #1, #2)
+  - Subtask 3.1: Review Story 2.4 orchestrator implementation with 2 audio streams
+  - Subtask 3.2: Add third audio channel (webcam mic) to orchestrator state
+  - Subtask 3.3: Create third PCM file (`clippy_webcam_audio.pcm`) during PiP recording
+  - Subtask 3.4: Coordinate 3 parallel audio capture tasks (system, microphone, webcam)
+  - Subtask 3.5: Update `finalize_with_audio()` call to include all 3 PCM files
+  - Subtask 3.6: Write integration tests for 3-audio-track orchestration
+
+- Task 4: Timeline editor multi-track audio display (AC: #5)
+  - Subtask 4.1: Review timeline data model for multi-audio track support
+  - Subtask 4.2: Update `Clip` interface to include `audioTracks: AudioTrack[]` property
+  - Subtask 4.3: Extend `TimelineClip` component to display multiple audio track indicators
+  - Subtask 4.4: Update `mediaLibraryStore` to parse audio track count from imported PiP recordings
+  - Subtask 4.5: Write component tests for multi-audio track display
+
+- Task 5: Per-track volume control and mute functionality (AC: #6)
+  - Subtask 5.1: Review Story 3.9 per-clip volume control implementation
+  - Subtask 5.2: Extend volume control UI to support per-track selection dropdown
+  - Subtask 5.3: Update `timelineStore` with `audioTrackSettings` per clip (volume, mute per track)
+  - Subtask 5.4: Integrate track-specific volume controls into ClipVolumeControl component
+  - Subtask 5.5: Update FFmpeg export to apply per-track volume filters
+  - Subtask 5.6: Write component tests for track selection and volume control
+
+- Task 6: Integration testing and validation (AC: #1-6)
+  - Subtask 6.1: Record 30-second PiP video with all 3 audio sources enabled
+  - Subtask 6.2: Verify FFprobe shows 3 AAC audio tracks in output MP4
+  - Subtask 6.3: Validate audio sync accuracy (<50ms drift) for all 3 tracks
+  - Subtask 6.4: Test timeline editor displays all 3 audio tracks
+  - Subtask 6.5: Test mute/volume control on each track independently
+  - Subtask 6.6: Write E2E test for full 3-audio-track PiP workflow
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. PiP recording captures three independent audio tracks: system, microphone, webcam mic
+2. All audio tracks synchronized with composited video
+3. FFmpeg muxes all three audio tracks into single MP4
+4. Resulting file playable with all audio tracks accessible
+5. Timeline editor displays all three audio tracks for recorded PiP clip
+6. User can mute/adjust volume on each track independently during editing
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <!-- Core PRD and Architecture -->
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR004: Simultaneous Screen and Webcam Recording</section>
+        <snippet>System shall record screen and webcam simultaneously in picture-in-picture (PiP) style with configurable position/size, independent audio tracks, and real-time preview</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Novel Pattern 1: Simultaneous Multi-Stream Recording with Real-Time PiP Composition</section>
+        <snippet>Capture screen and webcam simultaneously with configurable picture-in-picture overlay while recording 3 independent audio tracks (system audio, microphone, webcam mic). RecordingOrchestrator coordinates all streams, FrameSynchronizer aligns timestamps, FFmpegCompositor pipes frames to ffmpeg overlay filter with 3 audio tracks.</snippet>
+      </doc>
+
+      <!-- Epic Technical Specifications -->
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>Epic 2 Technical Specification - Recording Foundation</title>
+        <section>Multi-audio track recording architecture</section>
+        <snippet>Multi-audio track recording architecture (3 independent tracks) implemented across Stories 4.3 and 4.7. FFmpeg muxes to single MP4 with 2 audio tracks in Epic 2, extended to 3 tracks in Epic 4.</snippet>
+      </doc>
+
+      <!-- Dependency Stories -->
+      <doc>
+        <path>docs/stories/2-4-system-audio-and-microphone-capture.md</path>
+        <title>Story 2.4: System Audio and Microphone Capture (COMPLETED)</title>
+        <section>FFmpeg audio muxing configuration</section>
+        <snippet>Implemented FFmpeg multi-audio muxing with finalize_with_audio() supporting up to 2 audio tracks (system + mic) with AAC encoding. Audio architecture uses bounded channels (30-frame buffer), 48kHz sample rate, PCM float32 during capture, AAC for final encoding.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/4-6-simultaneous-screen-webcam-recording.md</path>
+        <title>Story 4.6: Simultaneous Screen + Webcam Recording (DEPENDENCY)</title>
+        <section>PiP recording foundation</section>
+        <snippet>Provides PiP composition architecture with FFmpeg overlay filter, establishes 2-video-stream orchestration, provides RecordingConfig with PiP position/size settings. Must be completed before Story 4.7.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-9-per-clip-volume-control.md</path>
+        <title>Story 3.9: Per-Clip Volume Control (COMPLETED)</title>
+        <section>Volume control UI patterns</section>
+        <snippet>Provides volume control UI patterns and establishes FFmpeg volume filter integration during export. Component patterns can be extended for per-track volume control.</snippet>
+      </doc>
+
+      <!-- Epic Definitions -->
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Epic 4: Advanced Recording & PiP Composition - Story 4.7</section>
+        <snippet>Story 4.7 extends multi-audio architecture from 2 tracks (system + mic) to 3 tracks (+ webcam mic). PiP recording captures three independent audio tracks synchronized with composited video. Timeline editor displays all three audio tracks for independent mute/volume control.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <!-- FFmpeg Encoder Service -->
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+        <kind>service</kind>
+        <symbol>AudioInputConfig</symbol>
+        <lines>25-39</lines>
+        <reason>Struct for multi-audio muxing configuration. Currently supports 2 tracks (system + mic), needs extension for 3rd track (webcam audio)</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+        <kind>service</kind>
+        <symbol>finalize_with_audio</symbol>
+        <lines>383+</lines>
+        <reason>Method that performs FFmpeg multi-audio muxing. Needs extension from 2-track to 3-track support</reason>
+      </artifact>
+
+      <!-- Recording Services -->
+      <artifact>
+        <path>src-tauri/src/services/recording/orchestrator.rs</path>
+        <kind>service</kind>
+        <symbol>RecordingOrchestrator</symbol>
+        <lines>all</lines>
+        <reason>Coordinates multi-stream recording (screen, camera, audio). Needs extension for 3rd audio stream (webcam mic)</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/recording/frame_synchronizer.rs</path>
+        <kind>service</kind>
+        <symbol>FrameSynchronizer</symbol>
+        <lines>all</lines>
+        <reason>Synchronizes all audio/video streams. May need updates for 3-audio-stream synchronization</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/camera/nokhwa_wrapper.rs</path>
+        <kind>service</kind>
+        <symbol>Camera</symbol>
+        <lines>all</lines>
+        <reason>Webcam capture service. Needs extension to capture audio alongside video using AVFoundation</reason>
+      </artifact>
+
+      <!-- Timeline Models -->
+      <artifact>
+        <path>src-tauri/src/models/timeline.rs</path>
+        <kind>model</kind>
+        <symbol>Clip</symbol>
+        <lines>6-41</lines>
+        <reason>Timeline clip model. Needs audioTracks field to support multiple audio tracks per clip</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>model</kind>
+        <symbol>Clip</symbol>
+        <lines>6-17</lines>
+        <reason>Frontend Clip interface. Needs audioTracks field for multi-audio track display</reason>
+      </artifact>
+
+      <!-- Volume Control Components -->
+      <artifact>
+        <path>src/components/timeline/ClipVolumeControl.tsx</path>
+        <kind>component</kind>
+        <symbol>ClipVolumeControl</symbol>
+        <lines>25-50</lines>
+        <reason>Volume control component from Story 3.9. Pattern can be extended for per-track volume control with dropdown selector</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>all</lines>
+        <reason>Clip rendering component. Needs updates to display multi-audio track indicators</reason>
+      </artifact>
+
+      <!-- Stores -->
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>useTimelineStore</symbol>
+        <lines>all</lines>
+        <reason>Timeline state management. Needs audioTrackSettings per clip for track-specific volume/mute</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/mediaLibraryStore.ts</path>
+        <kind>store</kind>
+        <symbol>useMediaLibraryStore</symbol>
+        <lines>all</lines>
+        <reason>Media library state. Needs to parse audio track count from imported PiP recordings</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <dependency name="ffmpeg-sidecar" version="2.1.0" usage="FFmpeg CLI wrapper for multi-audio muxing"/>
+        <dependency name="screencapturekit" version="0.3.x" usage="macOS screen capture with audio"/>
+        <dependency name="nokhwa" version="0.10.9" features="input-avfoundation" usage="Webcam capture (needs audio extension)"/>
+        <dependency name="tokio" version="1.x" features="full" usage="Async runtime for parallel audio capture"/>
+        <dependency name="anyhow" version="1" usage="Error handling"/>
+        <dependency name="tracing" version="0.1" usage="Logging"/>
+      </rust>
+      <frontend>
+        <dependency name="react" version="^19.1.0" usage="UI framework"/>
+        <dependency name="react-konva" version="^19.2.0" usage="Timeline canvas rendering"/>
+        <dependency name="zustand" version="^4" usage="State management"/>
+        <dependency name="@radix-ui/react-slider" version="^1.3.6" usage="Volume slider component"/>
+        <dependency name="lucide-react" version="^0.548.0" usage="Icons for volume controls"/>
+      </frontend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <!-- Architecture Constraints -->
+    - MUST extend existing 2-audio-track architecture from Story 2.4, not replace it
+    - MUST maintain bounded channel pattern (30-frame buffer) for webcam audio stream
+    - MUST achieve &lt;50ms audio/video sync tolerance across all 3 audio tracks
+    - MUST use PCM float32 format during capture, AAC encoding in final MP4
+    - Audio sample rate: 48kHz stereo for all tracks (professional standard)
+    - Story 4.6 (Simultaneous Screen + Webcam Recording) MUST be completed before starting this story
+
+    <!-- Performance Constraints -->
+    - 3 bounded audio channels @ 30-sample buffer = ~33KB memory overhead (acceptable)
+    - PCM file storage: 5 min @ 48kHz stereo = ~115MB per track × 3 = 345MB temp storage
+    - Disk space check from Story 2.4 (500MB minimum) is sufficient for 3-track scenario
+    - FFmpeg muxing time: 1-3 seconds for 5-minute recording (post-processing approach)
+
+    <!-- Testing Constraints -->
+    - All Rust code must have unit tests (per project testing standards)
+    - All React components must have Vitest tests with &gt;80% coverage
+    - Integration tests must verify 3-audio-track muxing with FFprobe
+    - E2E tests must cover full PiP recording workflow with 3 audio sources
+
+    <!-- Code Quality Constraints -->
+    - Follow existing code patterns from Story 2.4 for audio capture
+    - Follow existing patterns from Story 3.9 for volume control UI
+    - Use project-relative paths in all file references
+    - Maintain backward compatibility with 2-audio-track recordings
+  </constraints>
+
+  <interfaces>
+    <!-- Rust Interfaces -->
+    <interface>
+      <name>AudioInputConfig (Extended)</name>
+      <kind>Rust struct</kind>
+      <signature>pub struct AudioInputConfig { pub path: PathBuf, pub sample_rate: u32, pub channels: u32, pub label: String }</signature>
+      <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+      <reason>Used for multi-audio muxing. Extend to support 3 audio sources (system, microphone, webcam)</reason>
+    </interface>
+    <interface>
+      <name>FFmpegEncoder::finalize_with_audio</name>
+      <kind>Rust async method</kind>
+      <signature>pub async fn finalize_with_audio(&amp;mut self, audio_inputs: Vec&lt;AudioInputConfig&gt;) -&gt; Result&lt;()&gt;</signature>
+      <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+      <reason>Muxes audio tracks into MP4. Update FFmpeg command: -map 0:v -map 1:a -map 2:a -map 3:a for 3 audio tracks</reason>
+    </interface>
+    <interface>
+      <name>Clip (Extended)</name>
+      <kind>Rust/TypeScript struct/interface</kind>
+      <signature>Needs new field: audio_tracks: Vec&lt;AudioTrack&gt; or audioTracks: AudioTrack[]</signature>
+      <path>src-tauri/src/models/timeline.rs and src/types/timeline.ts</path>
+      <reason>Timeline clip must support multiple audio tracks for display and per-track volume control</reason>
+    </interface>
+
+    <!-- Frontend Interfaces -->
+    <interface>
+      <name>ClipVolumeControl (Extended)</name>
+      <kind>React component</kind>
+      <signature>Add track selector dropdown for choosing which audio track to control</signature>
+      <path>src/components/timeline/ClipVolumeControl.tsx</path>
+      <reason>Volume control UI needs per-track selection and control capability</reason>
+    </interface>
+    <interface>
+      <name>timelineStore (Extended)</name>
+      <kind>Zustand store</kind>
+      <signature>Add audioTrackSettings: Map&lt;clipId, Map&lt;trackIndex, {volume, muted}&gt;&gt;</signature>
+      <path>src/stores/timelineStore.ts</path>
+      <reason>Store per-track audio settings for each clip with multiple audio tracks</reason>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Testing follows project standards from architecture.md and Story 2.4 patterns:
+      - Rust unit tests using #[cfg(test)] modules with tokio::test for async code
+      - Frontend tests using Vitest + React Testing Library with &gt;80% coverage target
+      - Integration tests verify FFmpeg output using FFprobe CLI to validate audio track count and sync
+      - E2E tests using Playwright to test full user workflows
+      - All tests must pass before story can be marked ready for review
+    </standards>
+    <locations>
+      - Rust unit tests: src-tauri/src/services/ffmpeg/encoder.rs (tests module)
+      - Rust unit tests: src-tauri/src/services/recording/orchestrator.rs (tests module)
+      - Rust unit tests: src-tauri/src/services/camera/nokhwa_wrapper.rs (tests module)
+      - Rust model tests: src-tauri/src/models/timeline.rs (tests module)
+      - Frontend component tests: src/components/timeline/*.test.tsx
+      - Frontend store tests: src/stores/*.test.ts
+      - E2E tests: tests/e2e/4.7-pip-multi-audio.spec.ts
+    </locations>
+    <ideas>
+      <!-- Rust Unit Test Ideas mapped to ACs -->
+      <test ac="AC1,AC3" type="unit">
+        Test FFmpegEncoder::finalize_with_audio with 3 AudioInputConfig entries. Verify FFmpeg command includes -map 0:v -map 1:a -map 2:a -map 3:a
+      </test>
+      <test ac="AC1" type="unit">
+        Test Camera service captures webcam audio stream alongside video. Mock nokhwa audio capture with AVFoundation backend
+      </test>
+      <test ac="AC2" type="unit">
+        Test FrameSynchronizer handles 3 audio streams with timestamps. Verify sync tolerance &lt;50ms for all streams
+      </test>
+      <test ac="AC1,AC2" type="unit">
+        Test RecordingOrchestrator coordinates 3 parallel audio capture tasks (system, microphone, webcam). Verify 3 PCM files created
+      </test>
+      <test ac="AC5" type="unit">
+        Test Clip struct serialization with audio_tracks field. Verify round-trip serde for Vec&lt;AudioTrack&gt;
+      </test>
+
+      <!-- Frontend Unit Test Ideas mapped to ACs -->
+      <test ac="AC5" type="unit">
+        Test TimelineClip component renders 3-audio-track indicators when clip.audioTracks.length === 3
+      </test>
+      <test ac="AC6" type="unit">
+        Test ClipVolumeControl shows track selection dropdown with 3 options (System, Microphone, Webcam)
+      </test>
+      <test ac="AC6" type="unit">
+        Test timelineStore.setAudioTrackVolume updates correct track (track index 0, 1, or 2)
+      </test>
+      <test ac="AC6" type="unit">
+        Test timelineStore.toggleAudioTrackMute toggles mute state for specific track, not entire clip
+      </test>
+      <test ac="AC5" type="unit">
+        Test mediaLibraryStore parses audioTrackCount from imported PiP recording metadata
+      </test>
+
+      <!-- Integration Test Ideas mapped to ACs -->
+      <test ac="AC1,AC2,AC3,AC4" type="integration">
+        Record 30-second PiP video with all 3 audio sources enabled. Use FFprobe to verify output MP4 has 3 AAC audio tracks at 48kHz stereo
+      </test>
+      <test ac="AC2" type="integration">
+        Measure audio/video sync accuracy for all 3 tracks. Verify &lt;50ms drift tolerance maintained throughout recording
+      </test>
+      <test ac="AC4" type="integration">
+        Play resulting PiP MP4 file with mpv/VLC. Verify all 3 audio tracks accessible via audio track selector menu
+      </test>
+
+      <!-- E2E Test Ideas mapped to ACs -->
+      <test ac="AC1-AC6" type="e2e">
+        Full workflow: Start PiP recording → Enable all 3 audio sources → Stop recording → Import to timeline → Verify 3 audio track indicators displayed → Mute system audio → Adjust microphone volume to 150% → Verify webcam audio plays → Export with track-specific settings → Validate exported MP4 has correct volumes applied
+      </test>
+      <test ac="AC5,AC6" type="e2e">
+        Timeline editor: Select PiP clip with 3 audio tracks → Open volume control → Select "Microphone" track → Mute it → Verify microphone audio muted during playback but system and webcam audio play normally
+      </test>
+    </ideas>
+  </tests>
+</story-context>

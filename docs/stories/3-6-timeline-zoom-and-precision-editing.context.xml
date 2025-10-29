@@ -1,0 +1,437 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>6</storyId>
+    <title>Timeline Zoom and Precision Editing</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-6-timeline-zoom-and-precision-editing.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to zoom in/out on the timeline</iWant>
+    <soThat>I can make precise edits and view long timelines efficiently</soThat>
+    <tasks>
+      <task id="1" status="pending">
+        <title>Implement zoom scale state and calculation logic</title>
+        <acceptanceCriteria>AC #1, #2</acceptanceCriteria>
+        <subtasks>
+          <subtask>Add zoomLevel state to timelineStore (number from 0.1 to 10.0, default 1.0)</subtask>
+          <subtask>Create src/lib/timeline/zoomUtils.ts with zoom scale calculation functions</subtask>
+          <subtask>Implement calculatePixelsPerSecond(zoomLevel) function</subtask>
+          <subtask>Implement calculateVisibleDuration(containerWidth, zoomLevel) function</subtask>
+          <subtask>Implement clampZoomLevel(level, min, max) function</subtask>
+          <subtask>Add unit tests for zoom calculations</subtask>
+        </subtasks>
+      </task>
+      <task id="2" status="pending">
+        <title>Add zoom actions to timelineStore</title>
+        <acceptanceCriteria>AC #1, #6</acceptanceCriteria>
+        <subtasks>
+          <subtask>Implement setZoomLevel(level: number) action</subtask>
+          <subtask>Implement zoomIn() action (multiply current zoom by 1.2)</subtask>
+          <subtask>Implement zoomOut() action (divide current zoom by 1.2)</subtask>
+          <subtask>Clamp zoom level to range [0.1, 10.0]</subtask>
+          <subtask>Add unit tests for zoom store actions</subtask>
+        </subtasks>
+      </task>
+      <task id="3" status="pending">
+        <title>Create zoom control UI components</title>
+        <acceptanceCriteria>AC #1, #6</acceptanceCriteria>
+        <subtasks>
+          <subtask>Create src/components/timeline/ZoomControls.tsx</subtask>
+          <subtask>Add zoom slider (0.1x to 10x range) with current zoom level display</subtask>
+          <subtask>Add zoom in button (+) and zoom out button (-)</subtask>
+          <subtask>Add "Fit to Window" button (sets zoom to show entire timeline)</subtask>
+          <subtask>Style with Tailwind CSS to match timeline toolbar aesthetics</subtask>
+          <subtask>Add keyboard shortcuts: Cmd+= (zoom in), Cmd+- (zoom out)</subtask>
+          <subtask>Test keyboard shortcuts on macOS</subtask>
+        </subtasks>
+      </task>
+      <task id="4" status="pending">
+        <title>Update timeline rendering to respect zoom level</title>
+        <acceptanceCriteria>AC #2</acceptanceCriteria>
+        <subtasks>
+          <subtask>Modify Timeline.tsx to calculate clip widths based on zoomLevel</subtask>
+          <subtask>Update clip positioning calculations to use pixels-per-second from zoom</subtask>
+          <subtask>Ensure clip thumbnails scale appropriately with zoom</subtask>
+          <subtask>Test timeline rendering at various zoom levels (0.1x, 1x, 5x, 10x)</subtask>
+          <subtask>Verify clips remain aligned at different zoom levels</subtask>
+        </subtasks>
+      </task>
+      <task id="5" status="pending">
+        <title>Implement dynamic time ruler based on zoom</title>
+        <acceptanceCriteria>AC #3</acceptanceCriteria>
+        <subtasks>
+          <subtask>Modify TimeRuler.tsx to calculate interval based on zoomLevel</subtask>
+          <subtask>Zoom out (0.1-0.5x): Show minute markers</subtask>
+          <subtask>Medium zoom (0.5-2x): Show 10-second markers</subtask>
+          <subtask>Zoomed in (2-5x): Show 1-second markers</subtask>
+          <subtask>Very zoomed in (5-10x): Show 100ms markers</subtask>
+          <subtask>Ensure ruler labels remain readable at all zoom levels</subtask>
+          <subtask>Test ruler rendering performance (should maintain 60 FPS)</subtask>
+        </subtasks>
+      </task>
+      <task id="6" status="pending">
+        <title>Implement horizontal scrolling for zoomed timelines</title>
+        <acceptanceCriteria>AC #4</acceptanceCriteria>
+        <subtasks>
+          <subtask>Add scrollPosition state to timelineStore (number, default 0)</subtask>
+          <subtask>Implement horizontal scroll container in Timeline.tsx</subtask>
+          <subtask>Add setScrollPosition(position: number) action to timelineStore</subtask>
+          <subtask>Handle mouse wheel horizontal scroll events</subtask>
+          <subtask>Add scroll bar for manual navigation</subtask>
+          <subtask>Implement drag-to-scroll functionality (optional enhancement)</subtask>
+          <subtask>Test scrolling with various zoom levels</subtask>
+        </subtasks>
+      </task>
+      <task id="7" status="pending">
+        <title>Implement zoom-centered playhead visibility</title>
+        <acceptanceCriteria>AC #5</acceptanceCriteria>
+        <subtasks>
+          <subtask>Create maintainPlayheadVisibility() utility function</subtask>
+          <subtask>When zooming in: Center view on playhead position if playhead visible</subtask>
+          <subtask>When zooming out: Keep playhead in view if it was visible before</subtask>
+          <subtask>Calculate scroll adjustment needed after zoom change</subtask>
+          <subtask>Update scrollPosition automatically after zoom operations</subtask>
+          <subtask>Test playhead visibility across zoom range</subtask>
+        </subtasks>
+      </task>
+      <task id="8" status="pending">
+        <title>Add comprehensive tests for zoom functionality</title>
+        <acceptanceCriteria>AC #1-6</acceptanceCriteria>
+        <subtasks>
+          <subtask>Unit test: calculatePixelsPerSecond() returns correct values</subtask>
+          <subtask>Unit test: Zoom in/out actions clamp correctly to [0.1, 10]</subtask>
+          <subtask>Unit test: Time ruler intervals calculated correctly for each zoom range</subtask>
+          <subtask>Integration test: Timeline renders correctly at different zoom levels</subtask>
+          <subtask>Integration test: Scrolling works with zoomed timeline</subtask>
+          <subtask>Integration test: Playhead remains visible after zoom operations</subtask>
+          <subtask>E2E test: Click zoom controls and verify UI updates</subtask>
+          <subtask>E2E test: Use keyboard shortcuts (Cmd+/Cmd-) to zoom</subtask>
+        </subtasks>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="1">Zoom controls (slider or +/- buttons) adjust timeline scale</criterion>
+    <criterion id="2">Zoomed in shows more detail (frames visible), zoomed out shows more duration</criterion>
+    <criterion id="3">Time ruler updates to show appropriate time intervals based on zoom level</criterion>
+    <criterion id="4">Horizontal scrolling works for navigating long timelines</criterion>
+    <criterion id="5">Zoom maintains playhead visibility (centers on playhead or current view)</criterion>
+    <criterion id="6">Keyboard shortcuts for zoom (Cmd+/Cmd- or similar)</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic 3 - Multi-Track Timeline Editor</title>
+        <section>Story 3.6: Timeline Zoom and Precision Editing</section>
+        <snippet>Provides zoom in/out on timeline for precision editing and efficient viewing of long timelines. Implements zoom controls, dynamic time ruler, horizontal scrolling, and playhead visibility maintenance.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR005: Multi-Track Timeline Editor</section>
+        <snippet>System shall provide visual timeline with playhead, multiple tracks, time ruler, zoom/scroll capabilities. Supports drag-drop clip arrangement, trimming, splitting, deletion, track movement, and snap-to-grid editing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR012: Native macOS Integration</section>
+        <snippet>System shall implement native keyboard shortcuts following macOS conventions. Industry-standard shortcuts: Cmd+= (zoom in), Cmd+- (zoom out), matching Final Cut Pro and DaVinci Resolve.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Video playback shall maintain 30+ FPS. System must maintain smooth timeline rendering at 60 FPS target for interactive editing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR003: Usability and Reliability</section>
+        <snippet>Zoom operations should feel smooth and immediate (under 100ms from input to render). Ruler labels must remain readable at all zoom levels.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Technology Stack - Konva.js Timeline</section>
+        <snippet>Konva.js canvas-based timeline for 60 FPS interactive editing. Better performance than Fabric.js with Stage/Layer rendering architecture.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>State Management Patterns (Zustand)</section>
+        <snippet>Zustand 4.x for lightweight state management with optimized re-renders via selectors. Immutable state updates with devtools middleware for debugging.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>ADR-005: Store Timeline Timestamps in Milliseconds</section>
+        <snippet>Always use milliseconds (u64 in Rust, number in TypeScript) for timeline timestamps. Convert to seconds only when calling MPV, FFmpeg, or Web Audio APIs. JavaScript Date uses milliseconds natively.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Project Structure - Hooks</section>
+        <snippet>useKeyboardShortcuts.ts handles macOS keyboard shortcuts. Must prevent default browser behavior for shortcuts like Cmd+= and Cmd+-.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>state-management</kind>
+        <symbol>TimelineState</symbol>
+        <lines>7-58</lines>
+        <reason>Existing timeline store structure where zoomLevel and scrollPosition state will be added. Contains viewConfig with pixelsPerSecond that will be replaced with zoom-based calculation.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>TimelineViewConfig</symbol>
+        <lines>40-44</lines>
+        <reason>Current view config interface with pixelsPerSecond property. Will need to add zoomLevel and scrollPosition properties for zoom functionality.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>Clip</symbol>
+        <lines>5-12</lines>
+        <reason>Clip interface with millisecond-based timestamps (startTime, duration, trimIn, trimOut). Used for calculating clip positions and widths based on zoom level.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>Track</symbol>
+        <lines>14-21</lines>
+        <reason>Track interface containing clips array. Used for iterating through all clips to calculate total timeline width at different zoom levels.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/Timeline.tsx</path>
+        <kind>component</kind>
+        <symbol>Timeline</symbol>
+        <lines>all</lines>
+        <reason>Main timeline component using Konva Stage/Layer. Will be modified to add ZoomControls, horizontal scroll container, and pass zoomLevel to child components.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>all</lines>
+        <reason>Clip rendering component. Width and position calculations will be updated to use zoom-based utilities instead of fixed pixelsPerSecond.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimeRuler.tsx</path>
+        <kind>component</kind>
+        <symbol>TimeRuler</symbol>
+        <lines>all</lines>
+        <reason>Time ruler component showing time markers. Will be updated to calculate dynamic intervals based on zoom level (minute/10s/1s/100ms markers).</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineTrack.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineTrack</symbol>
+        <lines>all</lines>
+        <reason>Track component rendering clips. May need updates to pass zoomLevel prop to TimelineClip components.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/Playhead.tsx</path>
+        <kind>component</kind>
+        <symbol>Playhead</symbol>
+        <lines>all</lines>
+        <reason>Playhead position visualization. Position calculation will need to use zoom-based utilities to maintain accurate alignment.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/ui/slider.tsx</path>
+        <kind>ui-component</kind>
+        <symbol>Slider</symbol>
+        <lines>all</lines>
+        <reason>Shadcn/ui Slider component to be used for zoom control slider (0.1x to 10x range).</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/timeUtils.ts</path>
+        <kind>utility</kind>
+        <symbol>all</symbol>
+        <lines>all</lines>
+        <reason>Existing timeline utility functions. New zoom utilities (calculatePixelsPerSecond, calculateVisibleDuration, clampZoomLevel, maintainPlayheadVisibility) will be added to zoomUtils.ts following similar patterns.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="zustand" version="^4" />
+        <package name="konva" version="^9.3.22" />
+        <package name="react-konva" version="^19.2.0" />
+        <package name="lucide-react" version="^0.548.0" />
+        <package name="@radix-ui/react-slider" version="^1.3.6" />
+        <package name="tailwind-merge" version="^3.3.1" />
+        <package name="class-variance-authority" version="^0.7.1" />
+        <package name="clsx" version="^2.1.1" />
+        <package name="uuid" version="^13.0.0" />
+        <package name="vitest" version="^2" />
+        <package name="@testing-library/react" version="^16" />
+        <package name="@playwright/test" version="^1.56.1" />
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>All timeline timestamps must be in milliseconds (ADR-005) - convert to seconds only for external APIs</constraint>
+    <constraint>Target 60 FPS for Konva canvas rendering during zoom operations</constraint>
+    <constraint>Zoom level must be clamped to range [0.1, 10.0] to prevent extreme values</constraint>
+    <constraint>Use Zustand immutable state updates with devtools middleware for all store modifications</constraint>
+    <constraint>Keyboard shortcuts (Cmd+=, Cmd+-) must prevent default browser behavior</constraint>
+    <constraint>Use shadcn/ui Slider component for zoom control UI consistency</constraint>
+    <constraint>Follow existing naming conventions: camelCase for functions/variables, PascalCase for components</constraint>
+    <constraint>Create utility functions in src/lib/timeline/zoomUtils.ts following existing patterns in timeUtils.ts</constraint>
+    <constraint>Zoom operations should complete in under 100ms (NFR003 usability requirement)</constraint>
+    <constraint>Ruler labels must remain readable at all zoom levels - dynamic intervals based on zoom</constraint>
+    <constraint>Base scale: 100 pixels per second at 1.0x zoom (as defined in story Dev Notes)</constraint>
+    <constraint>Maintain playhead visibility when zooming if playhead was visible before zoom operation</constraint>
+    <constraint>Use React.memo for performance optimization to prevent unnecessary re-renders during zoom</constraint>
+    <constraint>Test at edge cases: 0.1x (min zoom), 1.0x (default), 5.0x (precision), 10.0x (max zoom)</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>TimelineState (extended)</name>
+      <kind>TypeScript interface</kind>
+      <signature>
+        interface TimelineState {
+          // New zoom-related state
+          zoomLevel: number;         // 0.1 to 10.0, default 1.0
+          scrollPosition: number;    // Horizontal scroll in pixels, default 0
+
+          // New zoom actions
+          setZoomLevel: (level: number) => void;
+          zoomIn: () => void;
+          zoomOut: () => void;
+          setScrollPosition: (position: number) => void;
+        }
+      </signature>
+      <path>src/stores/timelineStore.ts</path>
+    </interface>
+    <interface>
+      <name>ZoomUtils API</name>
+      <kind>Utility functions</kind>
+      <signature>
+        // Calculate pixels per second based on zoom level
+        calculatePixelsPerSecond(zoomLevel: number): number
+
+        // Calculate visible duration based on container width and zoom
+        calculateVisibleDuration(containerWidth: number, zoomLevel: number): number
+
+        // Calculate clip width in pixels
+        calculateClipWidth(clipDuration: number, zoomLevel: number): number
+
+        // Calculate clip position in pixels
+        calculateClipPosition(clipStartTime: number, zoomLevel: number): number
+
+        // Clamp zoom level to valid range
+        clampZoomLevel(level: number, min?: number, max?: number): number
+
+        // Maintain playhead visibility after zoom
+        maintainPlayheadVisibility(
+          currentScrollPosition: number,
+          oldZoomLevel: number,
+          newZoomLevel: number,
+          playheadPosition: number,
+          containerWidth: number
+        ): number
+      </signature>
+      <path>src/lib/timeline/zoomUtils.ts (new file)</path>
+    </interface>
+    <interface>
+      <name>ZoomControls component</name>
+      <kind>React component</kind>
+      <signature>
+        function ZoomControls(): JSX.Element
+        // Props: None (uses Zustand store directly)
+        // Renders: Slider, zoom in/out buttons, fit-to-window button, zoom level display
+      </signature>
+      <path>src/components/timeline/ZoomControls.tsx (new file)</path>
+    </interface>
+    <interface>
+      <name>TimeRuler component (updated)</name>
+      <kind>React component</kind>
+      <signature>
+        interface TimeRulerProps {
+          width: number;
+          height: number;
+          zoomLevel: number;  // New prop for dynamic intervals
+        }
+        function TimeRuler(props: TimeRulerProps): JSX.Element
+      </signature>
+      <path>src/components/timeline/TimeRuler.tsx</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Unit tests use Vitest with @testing-library/react for component tests. Test files are co-located with source files (*.test.ts, *.test.tsx). E2E tests use Playwright and are located in tests/e2e/ directory with pattern *.spec.ts. Existing test patterns show comprehensive coverage with unit tests for stores, utilities, and components plus E2E tests for full workflows. Follow existing patterns for Zustand store testing, Konva component testing, and keyboard shortcut testing.
+    </standards>
+    <locations>
+      <location>src/lib/timeline/zoomUtils.test.ts (new)</location>
+      <location>src/stores/timelineStore.test.ts (extend existing)</location>
+      <location>src/components/timeline/ZoomControls.test.tsx (new)</location>
+      <location>src/components/timeline/Timeline.test.tsx (extend existing)</location>
+      <location>src/components/timeline/TimelineClip.test.tsx (extend existing)</location>
+      <location>src/components/timeline/TimeRuler.test.tsx (extend existing)</location>
+      <location>tests/e2e/3.6-timeline-zoom.spec.ts (new)</location>
+    </locations>
+    <ideas>
+      <idea acceptanceCriteria="AC#1">
+        <title>Unit test: calculatePixelsPerSecond returns correct values</title>
+        <description>Test zoomUtils.calculatePixelsPerSecond() with various zoom levels: 0.1x → 10px/s, 1.0x → 100px/s, 5.0x → 500px/s, 10.0x → 1000px/s</description>
+      </idea>
+      <idea acceptanceCriteria="AC#1">
+        <title>Unit test: clampZoomLevel enforces range [0.1, 10.0]</title>
+        <description>Test that clampZoomLevel() correctly clamps values: -1 → 0.1, 0.05 → 0.1, 5.0 → 5.0, 15.0 → 10.0, 100 → 10.0</description>
+      </idea>
+      <idea acceptanceCriteria="AC#1, AC#6">
+        <title>Unit test: Zoom store actions update state correctly</title>
+        <description>Test setZoomLevel(), zoomIn() (multiply by 1.2), zoomOut() (divide by 1.2) actions. Verify zoom level is clamped and scrollPosition is adjusted for playhead visibility.</description>
+      </idea>
+      <idea acceptanceCriteria="AC#2">
+        <title>Unit test: calculateClipWidth scales with zoom level</title>
+        <description>Test that 30-second clip width scales correctly: 0.5x → 1500px, 1.0x → 3000px, 5.0x → 15000px</description>
+      </idea>
+      <idea acceptanceCriteria="AC#3">
+        <title>Unit test: Time ruler intervals calculated correctly for each zoom range</title>
+        <description>Test getTimeInterval() for zoom ranges: 0.1x → 60000ms (1 min), 0.7x → 10000ms (10s), 2.5x → 1000ms (1s), 7.0x → 100ms</description>
+      </idea>
+      <idea acceptanceCriteria="AC#4">
+        <title>Integration test: Scrolling works with zoomed timeline</title>
+        <description>Test that scrollPosition state updates when horizontal scroll container is scrolled. Verify scroll bar appears when timeline exceeds container width.</description>
+      </idea>
+      <idea acceptanceCriteria="AC#5">
+        <title>Unit test: maintainPlayheadVisibility centers playhead in view</title>
+        <description>Test that maintainPlayheadVisibility() returns correct scrollPosition to keep playhead centered when zooming. Test case: playhead visible → remains centered, playhead not visible → scroll unchanged.</description>
+      </idea>
+      <idea acceptanceCriteria="AC#5">
+        <title>Integration test: Playhead remains visible after zoom operations</title>
+        <description>Test that when zooming in/out with playhead visible, the playhead stays in view (centered). When playhead is off-screen, scrollPosition should not change.</description>
+      </idea>
+      <idea acceptanceCriteria="AC#6">
+        <title>E2E test: Keyboard shortcuts (Cmd+/Cmd-) zoom timeline</title>
+        <description>Test Cmd+= increases zoom level, Cmd+- decreases zoom level. Verify UI updates: clips get wider/narrower, ruler intervals adjust, zoom level display updates.</description>
+      </idea>
+      <idea acceptanceCriteria="AC#1, AC#2, AC#3">
+        <title>E2E test: Click zoom controls and verify UI updates</title>
+        <description>Test zoom slider, +/- buttons, and Fit to Window button. Verify timeline renders correctly at 0.1x, 1.0x, 5.0x, 10.0x zoom levels. Verify ruler markers update appropriately.</description>
+      </idea>
+      <idea acceptanceCriteria="AC#2, AC#3">
+        <title>Integration test: Timeline renders correctly at different zoom levels</title>
+        <description>Test that at 0.1x zoom, timeline shows full project overview with minute markers. At 10x zoom, shows frame-level detail with 100ms markers. Clips scale proportionally.</description>
+      </idea>
+      <idea acceptanceCriteria="AC#1, AC#2, AC#6">
+        <title>Integration test: Zoom performance maintains 60 FPS</title>
+        <description>Test that zoom operations (keyboard, slider, buttons) complete in under 100ms and timeline maintains 60 FPS rendering during zoom. Use performance.now() to measure.</description>
+      </idea>
+    </ideas>
+  </tests>
+</story-context>

@@ -1,0 +1,237 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>3.9.1</storyId>
+    <title>Preview Playback Volume Control</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-9-1-preview-playback-volume-control.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user editing video</asA>
+    <iWant>to hear volume changes during timeline preview playback</iWant>
+    <soThat>I can verify audio balance without needing to export the video</soThat>
+    <tasks>- Task 1: Research and design MPV volume integration approach (AC: #1, #2)
+  - Subtask 1.1: Research MPV volume control API and per-clip audio adjustment capabilities
+  - Subtask 1.2: Determine technical approach (real-time volume commands vs. pre-processed audio)
+  - Subtask 1.3: Document approach, MPV commands to use, and any technical limitations
+
+- Task 2: Implement MPV volume control backend (AC: #2, #4)
+  - Subtask 2.1: Update `src-tauri/src/services/mpv_player.rs` to support volume adjustment commands
+  - Subtask 2.2: Add Tauri command `cmd_set_clip_volume(clip_id, volume)` in `src-tauri/src/commands/mpv.rs`
+  - Subtask 2.3: Implement volume scaling conversion (clippy 0-200% to MPV 0-100 scale)
+  - Subtask 2.4: Implement mute handling for clips with `muted: true` flag
+  - Subtask 2.5: Add error handling for MPV command failures
+
+- Task 3: Integrate volume control with playback state (AC: #1, #3, #5)
+  - Subtask 3.1: Update `src/stores/playerStore.ts` to track active clip during playback
+  - Subtask 3.2: Detect clip boundaries and trigger volume updates when crossing clips
+  - Subtask 3.3: Implement volume crossfade logic between clips (linear fade over 100ms)
+  - Subtask 3.4: Handle edge cases: clip volume changes mid-playback, rapid seek operations
+  - Subtask 3.5: Add debouncing for volume updates during scrubbing/seeking
+
+- Task 4: Add unit and integration tests (AC: #1-5)
+  - Subtask 4.1: Unit test - MPV volume command generation and scaling conversion
+  - Subtask 4.2: Unit test - playerStore volume update logic and clip boundary detection
+  - Subtask 4.3: Unit test - Volume crossfade calculation
+  - Subtask 4.4: Integration test - Volume changes during playback (may require manual verification)
+  - Subtask 4.5: E2E test - Full workflow: Set volume → Play → Verify audio level changes</tasks>
+  </story>
+
+  <acceptanceCriteria>1. Volume changes reflect in real-time during timeline preview playback
+2. MPV player applies clip volume (0-200% range) correctly during playback
+3. Volume crossfades smoothly when transitioning between clips with different volumes
+4. Muted clips produce no audio during preview playback
+5. Volume changes sync with playback position (no audible lag)</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/tech-spec-epic-3.md</path>
+        <title>Epic 3 Technical Specification: Multi-Track Timeline &amp; Editing Maturity</title>
+        <section>Per-Clip Volume Control (Story 3.9)</section>
+        <snippet>Clip interface includes volume: number (0-200%, default 100%) and muted: boolean. FFmpeg export uses volume filter: volume={volume_linear} where volume_linear = volume_percent / 100. Volume control UI implemented in ClipVolumeControl component with Radix UI Slider.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-9-per-clip-volume-control.md</path>
+        <title>Story 3.9: Per-Clip Volume Control</title>
+        <section>Dev Notes - MPV Integration</section>
+        <snippet>MPV supports real-time volume control via volume property (0-100 scale). Need to map clippy's 0-200% range to MPV's 0-100 scale. Consider using audio-display-volume property. Volume conversion: mpv_volume = min(100.0, (clippy_volume / 2.0)). Task 3 deferred due to MPV integration complexity - this becomes Story 3.9.1.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/1-3-5-mpv-integration-professional-video-playback.md</path>
+        <title>Story 1.3.5: MPV Integration for Professional Video Playback</title>
+        <section>MPV Service Structure and Commands</section>
+        <snippet>MPV player service uses libmpv2 v5.0.1 with event-based architecture. Service wrapper at src-tauri/src/services/mpv_player.rs. Tauri commands: mpv_play, mpv_pause, mpv_seek, mpv_get_time, mpv_get_duration. MPV uses seconds, timeline uses milliseconds (convert at interface boundary).</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/1-7-timeline-playback-synchronization.md</path>
+        <title>Story 1.7: Timeline Playback Synchronization</title>
+        <section>State Management and Playback Loop</section>
+        <snippet>playerStore tracks playheadPosition (milliseconds), currentTime (seconds), isPlaying, activeClipId. RequestAnimationFrame loop drives playhead updates during playback (60fps target). Primary sync direction: MPV player → playhead during playback. Secondary sync: Playhead/timeline → MPV player during scrubbing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Clippy Architecture Document</title>
+        <section>ADR-005: Timeline Timestamps in Milliseconds, ADR-006: MPV Integration</section>
+        <snippet>All timeline timestamps MUST use milliseconds. MPV uses seconds - convert at API boundary. MPV provides volume property (0-100 scale) via IPC commands. Property can be set dynamically during playback: set_property volume &lt;value&gt;. libmpv2 5.0.1 integrated via Rust bindings.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>PlayerStore interface</symbol>
+        <lines>1-100</lines>
+        <reason>Contains playheadPosition (ms), activeClipId, play/pause actions. Will need extension to track active clip during playback and trigger volume updates when crossing clip boundaries.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/mpv_player.rs</path>
+        <kind>service</kind>
+        <symbol>MpvPlayer struct</symbol>
+        <lines>1-150</lines>
+        <reason>MPV service wrapper with play(), pause(), seek() methods. Needs new set_volume(&amp;self, volume: f32) method using mpv.set_property("volume", volume). Uses libmpv2 v5.0.1 bindings.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/mpv.rs</path>
+        <kind>commands</kind>
+        <symbol>Tauri MPV commands</symbol>
+        <lines>1-80</lines>
+        <reason>Existing MPV Tauri command pattern. New command needed: cmd_set_clip_volume(clip_id: String, volume: f32) following established pattern with MpvPlayerState.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>types</kind>
+        <symbol>Clip interface</symbol>
+        <lines>N/A</lines>
+        <reason>Already includes volume: number (0-200) and muted: boolean properties from Story 3.9. No changes needed, just reference for reading clip volume values.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/ClipVolumeControl.tsx</path>
+        <kind>component</kind>
+        <symbol>ClipVolumeControl component</symbol>
+        <lines>N/A</lines>
+        <reason>Volume UI component created in Story 3.9 with Radix UI Slider (0-200%). UI already exists for setting volume - this story adds real-time audio feedback during playback.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/recording.ts</path>
+        <kind>library</kind>
+        <symbol>Tauri command wrappers</symbol>
+        <lines>N/A</lines>
+        <reason>Pattern reference for creating src/lib/tauri/mpv.ts with wrapper function setClipVolume(clipId, volume) calling invoke('cmd_set_clip_volume').</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package name="react" version="19.1.0" purpose="UI framework" />
+        <package name="zustand" version="4.x" purpose="State management (playerStore, timelineStore)" />
+        <package name="@tauri-apps/api" version="2.x" purpose="Tauri invoke for MPV commands" />
+        <package name="konva" version="9.3.22" purpose="Timeline canvas rendering" />
+        <package name="react-konva" version="19.2.0" purpose="React bindings for Konva" />
+        <package name="vitest" version="2.x" purpose="Unit testing framework" />
+        <package name="@testing-library/react" version="16.x" purpose="Component testing" />
+        <package name="typescript" version="5.8.3" purpose="Type safety" />
+      </frontend>
+      <backend>
+        <package name="libmpv2" version="5.0.1" purpose="MPV player bindings for volume control API" />
+        <package name="tauri" version="2.x" purpose="Rust-JavaScript IPC bridge" />
+        <package name="anyhow" version="latest" purpose="Error handling" />
+        <package name="serde" version="latest" purpose="Serialization for Tauri commands" />
+        <package name="tracing" version="latest" purpose="Logging and diagnostics" />
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <architectural>
+      <rule>ADR-005: All timeline timestamps MUST use milliseconds. MPV uses seconds - convert at interface boundary (divide by 1000 for MPV, multiply by 1000 for timeline).</rule>
+      <rule>ADR-002: Use Konva.js for timeline interactions. RequestAnimationFrame for smooth 60 FPS playhead rendering.</rule>
+      <rule>ADR-003: Use Zustand immutable state updates with selectors to minimize re-renders. Store activeClipId in playerStore.</rule>
+      <rule>Volume conversion formula: mpv_volume = min(100.0, clippy_volume / 2.0). Clippy 100% → MPV 50%, Clippy 200% → MPV 100%.</rule>
+    </architectural>
+    <performance>
+      <rule>NFR001: Scrubbing responsiveness target &lt; 100ms. Debounce volume updates during seeking to avoid MPV command spam.</rule>
+      <rule>Clip boundary detection runs every frame (60fps target). Optimize with previousClipId to detect actual transitions, not every frame check.</rule>
+      <rule>100ms seek threshold prevents unnecessary MPV seeks during playback (from Story 1.7 implementation).</rule>
+    </performance>
+    <implementation>
+      <rule>Primary sync direction: MPV player → playhead during playback. Secondary sync: Playhead/timeline → MPV player during scrubbing.</rule>
+      <rule>Cleanup: Cancel animation frames on pause and unmount to prevent memory leaks.</rule>
+      <rule>Edge case: Mid-playback volume changes must re-apply volume immediately if clip is currently active.</rule>
+      <rule>Edge case: Gaps between clips - keep last clip's volume or reset to 100% (design decision needed).</rule>
+      <rule>Muted clips: Set MPV volume to 0 regardless of clip volume value.</rule>
+    </implementation>
+    <testing>
+      <rule>Unit tests required for all volume logic: MPV command generation, clip boundary detection, volume scaling conversion.</rule>
+      <rule>Integration tests may require manual verification of audible volume changes (automated audio level testing is complex).</rule>
+      <rule>Test edge cases: 0% volume, 100%, 200%, rapid clip transitions, mid-playback volume changes.</rule>
+    </testing>
+  </constraints>
+  <interfaces>
+    <mpv-api>
+      <name>MPV volume property</name>
+      <kind>IPC property</kind>
+      <signature>mpv.set_property("volume", f32) where f32 is 0-100 scale</signature>
+      <path>src-tauri/src/services/mpv_player.rs</path>
+      <notes>MPV volume is 0-100 scale (not 0-200 like clippy). Conversion required: mpv_vol = clippy_vol / 2.0. Property can be set during playback for real-time adjustment.</notes>
+    </mpv-api>
+    <tauri-command>
+      <name>cmd_set_clip_volume</name>
+      <kind>Tauri command</kind>
+      <signature>#[tauri::command] pub fn cmd_set_clip_volume(clip_id: String, volume: f32, state: State&lt;MpvPlayerState&gt;) -&gt; MpvResponse</signature>
+      <path>src-tauri/src/commands/mpv.rs (NEW)</path>
+      <notes>New command to set MPV volume based on clip ID. Receives clippy volume (0-200), converts to MPV scale (0-100), calls mpv.set_volume().</notes>
+    </tauri-command>
+    <playerstore>
+      <name>activeClipId</name>
+      <kind>Zustand store field</kind>
+      <signature>activeClipId: string | null</signature>
+      <path>src/stores/playerStore.ts</path>
+      <notes>Already exists in playerStore (line 72). Used to track which clip is currently playing. Updated on clip boundary crossings during playback.</notes>
+    </playerstore>
+    <playerstore-action>
+      <name>updatePlaybackPosition</name>
+      <kind>Zustand store action</kind>
+      <signature>updatePlaybackPosition: (position: number) =&gt; void</signature>
+      <path>src/stores/playerStore.ts (line 78)</path>
+      <notes>Already exists. Called every frame during playback. Should be extended to detect clip boundaries and trigger volume updates.</notes>
+    </playerstore-action>
+    <timeline-clip>
+      <name>Clip interface</name>
+      <kind>TypeScript interface</kind>
+      <signature>interface Clip { volume: number; muted: boolean; startTime: number; duration: number; ... }</signature>
+      <path>src/types/timeline.ts</path>
+      <notes>Volume and muted properties already exist from Story 3.9. Read-only for this story - used to get clip volume values.</notes>
+    </timeline-clip>
+  </interfaces>
+  <tests>
+    <standards>
+      <framework>Vitest for unit tests, @testing-library/react for component tests, Playwright for E2E tests.</framework>
+      <patterns>Follow existing test patterns from Story 1.7 (playerStore.test.ts) and Story 3.9 (ClipVolumeControl.test.tsx). Use Zustand store testing patterns with act() wrapping.</patterns>
+      <coverage>Target 80%+ for utility modules, 70%+ for components. All volume logic must have comprehensive unit tests.</coverage>
+      <mocking>Mock Tauri invoke() calls in frontend tests. Mock libmpv in Rust tests (or use #[test] with real MPV if feasible).</mocking>
+    </standards>
+    <locations>
+      <directory>src/stores/playerStore.test.ts - Volume update logic and clip boundary detection tests</directory>
+      <directory>src-tauri/src/services/mpv_player.rs - #[test] module for set_volume() method and volume scaling</directory>
+      <directory>src-tauri/src/commands/mpv.rs - Integration tests for cmd_set_clip_volume command</directory>
+      <directory>tests/e2e/3.9.1-preview-volume.spec.ts (NEW) - E2E workflow test: Set volume → Play → Verify audio changes (may require manual verification)</directory>
+    </locations>
+    <ideas>
+      <test id="AC1">Unit test: MPV volume command generation with correct scale conversion (100% → 50, 200% → 100, 75% → 37.5)</test>
+      <test id="AC2">Unit test: Clip boundary detection logic - detect transitions when playheadPosition crosses clip startTime or endTime</test>
+      <test id="AC2">Unit test: Volume update triggered only on actual clip transitions (previousClipId !== currentClipId), not every frame</test>
+      <test id="AC3">Unit test: Volume crossfade calculation - linear fade over 100ms between clip volumes</test>
+      <test id="AC3">Integration test: Crossfade implementation - verify smooth transition (may require manual audio verification)</test>
+      <test id="AC4">Unit test: Muted clips use volume=0 in MPV regardless of clip.volume value</test>
+      <test id="AC4">Integration test: Muted clip produces no audio during playback (manual verification)</test>
+      <test id="AC5">Performance test: Volume updates complete within 100ms of clip boundary crossing (measure command latency)</test>
+      <test id="AC5">Unit test: Debouncing logic prevents volume spam during rapid seeking/scrubbing</test>
+      <test id="Edge">Unit test: Mid-playback volume change re-applies volume immediately if clip is active</test>
+      <test id="Edge">Unit test: Gap handling - volume behavior when no clip is playing</test>
+      <test id="E2E">E2E test: Full workflow - Set different volumes on 3 clips → Play timeline → Verify volume changes audible at each transition</test>
+    </ideas>
+  </tests>
+</story-context>

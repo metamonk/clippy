@@ -1,0 +1,319 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>5</storyId>
+    <title>Delete Clips with Ripple Option</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-5-delete-clips-with-ripple-option.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to delete clips from the timeline with option to close gaps automatically</iWant>
+    <soThat>I can remove unwanted segments efficiently</soThat>
+    <tasks>
+- Task 1: Implement delete clip logic with ripple calculation (AC: #2, #3, #4)
+- Task 2: Add deleteClip action to timelineStore (AC: #2, #3, #5)
+- Task 3: Add visual confirmation dialog for delete (AC: #6)
+- Task 4: Add UI controls for delete operation (AC: #1)
+- Task 5: Update timeline rendering after delete (AC: #2, #3)
+- Task 6: Add comprehensive tests for delete functionality (AC: #1-6)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Select clip and delete (keyboard shortcut or button)
+2. "Ripple delete" option automatically closes gap by shifting subsequent clips left
+3. "Delete" without ripple leaves gap on timeline
+4. Deleted clip removed from timeline (not from media library)
+5. Multi-track ripple delete shifts all tracks consistently
+6. Visual confirmation before destructive delete
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>State Management Patterns (Zustand)</section>
+        <snippet>Zustand store structure with immutable state updates, devtools middleware, and selectors for performance. Actions modify state immutably using set() function.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>ADR-005: Store Timeline Timestamps in Milliseconds</section>
+        <snippet>All timeline timestamps use milliseconds (u64 in Rust, number in TypeScript) for consistency across video APIs, FFmpeg, and Web Audio. Millisecond precision sufficient for 60fps video editing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>UI Components (shadcn/ui)</section>
+        <snippet>shadcn/ui components located in src/components/ui/ including button.tsx, dialog.tsx, alert-dialog.tsx, checkbox.tsx. Used for consistent UI with Tailwind CSS styling.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR005: Multi-Track Timeline Editor</section>
+        <snippet>Timeline shall support drag-drop clip arrangement, trimming, splitting at playhead, deletion, track movement, and snap-to-grid editing. Multi-track support with minimum 2 tracks, expandable to 4+.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR012: Native macOS Integration</section>
+        <snippet>Implement native keyboard shortcuts following macOS conventions. Essential for professional editor feel and workflow efficiency.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Timeline rendering shall maintain smooth 60 FPS interactions. Video playback at 30+ FPS for 1080p content with frame-accurate seeking.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR003: Usability and Reliability</section>
+        <snippet>Maximum 2-3 clicks for common workflows. Graceful error handling with user-friendly messages and actionable suggestions.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epics Definition</title>
+        <section>Story 3.5: Delete Clips with Ripple Option</section>
+        <snippet>Ripple delete automatically closes gap by shifting subsequent clips left. Delete without ripple leaves gap. Multi-track ripple delete shifts all tracks consistently. Visual confirmation before destructive delete.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-2-multiple-clips-per-track-with-sequencing.md</path>
+        <title>Story 3.2 Reference</title>
+        <section>Lessons Learned</section>
+        <snippet>Comprehensive unit tests in clipOperations.ts provide strong foundation. Modular utility functions make testing and debugging easier. Clip sorting by startTime prevents ordering bugs.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-3-drag-clips-between-tracks.md</path>
+        <title>Story 3.3 Reference</title>
+        <section>Lessons Learned</section>
+        <snippet>History recording before state changes enables clean undo. Zustand immutable updates work reliably for complex state changes.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-4-split-clip-at-playhead.md</path>
+        <title>Story 3.4 Reference</title>
+        <section>Lessons Learned</section>
+        <snippet>UUID-based clip identification prevents ID conflicts. Keyboard shortcuts follow macOS conventions for professional editor feel.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/lib/timeline/clipOperations.ts</path>
+        <kind>utility</kind>
+        <symbol>calculateSequentialPosition, detectClipOverlap, detectGaps, findClipAtTime, getEffectiveDuration, validateClipPosition</symbol>
+        <lines>1-200</lines>
+        <reason>Existing clip utility functions that serve as pattern for new deleteClip() and calculateRippleShift() functions. Contains validation and position calculation logic.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>state-store</kind>
+        <symbol>useTimelineStore, TimelineState</symbol>
+        <lines>1-460</lines>
+        <reason>Timeline state store with tracks, clips, and actions. Contains removeClip() action (basic delete) that will be enhanced for ripple delete. Shows immutable state update pattern and duration recalculation.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/Timeline.tsx</path>
+        <kind>component</kind>
+        <symbol>Timeline</symbol>
+        <lines>1-200</lines>
+        <reason>Main timeline component that will integrate delete functionality and keyboard shortcuts. Shows Konva.js rendering patterns.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineClip.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineClip</symbol>
+        <lines>1-150</lines>
+        <reason>Individual clip component that handles clip selection. Selected clip will be target for delete operation.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/ui/alert-dialog.tsx</path>
+        <kind>ui-component</kind>
+        <symbol>AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel</symbol>
+        <lines>1-150</lines>
+        <reason>shadcn/ui AlertDialog component to be used for delete confirmation dialog. Provides accessible, keyboard-navigable confirmation UI.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/ui/checkbox.tsx</path>
+        <kind>ui-component</kind>
+        <symbol>Checkbox</symbol>
+        <lines>1-50</lines>
+        <reason>shadcn/ui Checkbox component for "Ripple delete" toggle in confirmation dialog.</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>Clip, Track, Timeline</symbol>
+        <lines>1-100</lines>
+        <reason>Type definitions for Clip (with id, startTime, duration, trimIn, trimOut) and Track (with clips array). Used throughout delete implementation.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/clipOperations.test.ts</path>
+        <kind>test</kind>
+        <symbol>Test patterns</symbol>
+        <lines>1-300</lines>
+        <reason>Existing test patterns for clipOperations utilities. Pattern for testing new deleteClip() and calculateRippleShift() functions.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.test.ts</path>
+        <kind>test</kind>
+        <symbol>Store test patterns</symbol>
+        <lines>1-400</lines>
+        <reason>Existing test patterns for timelineStore actions. Pattern for testing new deleteClip() action with ripple option.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="react" version="^19.1.0" />
+        <package name="zustand" version="^4" />
+        <package name="uuid" version="^13.0.0" />
+        <package name="konva" version="^9.3.22" />
+        <package name="react-konva" version="^19.2.0" />
+        <package name="@radix-ui/react-alert-dialog" version="^1.1.15" />
+        <package name="lucide-react" version="^0.548.0" />
+        <package name="tailwind-merge" version="^3.3.1" />
+        <package name="class-variance-authority" version="^0.7.1" />
+      </node>
+      <node-dev>
+        <package name="vitest" version="^2" />
+        <package name="@playwright/test" version="^1.56.1" />
+        <package name="@testing-library/react" version="^16" />
+        <package name="@testing-library/jest-dom" version="^6" />
+        <package name="@testing-library/user-event" version="^14.6.1" />
+        <package name="typescript" version="~5.8.3" />
+      </node-dev>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint type="timestamp-units">All timeline timestamps MUST use milliseconds (architecture.md ADR-005). Convert to/from seconds only when interfacing with external APIs (MPV, FFmpeg).</constraint>
+    <constraint type="state-updates">Zustand state updates MUST be immutable using set() function. Never mutate state directly.</constraint>
+    <constraint type="clip-sorting">Clips array MUST be sorted by startTime after any modification to maintain timeline ordering.</constraint>
+    <constraint type="duration-recalculation">Total timeline duration MUST be recalculated after any clip add/remove/move operation.</constraint>
+    <constraint type="clip-identification">Clips MUST use UUID v4 for unique identification. Use uuid package's uuidv4() function.</constraint>
+    <constraint type="ui-components">Use shadcn/ui components for all UI elements to maintain consistent design system.</constraint>
+    <constraint type="keyboard-shortcuts">Follow macOS keyboard conventions (Delete/Backspace for delete operation).</constraint>
+    <constraint type="history-tracking">Record timeline state to history before destructive operations to enable undo/redo.</constraint>
+    <constraint type="multi-track-consistency">Ripple delete on one track MUST shift all tracks by same amount to maintain synchronization.</constraint>
+    <constraint type="media-library-preservation">Deleting clip from timeline MUST NOT remove file from media library (AC #4).</constraint>
+    <constraint type="user-confirmation">Destructive operations like delete MUST show confirmation dialog (AC #6).</constraint>
+    <constraint type="testing">All new functions MUST have unit tests. All user-facing features MUST have E2E tests.</constraint>
+    <constraint type="performance">Delete operation with ripple should feel immediate (&lt;100ms from confirmation to visual update).</constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>timelineStore.deleteClip</name>
+      <kind>zustand-action</kind>
+      <signature>deleteClip: (clipId: string, ripple: boolean) =&gt; void</signature>
+      <path>src/stores/timelineStore.ts</path>
+      <description>New action to delete clip with optional ripple. If ripple=true, shifts subsequent clips on all tracks left by deleted clip duration. If ripple=false, leaves gap at deleted position. Clears selectedClipId after deletion.</description>
+    </interface>
+    <interface>
+      <name>clipOperations.deleteClip</name>
+      <kind>function</kind>
+      <signature>export function deleteClip(clips: Clip[], clipId: string, ripple: boolean): Clip[]</signature>
+      <path>src/lib/timeline/clipOperations.ts</path>
+      <description>Pure function that removes clip and optionally ripples remaining clips. Returns new clips array with clip removed and positions updated if ripple=true.</description>
+    </interface>
+    <interface>
+      <name>clipOperations.calculateRippleShift</name>
+      <kind>function</kind>
+      <signature>export function calculateRippleShift(deletedClip: Clip): number</signature>
+      <path>src/lib/timeline/clipOperations.ts</path>
+      <description>Calculates shift amount for ripple delete. Returns trimOut - trimIn (effective clip duration in milliseconds).</description>
+    </interface>
+    <interface>
+      <name>DeleteClipDialog</name>
+      <kind>react-component</kind>
+      <signature>function DeleteClipDialog({ open, onOpenChange, onConfirm }: DeleteClipDialogProps): JSX.Element</signature>
+      <path>src/components/timeline/DeleteClipDialog.tsx</path>
+      <description>Confirmation dialog using shadcn/ui AlertDialog. Shows "Delete clip?" message with checkbox for "Ripple delete" option. Saves ripple preference to localStorage. Calls onConfirm(ripple) when user confirms.</description>
+    </interface>
+    <interface>
+      <name>Clip interface</name>
+      <kind>type-definition</kind>
+      <signature>interface Clip { id: string; filePath: string; startTime: number; duration: number; trimIn: number; trimOut: number; }</signature>
+      <path>src/types/timeline.ts</path>
+      <description>Core clip data structure. id is UUID for identification. startTime is position on timeline (ms). duration is original file duration (ms). trimIn/trimOut are trim points (ms).</description>
+    </interface>
+    <interface>
+      <name>Track interface</name>
+      <kind>type-definition</kind>
+      <signature>interface Track { id: string; trackNumber: number; clips: Clip[]; trackType: 'video' | 'audio'; }</signature>
+      <path>src/types/timeline.ts</path>
+      <description>Track data structure containing clips array. clips are sorted by startTime.</description>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Unit tests: Vitest with @testing-library/react for components and stores. Pure functions in lib/ tested with Vitest directly.
+      E2E tests: Playwright for full workflow testing. Located in tests/e2e/ folder with descriptive filenames matching story number.
+      Test naming: Describe actual behavior (e.g., "shifts subsequent clips left by deleted clip duration").
+      Coverage: All utility functions, store actions, and user-facing features must have tests.
+      Mocking: Mock Tauri commands and external dependencies. Use @testing-library patterns for component tests.
+    </standards>
+    <locations>
+      Unit tests: src/lib/timeline/clipOperations.test.ts (for deleteClip, calculateRippleShift)
+      Unit tests: src/stores/timelineStore.test.ts (for deleteClip action)
+      Component tests: src/components/timeline/DeleteClipDialog.test.tsx (for confirmation dialog)
+      E2E tests: tests/e2e/3.5-delete-clips.spec.ts (for full delete workflow)
+    </locations>
+    <ideas>
+      <idea ac="1">
+        Test: Click delete button shows confirmation dialog
+        Test: Press Delete key shows confirmation dialog when clip selected
+        Test: Delete button disabled when no clip selected
+        Test: Delete key no-op when no clip selected
+      </idea>
+      <idea ac="2">
+        Test: Ripple delete with checkbox checked shifts subsequent clips left
+        Test: Verify shift amount equals deleted clip's effective duration (trimOut - trimIn)
+        Test: Verify clips maintain relative spacing after ripple
+        Test: Verify first clip on track ripples correctly
+        Test: Verify last clip on track (no clips to ripple)
+      </idea>
+      <idea ac="3">
+        Test: Delete without ripple (checkbox unchecked) leaves gap
+        Test: Gap position equals deleted clip's startTime
+        Test: Gap duration equals deleted clip's effective duration
+        Test: Subsequent clips remain at original positions
+      </idea>
+      <idea ac="4">
+        Test: Deleted clip removed from timeline tracks
+        Test: Media library still contains file reference (not deleted from library)
+        Test: Can re-add same clip from library after deletion
+      </idea>
+      <idea ac="5">
+        Test: Multi-track ripple shifts all tracks by same amount
+        Test: Track 1 and Track 2 clips maintain synchronization after ripple
+        Test: Audio and video tracks shift together in multi-track scenario
+        Test: Calculate shift from deleted clip on source track, apply to all tracks
+      </idea>
+      <idea ac="6">
+        Test: Confirmation dialog displays before delete
+        Test: Cancel button closes dialog without deleting
+        Test: Delete button with ripple checked performs ripple delete
+        Test: Delete button with ripple unchecked performs gap delete
+        Test: Ripple checkbox preference saved to localStorage
+        Test: Dialog accessible via keyboard (Tab, Enter, Escape)
+      </idea>
+      <idea ac="undo">
+        Test: Undo delete restores clip at original position
+        Test: Undo ripple delete restores clip and shifts clips back right
+        Test: Undo preserves original clip ID
+      </idea>
+      <idea ac="edge-cases">
+        Test: Delete clip while playing pauses playback first
+        Test: Delete selected clip clears selectedClipId
+        Test: Delete clip at time 0 ripples correctly
+        Test: Delete only clip on track leaves track empty
+      </idea>
+    </ideas>
+  </tests>
+</story-context>

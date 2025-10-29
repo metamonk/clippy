@@ -1,0 +1,365 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>4</epicId>
+    <storyId>2</storyId>
+    <title>Recording Configuration Panel</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/4-2-recording-configuration-panel.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to configure recording settings before starting</iWant>
+    <soThat>I can customize quality, resolution, and audio sources for my needs</soThat>
+    <tasks>
+      - Task 1: UI Component Structure (AC: 1, 2, 3, 4)
+        - Subtask 1.1: Extend RecordingPanel with collapsible configuration section
+        - Subtask 1.2: Add frame rate selector (30 FPS, 60 FPS radio buttons or dropdown)
+        - Subtask 1.3: Add resolution selector (source, 1080p, 720p dropdown)
+        - Subtask 1.4: Add audio source checkboxes (system audio, microphone)
+        - Subtask 1.5: Style configuration panel with Tailwind CSS following macOS conventions
+
+      - Task 2: RecordingConfig Type Extension (AC: 2, 3, 4)
+        - Subtask 2.1: Update RecordingConfig interface in src/types/recording.ts
+        - Subtask 2.2: Update Rust RecordingConfig struct in src-tauri/src/models/recording.rs
+        - Subtask 2.3: Ensure serde serialization/deserialization matches
+
+      - Task 3: Configuration State Management (AC: 5)
+        - Subtask 3.1: Add configuration fields to recordingStore
+        - Subtask 3.2: Add actions to update individual configuration settings
+        - Subtask 3.3: Implement persistent storage using localStorage or Tauri store plugin
+        - Subtask 3.4: Load saved defaults on RecordingPanel mount
+
+      - Task 4: File Size Estimation (AC: 6)
+        - Subtask 4.1: Create utility function to estimate file size
+        - Subtask 4.2: Display estimated file size per minute
+        - Subtask 4.3: Update estimate dynamically when settings change
+        - Subtask 4.4: Show bitrate assumptions
+
+      - Task 5: Configuration Validation (AC: 7)
+        - Subtask 5.1: Add validation function to prevent invalid combinations
+        - Subtask 5.2: Disable Start Recording button when invalid
+        - Subtask 5.3: Show clear validation error message
+        - Subtask 5.4: Add unit tests for validation logic
+
+      - Task 6: Integration with Recording Commands (AC: 2, 3, 4)
+        - Subtask 6.1: Update cmd_start_recording command
+        - Subtask 6.2: Validate configuration in Rust backend
+        - Subtask 6.3: Pass frameRate and resolution to FFmpeg encoder
+        - Subtask 6.4: Pass audio source flags to audio capture services
+
+      - Task 7: Testing (AC: 1-7)
+        - Subtask 7.1: Unit tests for RecordingConfig validation
+        - Subtask 7.2: Unit tests for file size estimation
+        - Subtask 7.3: Component tests for configuration panel UI
+        - Subtask 7.4: Test configuration persistence
+        - Subtask 7.5: E2E test for configuration workflow
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. Recording panel shows expandable configuration section
+    2. Can select frame rate (30 FPS, 60 FPS)
+    3. Can select resolution (source, 1080p, 720p)
+    4. Audio source checkboxes (system audio, microphone, both, none)
+    5. Settings saved as defaults for future recordings
+    6. Preview of settings impact (estimated file size per minute)
+    7. Validation prevents invalid configurations
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR002: Screen Recording Capabilities</section>
+        <snippet>System shall capture screen recordings (full screen and window selection modes) with system audio and microphone audio using macOS ScreenCaptureKit API. System shall provide recording controls (start, stop, pause) and save recordings directly to timeline or media library.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Screen recording shall capture at 30+ FPS without dropped frames. Video export shall complete near real-time (1 minute video exports in 60-90 seconds).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>RecordingConfig Model (lines 1396-1409)</section>
+        <snippet>RecordingConfig interface defines recording parameters: screenSource (fullscreen/window), windowId, cameraIndex, systemAudio, microphone, frameRate (30|60), resolution (source|1080p|720p), pipPosition, pipSize. This model is shared between TypeScript frontend and Rust backend with serde serialization.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Tauri Command Patterns (lines 703-743)</section>
+        <snippet>Tauri commands follow pattern: cmd_start_recording(config: RecordingConfig) validates input, starts async recording service, returns recording ID. Commands use State injection for shared resources and proper error handling with Result types.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Testing Patterns (lines 1126-1214)</section>
+        <snippet>Frontend tests use Vitest + React Testing Library. Backend uses cargo test with standard Rust testing patterns. Tests should cover unit logic, component rendering, and integration workflows.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Epic 4: Advanced Recording &amp; PiP Composition (lines 659-685)</section>
+        <snippet>Transform basic recording capabilities into a professional recording suite. Enables simultaneous multi-stream recording with real-time composition, configurable PiP layout, and multiple independent audio tracks.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Story 4.2: Recording Configuration Panel (lines 688-698)</section>
+        <snippet>User can configure recording settings before starting to customize quality, resolution, and audio sources. Configuration panel shows expandable section with frame rate selector (30/60 FPS), resolution selector (source/1080p/720p), audio source checkboxes, file size estimation, and validation.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>Epic 2 Technical Specification</title>
+        <section>Overview and Scope (lines 1-50)</section>
+        <snippet>Epic 2 establishes native screen and webcam recording using ScreenCaptureKit and AVFoundation. Implements real-time FFmpeg encoding to prevent memory bloat during long recordings. Configuration panel (Story 4.2) is deferred to Epic 4 to enhance basic recording with advanced controls.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/4-1-window-selection-for-screen-recording.md</path>
+        <title>Story 4.1: Window Selection for Screen Recording</title>
+        <section>Dev Notes - RecordingConfig Foundation (lines 75-144)</section>
+        <snippet>Story 4.1 extends RecordingConfig model from Story 2.1-2.3 foundation with recordingMode and selectedWindowId fields. Establishes pattern for configuration state management using Zustand store with session persistence.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/components/recording/RecordingPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingPanel</symbol>
+        <lines>1-300</lines>
+        <reason>Base recording panel component that needs configuration section extension</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/recordingStore.ts</path>
+        <kind>store</kind>
+        <symbol>RecordingState</symbol>
+        <lines>15-84</lines>
+        <reason>Zustand store managing recording state - needs configuration fields (frameRate, resolution, systemAudio, microphone)</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/recordingStore.ts</path>
+        <kind>store</kind>
+        <symbol>AudioSourceConfig</symbol>
+        <lines>1-14</lines>
+        <reason>Existing audio source configuration interface that may inform new configuration structure</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/recording.ts</path>
+        <kind>interface</kind>
+        <symbol>Camera, RecordingMode, RecordingStatus</symbol>
+        <lines>1-28</lines>
+        <reason>Existing recording types - needs RecordingConfig interface addition per AC 2,3,4</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/recording.ts</path>
+        <kind>service</kind>
+        <symbol>startScreenRecording, startWebcamRecording</symbol>
+        <lines>75-77, 67-69</lines>
+        <reason>Tauri command wrappers that will need to accept RecordingConfig parameter</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_start_screen_recording</symbol>
+        <lines>703-804</lines>
+        <reason>Screen recording command hardcodes 30 FPS and 1920x1080 - needs RecordingConfig parameter with frameRate and resolution fields</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_start_webcam_recording</symbol>
+        <lines>390-651</lines>
+        <reason>Webcam recording command hardcodes 30 FPS - needs configuration for frameRate and audio sources</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+        <kind>service</kind>
+        <symbol>FFmpegEncoder</symbol>
+        <lines>N/A</lines>
+        <reason>FFmpeg encoder accepts width, height, framerate parameters in constructor - will receive values from RecordingConfig</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/audio_capture.rs</path>
+        <kind>service</kind>
+        <symbol>AudioCapture</symbol>
+        <lines>N/A</lines>
+        <reason>Audio capture service handles microphone input - will be controlled by RecordingConfig systemAudio and microphone flags</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <framework name="React" version="^19.1.0" />
+        <framework name="TypeScript" version="~5.8.3" />
+        <framework name="Vite" version="^7.0.4" />
+        <framework name="Tailwind CSS" version="^3" />
+        <library name="zustand" version="^4" purpose="State management - recording configuration state" />
+        <library name="@radix-ui/react-slider" version="^1.3.6" purpose="Slider components for configuration UI" />
+        <library name="@radix-ui/react-slot" version="^1.2.3" purpose="shadcn/ui component primitives" />
+        <library name="lucide-react" version="^0.548.0" purpose="Icons for configuration panel" />
+        <library name="class-variance-authority" version="^0.7.1" purpose="shadcn/ui styling utilities" />
+        <library name="clsx" version="^2.1.1" purpose="Conditional className utilities" />
+        <library name="tailwind-merge" version="^3.3.1" purpose="Merge Tailwind classes" />
+        <testing name="vitest" version="^2" purpose="Unit testing for validation and estimation logic" />
+        <testing name="@testing-library/react" version="^16" purpose="Component testing for configuration UI" />
+        <testing name="@playwright/test" version="^1.56.1" purpose="E2E testing for configuration workflow" />
+      </frontend>
+      <backend>
+        <framework name="Tauri" version="2" />
+        <framework name="Rust" edition="2021" />
+        <library name="serde" version="1" features="derive" purpose="RecordingConfig serialization/deserialization" />
+        <library name="serde_json" version="1" purpose="JSON serialization for Tauri commands" />
+        <library name="tokio" version="1" features="full" purpose="Async runtime for recording operations" />
+        <library name="ffmpeg-sidecar" version="2.1" purpose="FFmpeg encoding with configurable frameRate and resolution" />
+        <library name="screencapturekit" version="0.3" purpose="macOS screen recording with configurable FPS" />
+        <library name="nokhwa" version="0.10" features="input-avfoundation" purpose="Camera recording with configurable FPS" />
+        <library name="cpal" version="0.16" purpose="Audio capture (microphone input)" />
+        <library name="tracing" version="0.1" purpose="Logging for configuration validation" />
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - RecordingConfig must maintain strict TypeScript/Rust type alignment using serde for serialization
+    - Rust types use snake_case, TypeScript uses camelCase - serde handles automatic conversion
+    - Persist configuration to localStorage for default retention across sessions
+    - Frame rate limited to 30 FPS or 60 FPS (ScreenCaptureKit native support)
+    - Resolution options: source (native display), 1080p (1920x1080), 720p (1280x720)
+    - Audio combinations: systemAudio only, microphone only, both, or none (all valid)
+    - Must follow Zustand store patterns established in Story 2.5 (recordingStore)
+    - Component structure must follow shadcn/ui patterns from Story 1.1
+    - Configuration validation must prevent invalid states before allowing recording start
+    - File size estimation uses H.264 MP4 bitrate assumptions (conservative estimates)
+    - FFmpeg integration: frameRate via -r flag, resolution via -s flag or scale filter
+    - Audio sources mapped to separate FFmpeg input streams during encoding
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>RecordingState (existing)</name>
+      <kind>Zustand store interface</kind>
+      <signature>
+        interface RecordingState {
+          status: RecordingStatus;
+          recordingId: string | null;
+          audioSources: AudioSourceConfig;
+          cameras: Camera[];
+          selectedCamera: Camera | null;
+          // ... actions for recording control
+        }
+      </signature>
+      <path>src/stores/recordingStore.ts</path>
+    </interface>
+    <interface>
+      <name>AudioSourceConfig (existing)</name>
+      <kind>interface</kind>
+      <signature>
+        interface AudioSourceConfig {
+          systemAudio: boolean;
+          microphone: boolean;
+        }
+      </signature>
+      <path>src/stores/recordingStore.ts</path>
+    </interface>
+    <interface>
+      <name>cmd_start_screen_recording (existing)</name>
+      <kind>Tauri command</kind>
+      <signature>
+        pub async fn cmd_start_screen_recording(display_index: Option&lt;usize&gt;) -&gt; Result&lt;String, String&gt;
+      </signature>
+      <path>src-tauri/src/commands/recording.rs:703</path>
+    </interface>
+    <interface>
+      <name>cmd_start_webcam_recording (existing)</name>
+      <kind>Tauri command</kind>
+      <signature>
+        pub async fn cmd_start_webcam_recording(camera_index: u32) -&gt; Result&lt;String, String&gt;
+      </signature>
+      <path>src-tauri/src/commands/recording.rs:390</path>
+    </interface>
+    <interface>
+      <name>FFmpegEncoder::new (existing)</name>
+      <kind>Rust constructor</kind>
+      <signature>
+        pub fn new(output_path: PathBuf, width: u32, height: u32, framerate: u32) -&gt; Result&lt;Self&gt;
+      </signature>
+      <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+    </interface>
+    <interface>
+      <name>RecordingConfig (to be created)</name>
+      <kind>interface (TypeScript) / struct (Rust)</kind>
+      <signature>
+        // TypeScript
+        interface RecordingConfig {
+          frameRate: 30 | 60;
+          resolution: 'source' | '1080p' | '720p';
+          systemAudio: boolean;
+          microphone: boolean;
+        }
+
+        // Rust (with serde)
+        #[derive(Serialize, Deserialize)]
+        pub struct RecordingConfig {
+          frame_rate: u32,
+          resolution: String,
+          system_audio: bool,
+          microphone: bool,
+        }
+      </signature>
+      <path>src/types/recording.ts, src-tauri/src/models/recording.rs (new file)</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Frontend tests use Vitest with React Testing Library for unit and component tests. Backend tests use cargo test with standard Rust testing patterns. E2E tests use Playwright. Test files co-located with source files using .test.ts/.test.tsx extension. E2E tests in tests/e2e/ directory with story ID prefix (e.g., 4.2-recording-configuration.spec.ts). All tests follow AAA pattern (Arrange, Act, Assert). Component tests verify rendering, user interactions, and state changes. Unit tests verify logic in isolation. Integration tests verify Tauri commands. E2E tests verify complete user workflows.
+    </standards>
+    <locations>
+      - src/components/recording/*.test.tsx (component tests)
+      - src/stores/recordingStore.test.ts (state management tests)
+      - src/lib/recording/*.test.ts (utility function tests)
+      - tests/e2e/4.2-recording-configuration.spec.ts (E2E workflow test)
+      - src-tauri/src/commands/recording.rs (Rust integration tests in #[cfg(test)] module)
+    </locations>
+    <ideas>
+      <test ac="1" priority="P1">
+        Component test: RecordingPanel renders configuration section with collapsible UI. Verify section expands/collapses on interaction.
+      </test>
+      <test ac="2" priority="P1">
+        Component test: Frame rate selector renders 30 FPS and 60 FPS options. Verify selection updates recordingStore state.
+      </test>
+      <test ac="3" priority="P1">
+        Component test: Resolution selector renders source/1080p/720p options. Verify selection updates recordingStore state.
+      </test>
+      <test ac="4" priority="P1">
+        Component test: Audio source checkboxes render system audio and microphone options. Verify toggling updates recordingStore.audioSources state.
+      </test>
+      <test ac="5" priority="P1">
+        Unit test: Configuration persists to localStorage when changed. Verify saved defaults load correctly on RecordingPanel mount.
+      </test>
+      <test ac="6" priority="P1">
+        Unit test: File size estimation utility calculates correct MB/min for various frameRate and resolution combinations. Test data: 720p30=3MB/min, 1080p30=5MB/min, 1080p60=8MB/min.
+      </test>
+      <test ac="6" priority="P2">
+        Component test: FileSizeEstimate component displays estimated file size and updates dynamically when configuration changes.
+      </test>
+      <test ac="7" priority="P1">
+        Unit test: Configuration validation function rejects invalid combinations (e.g., no audio sources selected). Verify validation error messages are clear.
+      </test>
+      <test ac="7" priority="P1">
+        Component test: Start Recording button disabled when configuration invalid. Verify validation error message displays explaining why.
+      </test>
+      <test ac="1-7" priority="P1">
+        Integration test: cmd_start_recording accepts RecordingConfig parameter and validates fields. Verify FFmpeg encoder receives correct frameRate and resolution.
+      </test>
+      <test ac="1-7" priority="P0">
+        E2E test (tests/e2e/4.2-recording-configuration.spec.ts): Full workflow - Open recording panel → Configure settings (60 FPS, 1080p, system audio only) → Start recording → Verify output file properties match configuration → Stop and verify.
+      </test>
+      <test ac="5" priority="P1">
+        E2E test: Configuration persistence - Configure settings → Close app → Reopen → Verify settings retained from localStorage.
+      </test>
+    </ideas>
+  </tests>
+</story-context>

@@ -1,0 +1,296 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>1</storyId>
+    <title>Multi-Track Timeline Foundation</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/3-1-multi-track-timeline-foundation.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>to work with multiple timeline tracks (at least 2)</iWant>
+    <soThat>I can layer video clips and create picture-in-picture effects</soThat>
+    <tasks>
+      - Extend timeline data model to support multiple tracks (AC: 1, 2, 7)
+        - Update Track interface in src/types/timeline.ts to include track number and type fields
+        - Update Timeline interface to support array of tracks
+        - Update timelineStore (src/stores/timelineStore.ts) to handle multiple tracks
+        - Ensure track IDs remain unique (UUID generation)
+        - Add track ordering logic (Track 1 = bottom layer, Track 2 = overlay)
+
+      - Update Timeline component UI to render multiple tracks (AC: 1, 6)
+        - Modify src/components/timeline/Timeline.tsx to render 2 tracks vertically stacked
+        - Add track labels/headers showing "Track 1" and "Track 2"
+        - Implement visual separation between tracks (borders, spacing)
+        - Ensure each track has sufficient height for clip visibility
+        - Update Konva canvas layout to accommodate multiple track layers
+
+      - Implement clip drag-and-drop for multi-track (AC: 3)
+        - Update MediaItem.tsx to support dragging clips to specific tracks
+        - Implement drop zone detection for Track 1 vs Track 2
+        - Add visual feedback showing which track will receive the clip
+        - Update timelineStore actions (addClip) to accept trackId parameter
+        - Ensure clips can only be dropped on valid track areas
+
+      - Implement track layering and compositing (AC: 4, 5)
+        - Update playback rendering logic to composite both tracks
+        - Implement z-index/layering: Track 2 overlays Track 1
+        - For now, Track 2 renders as full overlay (PiP positioning deferred to Epic 4)
+        - Update VideoPlayer.tsx or create TimelinePlayer.tsx to handle multi-track playback
+        - Ensure playhead synchronization works across both tracks
+        - Handle track transparency/alpha blending if needed
+
+      - Update existing timeline operations for multi-track (AC: 2, 3)
+        - Verify trim functionality works on clips in both tracks
+        - Ensure playhead updates work for both tracks
+        - Update split clip functionality (Epic 3 future) to be track-aware
+        - Ensure delete clip operations target correct track
+        - Test timeline zoom/scroll with multiple tracks
+
+      - Add tests for multi-track timeline (AC: 1-7)
+        - Unit test: timelineStore handles multiple tracks correctly
+        - Unit test: Clip addition to specific track
+        - Unit test: Track layering order preserved
+        - Integration test: Drag clip to Track 2, verify correct placement
+        - Integration test: Play timeline with clips on both tracks, verify composition
+        - Visual test: Verify UI shows 2 distinct tracks with labels
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. Timeline UI shows minimum 2 tracks (Track 1: main video, Track 2: overlay/PiP)
+    2. Each track has independent playhead and clip containers
+    3. Can drag clips onto either track from media library
+    4. Tracks render in proper layering order (Track 2 overlays Track 1)
+    5. Preview player composites both tracks correctly
+    6. Track labels/headers identify each track
+    7. Future-ready for expanding to 4+ tracks
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR005: Multi-Track Timeline Editor</section>
+        <snippet>System shall provide visual timeline with playhead, multiple tracks (minimum 2, expandable to 4+), time ruler, zoom/scroll capabilities. System shall support drag-drop clip arrangement, trimming, splitting, deletion, track movement, and snap-to-grid editing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Video playback shall maintain 30+ FPS for 1080p content with smooth timeline rendering. Timeline rendering target: 60 FPS UI interactions.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>System Architecture</title>
+        <section>State Management Patterns (Zustand)</section>
+        <snippet>Store structure with immutable state updates. Actions modify state immutably. Use selectors to subscribe to specific state slices for optimized re-renders.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>System Architecture</title>
+        <section>Timeline Data Consistency</section>
+        <snippet>Rust uses snake_case field names, Serde automatically converts to camelCase when serializing to JSON. TypeScript uses camelCase to match JSON. Time units ALWAYS in milliseconds.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>System Architecture</title>
+        <section>Frontend Libraries</section>
+        <snippet>Konva.js - Canvas-based timeline rendering (60 FPS target). react-konva - React wrapper for Konva.js. Zustand 4.x - Lightweight state management with optimized re-renders.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>System Architecture</title>
+        <section>Project Structure - Timeline Components</section>
+        <snippet>Timeline components: Timeline.tsx (main canvas), TimelineTrack.tsx (individual track), TimelineClip.tsx (clip visualization), Playhead.tsx (indicator), TimeRuler.tsx (time markers).</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Story 3.1: Multi-Track Timeline Foundation</section>
+        <snippet>As a user, I want to work with multiple timeline tracks (at least 2), so that I can layer video clips and create picture-in-picture effects. Prerequisites: Epic 2 complete (Story 2.8).</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>Track</symbol>
+        <lines>14-18</lines>
+        <reason>Current single-track interface needs extension for trackNumber and label fields</reason>
+      </artifact>
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>Clip</symbol>
+        <lines>5-12</lines>
+        <reason>Core clip interface used by all tracks - no changes needed but critical context</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>state-management</kind>
+        <symbol>TimelineState</symbol>
+        <lines>7-46</lines>
+        <reason>Zustand store interface with addClip, addTrack, removeTrack actions - needs multi-track awareness</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>state-management</kind>
+        <symbol>useTimelineStore</symbol>
+        <lines>58-150</lines>
+        <reason>Store implementation with track initialization, clip operations - must support multiple tracks</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/Timeline.tsx</path>
+        <kind>component</kind>
+        <symbol>Timeline</symbol>
+        <lines>all</lines>
+        <reason>Main timeline canvas component using Konva.js - needs to render 2 tracks vertically stacked</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/timeline/TimelineTrack.tsx</path>
+        <kind>component</kind>
+        <symbol>TimelineTrack</symbol>
+        <lines>all</lines>
+        <reason>Individual track rendering component - needs track labels and proper layering</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/media-library/MediaItem.tsx</path>
+        <kind>component</kind>
+        <symbol>MediaItem</symbol>
+        <lines>all</lines>
+        <reason>Draggable media item component - needs to support dropping to specific tracks</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/player/VideoPlayer.tsx</path>
+        <kind>component</kind>
+        <symbol>VideoPlayer</symbol>
+        <lines>all</lines>
+        <reason>MPV-based video player - may need updates for multi-track composition preview</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package name="react" version="^19.1.0" />
+        <package name="react-dom" version="^19.1.0" />
+        <package name="typescript" version="~5.8.3" />
+        <package name="konva" version="^9.3.22" notes="Canvas-based timeline rendering library" />
+        <package name="react-konva" version="^19.2.0" notes="React wrapper for Konva.js" />
+        <package name="zustand" version="^4" notes="State management for timeline" />
+        <package name="uuid" version="^13.0.0" notes="UUID generation for tracks and clips" />
+        <package name="tailwindcss" version="^3" notes="Styling framework" />
+        <package name="vite" version="^7.0.4" notes="Build tool with HMR" />
+      </frontend>
+      <testing>
+        <package name="vitest" version="^2" notes="Unit testing framework" />
+        <package name="@testing-library/react" version="^16" notes="React component testing" />
+        <package name="@testing-library/jest-dom" version="^6" notes="DOM matchers" />
+        <package name="@playwright/test" version="^1.56.1" notes="E2E testing framework" />
+      </testing>
+      <backend>
+        <note>Tauri 2.x Rust backend - no changes needed for Story 3.1 (frontend-only changes)</note>
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Konva.js canvas rendering must maintain 60 FPS for UI interactions (from architecture.md)
+    - Video playback must maintain 30+ FPS with smooth timeline rendering (NFR001)
+    - All timestamps MUST be in milliseconds (never seconds or frames) - ADR-005
+    - Rust backend uses snake_case, TypeScript frontend uses camelCase (Serde handles conversion)
+    - Track IDs MUST be UUIDs generated via uuid v4
+    - Zustand state updates MUST be immutable - use spread operators for nested updates
+    - Use selectors to subscribe to specific state slices for optimized re-renders
+    - Single MPV instance for playback (mode-aware: preview vs timeline)
+    - For Story 3.1: Use frontend canvas layering (Konva.js) for multi-track UI - defer real video compositing
+    - Track ordering: Track 1 = bottom layer (full screen), Track 2+ = overlay layers
+    - TypeScript naming: camelCase for variables/functions, PascalCase for components
+    - Track numbers are integers (1, 2, 3...), track labels are strings ("Track 1", "Track 2")
+    - Maintain frame-accurate seeking precision &lt;33ms
+    - Story 3.1 scope: 2 tracks minimum, future-ready for 4+ tracks expansion
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>TimelineState.addClip</name>
+      <kind>function-signature</kind>
+      <signature>addClip: (trackId: string, clip: Omit&lt;Clip, 'id'&gt;) =&gt; void</signature>
+      <path>src/stores/timelineStore.ts</path>
+    </interface>
+    <interface>
+      <name>TimelineState.addTrack</name>
+      <kind>function-signature</kind>
+      <signature>addTrack: (trackType: 'video' | 'audio') =&gt; void</signature>
+      <path>src/stores/timelineStore.ts</path>
+    </interface>
+    <interface>
+      <name>TimelineState.removeTrack</name>
+      <kind>function-signature</kind>
+      <signature>removeTrack: (trackId: string) =&gt; void</signature>
+      <path>src/stores/timelineStore.ts</path>
+    </interface>
+    <interface>
+      <name>Track</name>
+      <kind>interface</kind>
+      <signature>interface Track { id: string; clips: Clip[]; trackType: 'video' | 'audio'; }</signature>
+      <path>src/types/timeline.ts</path>
+    </interface>
+    <interface>
+      <name>Clip</name>
+      <kind>interface</kind>
+      <signature>interface Clip { id: string; filePath: string; startTime: number; duration: number; trimIn: number; trimOut: number; }</signature>
+      <path>src/types/timeline.ts</path>
+    </interface>
+    <interface>
+      <name>Timeline</name>
+      <kind>interface</kind>
+      <signature>interface Timeline { tracks: Track[]; totalDuration: number; }</signature>
+      <path>src/types/timeline.ts</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Frontend testing uses Vitest with @testing-library/react for component tests and unit tests. Test files located alongside source files with .test.ts or .test.tsx extension. Use describe/it blocks, beforeEach for state reset. Zustand store tests use useTimelineStore.setState() for setup and .getState() for assertions. Component tests use render() from @testing-library/react with user-event for interactions. E2E tests use Playwright in src/test/ directory. Rust backend tests use #[cfg(test)] modules with #[test] attributes.
+    </standards>
+    <locations>
+      src/**/*.test.ts - Unit tests for utilities and stores
+      src/**/*.test.tsx - Component tests
+      src/test/*.test.ts - E2E and integration tests
+    </locations>
+    <ideas>
+      <test ac="1,2,7">
+        <description>Unit test: TimelineState handles multiple tracks correctly</description>
+        <file>src/stores/timelineStore.test.ts</file>
+        <approach>Test addTrack() creates tracks with correct trackNumber field (1, 2, 3...). Verify tracks array supports multiple entries. Test Track interface has trackNumber and optional label fields.</approach>
+      </test>
+      <test ac="3">
+        <description>Unit test: Clip addition to specific track by trackId</description>
+        <file>src/stores/timelineStore.test.ts</file>
+        <approach>Test addClip(trackId, clip) adds clip to correct track (Track 1 vs Track 2). Verify clip does not appear in other tracks.</approach>
+      </test>
+      <test ac="4">
+        <description>Unit test: Track layering order preserved</description>
+        <file>src/stores/timelineStore.test.ts</file>
+        <approach>Test tracks array maintains correct order by trackNumber. Verify Track 1 (trackNumber: 1) comes before Track 2 (trackNumber: 2) in array.</approach>
+      </test>
+      <test ac="1,6">
+        <description>Integration test: Timeline UI shows 2 distinct tracks with labels</description>
+        <file>src/components/timeline/Timeline.test.tsx</file>
+        <approach>Render Timeline component. Verify 2 TimelineTrack components rendered. Check for "Track 1" and "Track 2" labels in DOM.</approach>
+      </test>
+      <test ac="3">
+        <description>Integration test: Drag clip to Track 2, verify correct placement</description>
+        <file>src/components/media-library/MediaItem.test.tsx</file>
+        <approach>Simulate drag from MediaItem to Track 2 drop zone. Verify timelineStore.addClip called with Track 2's trackId.</approach>
+      </test>
+      <test ac="4,5">
+        <description>Integration test: Play timeline with clips on both tracks, verify composition</description>
+        <file>src/components/player/VideoPlayer.test.tsx or src/test/multi-track-playback.test.ts</file>
+        <approach>Add clips to Track 1 and Track 2. Trigger playback. Verify both tracks' clips are processed. Check layering: Track 2 overlays Track 1 (for Story 3.1, this may be frontend canvas layering only).</approach>
+      </test>
+    </ideas>
+  </tests>
+</story-context>

@@ -1,0 +1,320 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>4</epicId>
+    <storyId>5</storyId>
+    <title>PiP Position and Size Configuration</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/4-5-pip-position-and-size-configuration.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to configure where the webcam overlay appears and its size</iWant>
+    <soThat>I can position my face without blocking important screen content</soThat>
+    <tasks>
+      <task id="1" ac="1,5">
+        <description>Create PiPConfigurator component with preset position buttons</description>
+        <subtasks>
+          <subtask id="1.1">Design PiP configuration UI panel with preset buttons (top-left, top-right, bottom-left, bottom-right)</subtask>
+          <subtask id="1.2">Implement position preset selection state management</subtask>
+          <subtask id="1.3">Add position and size settings to recordingStore with persistence</subtask>
+          <subtask id="1.4">Write unit tests for PiPConfigurator component</subtask>
+        </subtasks>
+      </task>
+      <task id="2" ac="2,4">
+        <description>Implement custom position via drag-and-drop</description>
+        <subtasks>
+          <subtask id="2.1">Create draggable overlay preview component</subtask>
+          <subtask id="2.2">Implement drag event handlers with position updates</subtask>
+          <subtask id="2.3">Add live position indicator showing pixel coordinates</subtask>
+          <subtask id="2.4">Write tests for drag-and-drop position updates</subtask>
+        </subtasks>
+      </task>
+      <task id="3" ac="3,4">
+        <description>Add size slider control</description>
+        <subtasks>
+          <subtask id="3.1">Create size slider UI component (range: 10%-40% of screen width)</subtask>
+          <subtask id="3.2">Implement size calculation based on screen dimensions</subtask>
+          <subtask id="3.3">Update preview overlay to reflect size changes in real-time</subtask>
+          <subtask id="3.4">Write tests for size adjustment logic</subtask>
+        </subtasks>
+      </task>
+      <task id="4" ac="4">
+        <description>Implement live preview rendering</description>
+        <subtasks>
+          <subtask id="4.1">Create screen preview container showing capture area</subtask>
+          <subtask id="4.2">Render PiP overlay at configured position/size on preview</subtask>
+          <subtask id="4.3">Add visual indicators (border, resize handles) to overlay</subtask>
+          <subtask id="4.4">Write tests for preview rendering</subtask>
+        </subtasks>
+      </task>
+      <task id="5" ac="6">
+        <description>Add bounds validation</description>
+        <subtasks>
+          <subtask id="5.1">Implement validation logic to ensure PiP stays within screen bounds</subtask>
+          <subtask id="5.2">Add constraint checks during drag (prevent dragging beyond boundaries)</subtask>
+          <subtask id="5.3">Add constraint checks for size adjustment (prevent overflow)</subtask>
+          <subtask id="5.4">Display validation errors to user when constraints violated</subtask>
+          <subtask id="5.5">Write tests for bounds validation</subtask>
+        </subtasks>
+      </task>
+      <task id="6" ac="1-6">
+        <description>Update Tauri backend for PiP configuration</description>
+        <subtasks>
+          <subtask id="6.1">Update RecordingConfig model to include pipPosition and pipSize fields</subtask>
+          <subtask id="6.2">Update recording commands to accept PiP configuration parameters</subtask>
+          <subtask id="6.3">Write Rust unit tests for RecordingConfig validation</subtask>
+        </subtasks>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="1">PiP configuration UI shows position presets (top-left, top-right, bottom-left, bottom-right)</criterion>
+    <criterion id="2">Can set custom position by dragging preview overlay</criterion>
+    <criterion id="3">Size slider adjusts PiP overlay from 10% to 40% of screen width</criterion>
+    <criterion id="4">Live preview shows PiP positioning on screen preview</criterion>
+    <criterion id="5">Position and size settings saved as defaults</criterion>
+    <criterion id="6">Configuration validates PiP stays within screen bounds</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR004: Simultaneous Screen and Webcam Recording</section>
+        <snippet>System shall record screen and webcam simultaneously in picture-in-picture (PiP) style with configurable position/size, independent audio tracks, and real-time preview</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Epic 4: Advanced Recording &amp; PiP Composition</section>
+        <snippet>Story 4.5 acceptance criteria: PiP configuration UI shows position presets, custom position via drag, size slider 10%-40%, live preview, settings saved, bounds validation</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Story 4.4 Prerequisites</section>
+        <snippet>Story 4.4 provides webcam preview in recording panel with camera selection, resolution/aspect ratio display, preview visible during PiP configuration</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Pattern 1: Multi-Stream Recording with Real-Time PiP</section>
+        <snippet>RecordingConfig interface includes pipPosition and pipSize for configuring picture-in-picture overlay composition during simultaneous recording</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Project Structure</section>
+        <snippet>Recording components at src/components/recording/, types at src/types/recording.ts, backend models at src-tauri/src/models/recording.rs</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/types/recording.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>RecordingConfig</symbol>
+        <lines>61-74</lines>
+        <reason>Existing recording configuration interface that needs PiP fields (pipPosition, pipSize) added for this story</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/recordingStore.ts</path>
+        <kind>state-store</kind>
+        <symbol>RecordingState</symbol>
+        <lines>15-120</lines>
+        <reason>Recording state management that will be extended with PiP configuration state and setters for position/size persistence</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingPanel</symbol>
+        <lines>entire-file</lines>
+        <reason>Main recording panel where PiPConfigurator component will be integrated</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/WebcamPreview.tsx</path>
+        <kind>component</kind>
+        <symbol>WebcamPreview</symbol>
+        <lines>entire-file</lines>
+        <reason>Existing webcam preview from Story 4.4 that can be reused/extended for live PiP preview overlay</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingConfigSection.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingConfigSection</symbol>
+        <lines>entire-file</lines>
+        <reason>Recording configuration section component where PiP settings UI will be added</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/models/recording.rs</path>
+        <kind>rust-model</kind>
+        <symbol>RecordingConfig</symbol>
+        <lines>entire-file</lines>
+        <reason>Backend RecordingConfig struct that needs pipPosition and pipSize fields for FFmpeg composition parameters</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>tauri-command</kind>
+        <symbol>cmd_start_recording</symbol>
+        <lines>entire-file</lines>
+        <reason>Recording command that will receive and pass PiP configuration to recording orchestrator</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <dependency name="react" version="^19.1.0" />
+        <dependency name="react-dom" version="^19.1.0" />
+        <dependency name="zustand" version="^4" use="state management" />
+        <dependency name="@radix-ui/react-slider" version="^1.3.6" use="size slider component" />
+        <dependency name="lucide-react" version="^0.548.0" use="UI icons" />
+        <dependency name="tailwind-merge" version="^3.3.1" use="styling" />
+      </frontend>
+      <backend>
+        <dependency name="tauri" version="^2" use="Rust-frontend bridge" />
+        <dependency name="serde" version="latest" use="RecordingConfig serialization" />
+        <dependency name="tokio" version="1.x" use="async runtime" />
+      </backend>
+      <testing>
+        <dependency name="vitest" version="^2" use="unit/integration tests" />
+        <dependency name="@testing-library/react" version="^16" use="component testing" />
+        <dependency name="@testing-library/user-event" version="^14.6.1" use="interaction testing" />
+        <dependency name="@playwright/test" version="^1.56.1" use="e2e tests" />
+      </testing>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Follow existing RecordingStore pattern for state management with persistence (localStorage)</constraint>
+    <constraint>Maintain 16:9 aspect ratio for webcam overlay when calculating size from percentage slider</constraint>
+    <constraint>Use project-relative paths (not absolute) in all code and documentation</constraint>
+    <constraint>Component naming: PascalCase for components, camelCase for functions/variables (architecture.md section 8)</constraint>
+    <constraint>All UI components must use existing Tailwind/shadcn/ui patterns for consistency</constraint>
+    <constraint>PiP position must always stay within screen bounds (validation required)</constraint>
+    <constraint>Test coverage required: Vitest unit tests for components, Playwright e2e for full workflow</constraint>
+    <constraint>Rust backend uses snake_case for functions, PascalCase for structs (architecture.md section 8)</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>RecordingConfig (TypeScript)</name>
+      <kind>TypeScript Interface</kind>
+      <signature>
+interface RecordingConfig {
+  frameRate: FrameRate;
+  resolution: Resolution;
+  systemAudio: boolean;
+  microphone: boolean;
+  recordingMode?: ScreenRecordingMode;
+  selectedWindowId?: number;
+  // NEW for Story 4.5:
+  pipPosition?: { x: number; y: number };
+  pipSize?: { width: number; height: number };
+}
+      </signature>
+      <path>src/types/recording.ts</path>
+    </interface>
+    <interface>
+      <name>RecordingState (Zustand Store)</name>
+      <kind>State Interface</kind>
+      <signature>
+interface RecordingState {
+  // ... existing fields ...
+  // NEW for Story 4.5:
+  pipPosition: { x: number; y: number } | null;
+  pipSize: { width: number; height: number } | null;
+  setPipPosition: (position: { x: number; y: number }) => void;
+  setPipSize: (size: { width: number; height: number }) => void;
+}
+      </signature>
+      <path>src/stores/recordingStore.ts</path>
+    </interface>
+    <interface>
+      <name>RecordingConfig (Rust)</name>
+      <kind>Rust Struct</kind>
+      <signature>
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordingConfig {
+    pub frame_rate: u32,
+    pub resolution: Resolution,
+    pub system_audio: bool,
+    pub microphone: bool,
+    pub recording_mode: Option&lt;ScreenRecordingMode&gt;,
+    pub selected_window_id: Option&lt;u32&gt;,
+    // NEW for Story 4.5:
+    pub pip_position: Option&lt;PipPosition&gt;,
+    pub pip_size: Option&lt;PipSize&gt;,
+}
+      </signature>
+      <path>src-tauri/src/models/recording.rs</path>
+    </interface>
+    <interface>
+      <name>validatePipBounds</name>
+      <kind>Utility Function</kind>
+      <signature>
+function validatePipBounds(
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  screenDimensions: { width: number; height: number }
+): boolean
+      </signature>
+      <path>src/lib/recording/pipValidation.ts (to be created)</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Frontend tests use Vitest with React Testing Library for unit/integration testing. Component tests verify rendering, user interactions, and state updates. Backend tests use cargo test for Rust unit tests. E2E tests use Playwright for full workflow validation. All test files colocated with source (*.test.tsx for components, *.test.ts for utilities). Test commands: npm run test (Vitest), cd src-tauri &amp;&amp; cargo test (Rust), npx playwright test (E2E).
+    </standards>
+    <locations>
+      <location>src/components/recording/*.test.tsx</location>
+      <location>src/lib/recording/*.test.ts</location>
+      <location>src/stores/*.test.ts</location>
+      <location>tests/e2e/*.spec.ts</location>
+      <location>src-tauri/src/models/*.rs (with #[cfg(test)] modules)</location>
+    </locations>
+    <ideas>
+      <test-idea ac="1">
+        <id>T1</id>
+        <description>Unit test: PiPConfigurator renders position preset buttons (top-left, top-right, bottom-left, bottom-right) and clicking updates state</description>
+      </test-idea>
+      <test-idea ac="1,5">
+        <id>T2</id>
+        <description>Unit test: Position preset selection updates recordingStore and persists to localStorage</description>
+      </test-idea>
+      <test-idea ac="2">
+        <id>T3</id>
+        <description>Integration test: Drag preview overlay updates position state in real-time with pixel coordinates</description>
+      </test-idea>
+      <test-idea ac="3">
+        <id>T4</id>
+        <description>Unit test: Size slider ranges from 10% to 40%, calculates dimensions correctly maintaining 16:9 aspect ratio</description>
+      </test-idea>
+      <test-idea ac="4">
+        <id>T5</id>
+        <description>Integration test: Live preview container renders PiP overlay at configured position/size with visual feedback</description>
+      </test-idea>
+      <test-idea ac="5">
+        <id>T6</id>
+        <description>Unit test: Settings persist across sessions via recordingStore localStorage integration</description>
+      </test-idea>
+      <test-idea ac="6">
+        <id>T7</id>
+        <description>Unit test: validatePipBounds function correctly validates position/size within screen dimensions</description>
+      </test-idea>
+      <test-idea ac="6">
+        <id>T8</id>
+        <description>Integration test: Dragging beyond bounds constrains position, size adjustment shows validation errors</description>
+      </test-idea>
+      <test-idea ac="1-6">
+        <id>T9</id>
+        <description>E2E test: Complete workflow - select preset, drag custom position, adjust size, verify preview, check persistence</description>
+      </test-idea>
+      <test-idea ac="1-6">
+        <id>T10</id>
+        <description>Backend test: RecordingConfig Rust struct serializes/deserializes pipPosition and pipSize correctly</description>
+      </test-idea>
+    </ideas>
+  </tests>
+</story-context>
