@@ -128,14 +128,19 @@ export function MainLayout() {
 
         // Calculate drop position relative to timeline
         const dropX = e.clientX - timelineRect.left;
-        // const dropY = e.clientY - timelineRect.top; // TODO: Use for track calculation
+        const dropY = e.clientY - timelineRect.top;
 
         // Convert X position to timeline time
         const dropTimeMs = pixelsToMs(dropX, viewConfig.pixelsPerSecond);
 
-        // Determine which track (for now, just use first track)
-        // TODO: Calculate actual track based on dropY and track heights
-        const targetTrack = tracks[0];
+        // Story 3.1 AC#3: Calculate target track from Y position
+        // Account for time ruler at top, then determine which track based on Y position
+        const yInTracksArea = dropY - viewConfig.rulerHeight;
+        const trackIndex = Math.floor(yInTracksArea / viewConfig.trackHeight);
+
+        // Clamp to valid track range
+        const clampedTrackIndex = Math.max(0, Math.min(trackIndex, tracks.length - 1));
+        const targetTrack = tracks[clampedTrackIndex];
 
         // Add clip to timeline
         addClip(targetTrack.id, {

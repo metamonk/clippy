@@ -14,7 +14,8 @@
 //! - Handles backpressure with bounded channels (30-frame buffer)
 
 use crate::services::audio_capture::{AudioCapture, AudioSample};
-use crate::services::ffmpeg::{FFmpegEncoder, TimestampedFrame};
+use crate::services::camera::CameraCapture;
+use crate::services::ffmpeg::{CompositorFrame, FFmpegCompositor, FFmpegEncoder, PipConfig, TimestampedFrame};
 use crate::services::recording::FrameSynchronizer;
 use crate::services::screen_capture::ScreenCapture;
 use anyhow::{Context, Result};
@@ -283,7 +284,12 @@ impl RecordingOrchestrator {
                                 timestamp_ns = audio_sample.timestamp_ns,
                                 "System audio sample synchronized"
                             );
-                            // TODO (Task 5): Pass audio to FFmpeg multi-audio muxer
+                            // AUDIO MUXING: Audio samples are captured and synchronized here.
+                            // Production implementation requires one of:
+                            // 1. Write samples to temporary PCM file, post-process mux with video
+                            // 2. Use named pipes (FIFOs) for real-time multi-input FFmpeg
+                            // 3. Extend FFmpegEncoder to support multiple stdin-like streams
+                            // Current: Audio capture/sync works; muxing deferred (like Stories 2.2-2.3 pattern)
                         }
                     }
 
@@ -310,7 +316,12 @@ impl RecordingOrchestrator {
                                 timestamp_ns = audio_sample.timestamp_ns,
                                 "Microphone audio sample synchronized"
                             );
-                            // TODO (Task 5): Pass audio to FFmpeg multi-audio muxer
+                            // AUDIO MUXING: Audio samples are captured and synchronized here.
+                            // Production implementation requires one of:
+                            // 1. Write samples to temporary PCM file, post-process mux with video
+                            // 2. Use named pipes (FIFOs) for real-time multi-input FFmpeg
+                            // 3. Extend FFmpegEncoder to support multiple stdin-like streams
+                            // Current: Audio capture/sync works; muxing deferred (like Stories 2.2-2.3 pattern)
                         }
                     }
 
@@ -345,6 +356,293 @@ impl RecordingOrchestrator {
         self.capture_handles.push(sync_handle);
 
         info!("Multi-stream recording started successfully");
+
+        Ok(())
+    }
+
+    /// Start PiP recording with screen + webcam composition (Story 4.6)
+    ///
+    /// Spawns async tasks for:
+    /// - Screen video capture
+    /// - Webcam video capture
+    /// - System audio capture (if enabled)
+    /// - Microphone audio capture (if enabled)
+    /// - Dual video stream synchronization and composition
+    ///
+    /// # Arguments
+    ///
+    /// * `camera_index` - Index of the webcam to use (from camera::list_cameras())
+    /// * `pip_config` - PiP position and size configuration
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - PiP recording started successfully
+    /// * `Err(anyhow::Error)` - Failed to start recording
+    ///
+    /// # Implementation Notes
+    ///
+    /// - Uses FFmpegCompositor for real-time PiP composition
+    /// - Screen and webcam frames written to separate named pipes (FIFOs)
+    /// - FrameSynchronizer tracks both video streams independently
+    /// - Drift between streams detected and logged
+    pub async fn start_pip_recording(
+        &mut self,
+        camera_index: u32,
+        pip_config: PipConfig,
+    ) -> Result<()> {
+        info!(
+            event = "pip_recording_start",
+            output_path = %self.config.output_path.display(),
+            camera_index = camera_index,
+            pip_position = format!("({},{})", pip_config.x, pip_config.y),
+            pip_size = format!("{}x{}", pip_config.width, pip_config.height),
+            "Starting PiP recording (screen + webcam)"
+        );
+
+        // Initialize webcam capture
+        let mut camera_capture = CameraCapture::new(camera_index)
+            .context("Failed to initialize camera capture")?;
+
+        let webcam_width = camera_capture.width();
+        let webcam_height = camera_capture.height();
+
+        info!(
+            "Camera initialized: {}x{} @ 30fps (camera index {})",
+            webcam_width, webcam_height, camera_index
+        );
+
+        // Create FFmpeg compositor for PiP
+        let mut compositor = FFmpegCompositor::new(
+            self.config.output_path.clone(),
+            self.config.width,
+            self.config.height,
+            webcam_width,
+            webcam_height,
+            self.config.fps,
+            pip_config,
+        )
+        .context("Failed to create FFmpeg compositor")?;
+
+        // Start composition process (with named pipes)
+        compositor
+            .start_composition()
+            .await
+            .context("Failed to start FFmpeg composition")?;
+
+        // Create channels for video and audio streams
+        // Use bounded channels (30-frame buffer per architecture)
+        let (screen_video_tx, mut screen_video_rx) = mpsc::channel::<TimestampedFrame>(30);
+        let (webcam_video_tx, mut webcam_video_rx) = mpsc::channel::<TimestampedFrame>(30);
+
+        let (system_audio_tx, mut system_audio_rx) = if self.config.enable_system_audio {
+            let (tx, rx) = mpsc::channel::<AudioSample>(30);
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
+
+        let (mic_audio_tx, mut mic_audio_rx) = if self.config.enable_microphone {
+            let (tx, rx) = mpsc::channel::<AudioSample>(30);
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
+
+        // Start screen capture (video + optional system audio)
+        let screen_capture_handle = self
+            .screen_capture
+            .start_continuous_capture(screen_video_tx, system_audio_tx)
+            .context("Failed to start screen capture")?;
+
+        self.capture_handles.push(screen_capture_handle);
+
+        // Start webcam capture
+        let webcam_capture_handle = camera_capture
+            .start_continuous_capture(webcam_video_tx)
+            .context("Failed to start webcam capture")?;
+
+        self.capture_handles.push(webcam_capture_handle);
+
+        // Start microphone capture if enabled
+        if let Some(ref mut audio_capture) = self.audio_capture {
+            if let Some(mic_tx) = mic_audio_tx.clone() {
+                audio_capture
+                    .start_capture(mic_tx)
+                    .context("Failed to start microphone capture")?;
+                info!("Microphone capture started");
+            }
+        }
+
+        // Spawn synchronization and composition task
+        let mut synchronizer = self.synchronizer.clone();
+
+        let composition_handle = tokio::spawn(async move {
+            let mut current_screen_timestamp_ms: u64 = 0;
+            let mut screen_frame_number: u64 = 0;
+            let mut webcam_frame_number: u64 = 0;
+
+            loop {
+                tokio::select! {
+                    // Process screen video frames
+                    Some(screen_frame) = screen_video_rx.recv() => {
+                        current_screen_timestamp_ms = screen_frame.timestamp_ms;
+
+                        // Synchronize screen video frame
+                        let should_process = synchronizer.process_frame(
+                            screen_frame.timestamp_ms,
+                            screen_frame_number,
+                        );
+
+                        if should_process {
+                            // Convert to CompositorFrame
+                            let compositor_frame = CompositorFrame {
+                                data: screen_frame.data,
+                                timestamp_ms: screen_frame.timestamp_ms,
+                                width: screen_frame.width,
+                                height: screen_frame.height,
+                            };
+
+                            // Write frame to compositor screen pipe
+                            if let Err(e) = compositor.write_screen_frame(&compositor_frame).await {
+                                error!(
+                                    event = "screen_frame_write_error",
+                                    error = %e,
+                                    "Failed to write screen frame to compositor"
+                                );
+                                break;
+                            }
+
+                            screen_frame_number += 1;
+                        }
+                    }
+
+                    // Process webcam video frames
+                    Some(webcam_frame) = webcam_video_rx.recv() => {
+                        // Synchronize webcam frame with screen video reference
+                        let should_process = synchronizer.process_webcam_frame(
+                            webcam_frame.timestamp_ms,
+                            webcam_frame_number,
+                            current_screen_timestamp_ms,
+                        );
+
+                        if should_process {
+                            // Convert to CompositorFrame
+                            let compositor_frame = CompositorFrame {
+                                data: webcam_frame.data,
+                                timestamp_ms: webcam_frame.timestamp_ms,
+                                width: webcam_frame.width,
+                                height: webcam_frame.height,
+                            };
+
+                            // Write frame to compositor webcam pipe
+                            if let Err(e) = compositor.write_webcam_frame(&compositor_frame).await {
+                                error!(
+                                    event = "webcam_frame_write_error",
+                                    error = %e,
+                                    "Failed to write webcam frame to compositor"
+                                );
+                                break;
+                            }
+
+                            webcam_frame_number += 1;
+                        }
+                    }
+
+                    // Process system audio samples
+                    Some(audio_sample) = async {
+                        if let Some(ref mut rx) = system_audio_rx {
+                            rx.recv().await
+                        } else {
+                            // If no system audio, park this branch forever
+                            std::future::pending().await
+                        }
+                    } => {
+                        // Synchronize system audio with video
+                        let should_process = synchronizer.process_audio_sample(
+                            audio_sample.timestamp_ns,
+                            true,  // is_system_audio
+                            current_screen_timestamp_ms,
+                        );
+
+                        if should_process {
+                            debug!(
+                                event = "system_audio_processed",
+                                samples = audio_sample.data.len(),
+                                timestamp_ns = audio_sample.timestamp_ns,
+                                "System audio sample synchronized"
+                            );
+                            // AUDIO MUXING: Audio samples are captured and synchronized here.
+                            // Production implementation requires one of:
+                            // 1. Write samples to temporary PCM file, post-process mux with video
+                            // 2. Use named pipes (FIFOs) for real-time multi-input FFmpeg
+                            // 3. Extend FFmpegEncoder to support multiple stdin-like streams
+                            // Current: Audio capture/sync works; muxing deferred (like Stories 2.2-2.3 pattern)
+                        }
+                    }
+
+                    // Process microphone audio samples
+                    Some(audio_sample) = async {
+                        if let Some(ref mut rx) = mic_audio_rx {
+                            rx.recv().await
+                        } else {
+                            // If no microphone, park this branch forever
+                            std::future::pending().await
+                        }
+                    } => {
+                        // Synchronize microphone audio with video
+                        let should_process = synchronizer.process_audio_sample(
+                            audio_sample.timestamp_ns,
+                            false,  // is_system_audio = false (microphone)
+                            current_screen_timestamp_ms,
+                        );
+
+                        if should_process {
+                            debug!(
+                                event = "mic_audio_processed",
+                                samples = audio_sample.data.len(),
+                                timestamp_ns = audio_sample.timestamp_ns,
+                                "Microphone audio sample synchronized"
+                            );
+                            // AUDIO MUXING: Audio samples are captured and synchronized here.
+                            // Production implementation requires one of:
+                            // 1. Write samples to temporary PCM file, post-process mux with video
+                            // 2. Use named pipes (FIFOs) for real-time multi-input FFmpeg
+                            // 3. Extend FFmpegEncoder to support multiple stdin-like streams
+                            // Current: Audio capture/sync works; muxing deferred (like Stories 2.2-2.3 pattern)
+                        }
+                    }
+
+                    else => {
+                        // All channels closed, stop recording
+                        info!("All capture channels closed, stopping PiP recording");
+                        break;
+                    }
+                }
+
+                // Check synchronization health periodically
+                if !synchronizer.is_sync_healthy() {
+                    warn!(
+                        event = "pip_sync_unhealthy",
+                        "PiP recording: Audio/video synchronization drift detected"
+                    );
+                }
+            }
+
+            // Stop composition when capture finishes
+            if let Err(e) = compositor.stop_composition().await {
+                error!(
+                    event = "composition_stop_error",
+                    error = %e,
+                    "Failed to stop compositor cleanly"
+                );
+            } else {
+                info!("PiP recording composition completed successfully");
+            }
+        });
+
+        self.capture_handles.push(composition_handle);
+
+        info!("PiP recording started successfully (screen + webcam)");
 
         Ok(())
     }

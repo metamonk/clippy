@@ -17,11 +17,18 @@ vi.mock('react-konva', () => ({
 
 describe('Timeline Component', () => {
   beforeEach(() => {
-    // Reset stores before each test
+    // Reset stores before each test (Story 3.1: 2 tracks minimum)
     useTimelineStore.setState({
       tracks: [
         {
           id: 'track-1',
+          trackNumber: 1,
+          clips: [],
+          trackType: 'video',
+        },
+        {
+          id: 'track-2',
+          trackNumber: 2,
           clips: [],
           trackType: 'video',
         },
@@ -64,6 +71,7 @@ describe('Timeline Component', () => {
       tracks: [
         {
           id: 'track-1',
+          trackNumber: 1,
           clips: [
             {
               id: 'clip-1',
@@ -123,6 +131,7 @@ describe('Timeline Component', () => {
       tracks: [
         {
           id: 'track-1',
+          trackNumber: 1,
           clips: [],
           trackType: 'video',
         },
@@ -148,11 +157,13 @@ describe('Timeline Component', () => {
       tracks: [
         {
           id: 'track-1',
+          trackNumber: 1,
           clips: [],
           trackType: 'video',
         },
         {
           id: 'track-2',
+          trackNumber: 2,
           clips: [],
           trackType: 'audio',
         },
@@ -178,6 +189,7 @@ describe('Timeline Component', () => {
       tracks: [
         {
           id: 'track-1',
+          trackNumber: 1,
           clips: [
             {
               id: 'clip-1',

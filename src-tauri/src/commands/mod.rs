@@ -22,6 +22,13 @@ pub use mpv::{
 pub use recording::{
     cmd_check_screen_recording_permission,
     cmd_request_screen_recording_permission,
+    cmd_check_camera_permission,
+    cmd_request_camera_permission,
+    cmd_list_cameras,
+    cmd_start_camera_preview,
+    cmd_stop_camera_preview,
+    cmd_start_webcam_recording,
+    cmd_stop_webcam_recording,
     cmd_start_screen_recording,
     cmd_stop_recording,
 };

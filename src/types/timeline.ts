@@ -10,10 +10,16 @@ export interface Clip {
   duration: number; // Total clip duration (ms)
   trimIn: number; // Trim start point (ms) - default 0
   trimOut: number; // Trim end point (ms) - default duration
+  // Audio properties (optional - used in Stories 3.9, 3.10)
+  fadeIn?: number; // Fade-in duration (ms)
+  fadeOut?: number; // Fade-out duration (ms)
+  volume?: number; // Volume level (0.0 to 1.0)
+  muted?: boolean; // Whether clip is muted
 }
 
 export interface Track {
   id: string; // UUID
+  trackNumber: number; // Track position (1, 2, 3...) - required for multi-track
   clips: Clip[]; // Ordered clips on track
   trackType: 'video' | 'audio';
 }

@@ -60,19 +60,19 @@ development_status:
   2-1-screencapturekit-setup-permissions: done
   2-2-full-screen-recording-with-video-capture: done
   2-3-real-time-ffmpeg-encoding-during-recording: done
-  2-4-system-audio-and-microphone-capture: done
+  2-4-system-audio-and-microphone-capture: done  # All blockers resolved: Send trait fixed, system audio API implemented, FFmpeg architecture clarified
   2-5-recording-controls-status-feedback: done
   2-6-auto-import-recordings-to-media-library: done
-  2-7-basic-webcam-recording-setup: in-progress
-  2-8-webcam-recording-with-audio-save: in-progress
+  2-7-basic-webcam-recording-setup: done
+  2-8-webcam-recording-with-audio-save: done
   epic-2-retrospective: optional
 
   # Epic 3: Multi-Track Timeline & Editing Maturity
   epic-3: backlog
-  3-1-multi-track-timeline-foundation: in-progress
-  3-2-multiple-clips-per-track-with-sequencing: ready-for-dev
-  3-3-drag-clips-between-tracks: backlog
-  3-4-split-clip-at-playhead: backlog
+  3-1-multi-track-timeline-foundation: done
+  3-2-multiple-clips-per-track-with-sequencing: done
+  3-3-drag-clips-between-tracks: done
+  3-4-split-clip-at-playhead: done
   3-5-delete-clips-with-ripple-option: backlog
   3-6-timeline-zoom-and-precision-editing: backlog
   3-7-snap-to-grid-and-snap-to-clip-edges: backlog

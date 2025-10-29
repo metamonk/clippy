@@ -15,16 +15,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { RecordingControls } from './RecordingControls';
 import { PermissionPrompt } from './PermissionPrompt';
 import { AudioSourceSelector } from './AudioSourceSelector';
+import { CameraSelector } from './CameraSelector';
+import WebcamPreview from './WebcamPreview';
 import { useRecordingStore } from '@/stores/recordingStore';
 import {
   checkScreenRecordingPermission,
+  checkCameraPermission,
   startScreenRecording,
+  startWebcamRecording,
   stopRecording,
+  stopWebcamRecording,
 } from '@/lib/tauri/recording';
-import { Monitor, Clock } from 'lucide-react';
+import { Monitor, Clock, Camera } from 'lucide-react';
 
 export interface RecordingPanelProps {
   open: boolean;
@@ -42,13 +49,17 @@ function formatDuration(ms: number): string {
 }
 
 export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
+  const [recordingMode, setRecordingMode] = useState<'screen' | 'webcam'>('screen');
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Recording store
   const status = useRecordingStore((state) => state.status);
   const recordingId = useRecordingStore((state) => state.recordingId);
   const elapsedMs = useRecordingStore((state) => state.elapsedMs);
+  const selectedCamera = useRecordingStore((state) => state.selectedCamera);
   const startRecording = useRecordingStore((state) => state.startRecording);
   const stopRecordingStore = useRecordingStore((state) => state.stopRecording);
   const updateElapsedTime = useRecordingStore((state) => state.updateElapsedTime);
@@ -58,12 +69,16 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
   const isRecording = status === 'recording';
   const isStopping = status === 'stopping';
 
-  // Check permission when panel opens
+  // Check permissions when panel opens or recording mode changes
   useEffect(() => {
     if (open) {
-      checkPermission();
+      if (recordingMode === 'screen') {
+        checkPermission();
+      } else if (recordingMode === 'webcam') {
+        checkCameraPermissionStatus();
+      }
     }
-  }, [open]);
+  }, [open, recordingMode]);
 
   // Update elapsed time during recording
   useEffect(() => {
@@ -95,22 +110,74 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
     }
   };
 
+  const checkCameraPermissionStatus = async () => {
+    try {
+      const granted = await checkCameraPermission();
+      setHasCameraPermission(granted);
+
+      if (!granted) {
+        toast.warning('Camera Permission Required', {
+          description: 'Please grant camera permission in System Preferences',
+        });
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      toast.error('Camera Permission Check Failed', {
+        description: errorMessage,
+      });
+      setHasCameraPermission(false);
+    }
+  };
+
   const handleStartRecording = async () => {
     try {
-      // Check permission first
-      const granted = await checkScreenRecordingPermission();
-      if (!granted) {
-        setShowPermissionPrompt(true);
-        return;
+      let id: string;
+
+      if (recordingMode === 'screen') {
+        // Check screen recording permission first
+        const granted = await checkScreenRecordingPermission();
+        if (!granted) {
+          setShowPermissionPrompt(true);
+          return;
+        }
+
+        // Start screen recording
+        id = await startScreenRecording();
+        toast.success('Recording Started', {
+          description: 'Screen recording is now active',
+        });
+      } else if (recordingMode === 'webcam') {
+        // Check camera permission first
+        const granted = await checkCameraPermission();
+        if (!granted) {
+          toast.error('Camera Permission Required', {
+            description: 'Please grant camera permission to record from webcam',
+          });
+          return;
+        }
+
+        // Ensure a camera is selected
+        if (!selectedCamera) {
+          toast.error('No Camera Selected', {
+            description: 'Please select a camera before recording',
+          });
+          return;
+        }
+
+        // Start webcam recording
+        // Get microphone setting from store
+        const enableMicrophone = useRecordingStore.getState().audioSources.microphone;
+        id = await startWebcamRecording(selectedCamera.id, enableMicrophone);
+        toast.success('Webcam Recording Started', {
+          description: enableMicrophone
+            ? 'Webcam recording with microphone is now active'
+            : 'Webcam recording is now active',
+        });
+      } else {
+        throw new Error('Invalid recording mode');
       }
 
-      // Start recording
-      const id = await startScreenRecording();
       startRecording(id);
-
-      toast.success('Recording Started', {
-        description: 'Screen recording is now active',
-      });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       setError(errorMessage);
@@ -126,7 +193,13 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
     try {
       setStopping();
 
-      const filePath = await stopRecording(recordingId);
+      let filePath: string;
+      if (recordingMode === 'webcam') {
+        filePath = await stopWebcamRecording(recordingId);
+      } else {
+        filePath = await stopRecording(recordingId);
+      }
+
       stopRecordingStore(filePath);
 
       toast.success('Recording Saved', {
@@ -158,57 +231,150 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <div className="flex items-center gap-3">
-              <Monitor className="w-6 h-6 text-blue-600" />
-              <DialogTitle className="text-xl">Screen Recording</DialogTitle>
+              {recordingMode === 'screen' ? (
+                <Monitor className="w-6 h-6 text-blue-600" />
+              ) : (
+                <Camera className="w-6 h-6 text-purple-600" />
+              )}
+              <DialogTitle className="text-xl">Recording</DialogTitle>
             </div>
             <DialogDescription>
-              Record your screen for demonstrations and tutorials
+              Record your screen or webcam for demonstrations and tutorials
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 py-4">
-            {/* Audio Source Selection */}
-            {!isRecording && hasPermission && (
-              <AudioSourceSelector />
-            )}
+          <Tabs
+            value={recordingMode}
+            onValueChange={(value: string) => setRecordingMode(value as 'screen' | 'webcam')}
+            className="w-full"
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="screen" disabled={isRecording}>
+                <Monitor className="w-4 h-4 mr-2" />
+                Screen
+              </TabsTrigger>
+              <TabsTrigger value="webcam" disabled={isRecording}>
+                <Camera className="w-4 h-4 mr-2" />
+                Webcam
+              </TabsTrigger>
+            </TabsList>
 
-            {/* Recording Controls */}
-            <div className="flex flex-col items-center gap-4">
-              <RecordingControls
-                isRecording={isRecording}
-                isStopping={isStopping}
-                onStartRecording={handleStartRecording}
-                onStopRecording={handleStopRecording}
-              />
+            <TabsContent value="screen" className="space-y-6 py-4">
+              {/* Audio Source Selection */}
+              {!isRecording && hasPermission && (
+                <AudioSourceSelector />
+              )}
 
-              {/* Duration Display */}
-              {isRecording && (
-                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                  <Clock className="w-4 h-4" />
-                  <span className="text-sm font-mono">
-                    {formatDuration(elapsedMs)}
-                  </span>
+              {/* Recording Controls */}
+              <div className="flex flex-col items-center gap-4">
+                <RecordingControls
+                  isRecording={isRecording}
+                  isStopping={isStopping}
+                  onStartRecording={handleStartRecording}
+                  onStopRecording={handleStopRecording}
+                />
+
+                {/* Duration Display */}
+                {isRecording && (
+                  <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                    <Clock className="w-4 h-4" />
+                    <span className="text-sm font-mono">
+                      {formatDuration(elapsedMs)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Information */}
+              {!isRecording && hasPermission && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-md text-sm">
+                  <p className="font-semibold mb-2">Ready to Record</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2 text-gray-700 dark:text-gray-300">
+                    <li>Click "Record Screen" to start</li>
+                    <li>Full screen will be captured at 30 FPS</li>
+                    <li>Audio sources configured above will be captured</li>
+                    <li>Click "Stop Recording" when finished</li>
+                    <li>Recording will be saved automatically</li>
+                  </ul>
                 </div>
               )}
-            </div>
+            </TabsContent>
 
-            {/* Information */}
-            {!isRecording && hasPermission && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-md text-sm">
-                <p className="font-semibold mb-2">Ready to Record</p>
-                <ul className="list-disc list-inside space-y-1 ml-2 text-gray-700 dark:text-gray-300">
-                  <li>Click "Record Screen" to start</li>
-                  <li>Full screen will be captured at 30 FPS</li>
-                  <li>Audio sources configured above will be captured</li>
-                  <li>Click "Stop Recording" when finished</li>
-                  <li>Recording will be saved automatically</li>
-                </ul>
+            <TabsContent value="webcam" className="space-y-6 py-4">
+              {/* Camera Selection */}
+              {!isRecording && hasCameraPermission && (
+                <CameraSelector
+                  onCameraSelected={(cameraId) => {
+                    console.log('Camera selected:', cameraId);
+                  }}
+                />
+              )}
+
+              {/* Webcam Preview */}
+              {!isRecording && selectedCamera && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Preview</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowPreview(!showPreview)}
+                    >
+                      {showPreview ? 'Hide Preview' : 'Show Preview'}
+                    </Button>
+                  </div>
+                  {showPreview && (
+                    <WebcamPreview
+                      cameraIndex={selectedCamera.id}
+                      active={showPreview}
+                      onError={(error) => {
+                        toast.error('Camera Preview Error', {
+                          description: error,
+                        });
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Recording Controls */}
+              <div className="flex flex-col items-center gap-4">
+                <RecordingControls
+                  isRecording={isRecording}
+                  isStopping={isStopping}
+                  onStartRecording={handleStartRecording}
+                  onStopRecording={handleStopRecording}
+                />
+
+                {/* Duration Display */}
+                {isRecording && (
+                  <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                    <Clock className="w-4 h-4" />
+                    <span className="text-sm font-mono">
+                      {formatDuration(elapsedMs)}
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+
+              {/* Information */}
+              {!isRecording && hasCameraPermission && selectedCamera && (
+                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-md text-sm">
+                  <p className="font-semibold mb-2">Ready to Record</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2 text-gray-700 dark:text-gray-300">
+                    <li>Click "Record Webcam" to start</li>
+                    <li>Camera will be captured at native resolution (capped at 1080p)</li>
+                    <li>Recording at 30 FPS</li>
+                    <li>Click "Stop Recording" when finished</li>
+                    <li>Recording will be saved automatically</li>
+                  </ul>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 

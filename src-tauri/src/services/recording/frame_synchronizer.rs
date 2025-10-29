@@ -45,6 +45,15 @@ pub struct SyncMetrics {
 
     /// Audio samples dropped due to excessive drift (microphone)
     pub mic_audio_dropped: u64,
+
+    /// Total webcam frames processed (Story 4.6 - dual video stream sync)
+    pub total_webcam_frames: u64,
+
+    /// Webcam frames dropped due to encoding backpressure
+    pub dropped_webcam_frames: u64,
+
+    /// Current webcam video drift (milliseconds, webcam vs screen video)
+    pub webcam_drift_ms: i64,
 }
 
 impl SyncMetrics {
@@ -61,6 +70,9 @@ impl SyncMetrics {
             mic_audio_drift_ms: 0,
             system_audio_dropped: 0,
             mic_audio_dropped: 0,
+            total_webcam_frames: 0,
+            dropped_webcam_frames: 0,
+            webcam_drift_ms: 0,
         }
     }
 }
@@ -88,8 +100,11 @@ pub struct FrameSynchronizer {
     /// Synchronization metrics
     metrics: SyncMetrics,
 
-    /// Last processed frame timestamp
+    /// Last processed frame timestamp (screen video)
     last_timestamp_ms: Option<u64>,
+
+    /// Last processed webcam frame timestamp (Story 4.6 - dual video stream sync)
+    last_webcam_timestamp_ms: Option<u64>,
 }
 
 impl FrameSynchronizer {
@@ -114,6 +129,7 @@ impl FrameSynchronizer {
             drift_threshold_ms,
             metrics: SyncMetrics::new(),
             last_timestamp_ms: None,
+            last_webcam_timestamp_ms: None,
         }
     }
 
@@ -198,6 +214,101 @@ impl FrameSynchronizer {
         true  // Always process frame (we log drops but don't skip frames)
     }
 
+    /// Process a webcam frame and detect drift from screen video (Story 4.6)
+    ///
+    /// Calculates drift between webcam timestamp and screen video reference timing.
+    /// Detects dropped webcam frames due to encoding pressure.
+    ///
+    /// # Arguments
+    ///
+    /// * `timestamp_ms` - Webcam frame timestamp in milliseconds
+    /// * `frame_number` - Webcam frame sequence number (0-indexed)
+    /// * `reference_timestamp_ms` - Current screen video timestamp for drift comparison
+    ///
+    /// # Returns
+    ///
+    /// True if frame should be processed, false if dropped due to excessive drift
+    pub fn process_webcam_frame(
+        &mut self,
+        timestamp_ms: u64,
+        frame_number: u64,
+        reference_timestamp_ms: u64,
+    ) -> bool {
+        self.metrics.total_webcam_frames += 1;
+
+        // Calculate drift between webcam and screen video (webcam - screen)
+        let drift_ms = timestamp_ms as i64 - reference_timestamp_ms as i64;
+        self.metrics.webcam_drift_ms = drift_ms;
+
+        // Check if drift exceeds threshold
+        if drift_ms.abs() > self.drift_threshold_ms {
+            warn!(
+                event = "webcam_sync_drift",
+                frame_number = frame_number,
+                webcam_timestamp_ms = timestamp_ms,
+                screen_timestamp_ms = reference_timestamp_ms,
+                drift_ms = drift_ms,
+                threshold_ms = self.drift_threshold_ms,
+                "Webcam frame timing drift exceeds threshold"
+            );
+
+            // Drop webcam frame if drift is excessive (> 2x threshold)
+            if drift_ms.abs() > self.drift_threshold_ms * 2 {
+                self.metrics.dropped_webcam_frames += 1;
+
+                warn!(
+                    event = "webcam_frame_dropped",
+                    frame_number = frame_number,
+                    drift_ms = drift_ms,
+                    total_dropped = self.metrics.dropped_webcam_frames,
+                    "Webcam frame dropped due to excessive drift"
+                );
+
+                return false;  // Drop frame
+            }
+
+            self.metrics.corrections_applied += 1;
+        }
+
+        // Detect frame drops (gap in timestamps)
+        if let Some(last_ts) = self.last_webcam_timestamp_ms {
+            let delta_ms = timestamp_ms.saturating_sub(last_ts);
+            let expected_delta = self.frame_duration_ms;
+
+            // If gap is significantly larger than expected, frames were likely dropped
+            if delta_ms > expected_delta * 2 {
+                let estimated_dropped = (delta_ms / expected_delta).saturating_sub(1);
+                self.metrics.dropped_webcam_frames += estimated_dropped;
+
+                warn!(
+                    event = "webcam_frame_drop_detected",
+                    frame_number = frame_number,
+                    delta_ms = delta_ms,
+                    expected_delta_ms = expected_delta,
+                    estimated_dropped = estimated_dropped,
+                    total_dropped = self.metrics.dropped_webcam_frames,
+                    "Webcam frame drop detected - encoding cannot keep up"
+                );
+            }
+        }
+
+        self.last_webcam_timestamp_ms = Some(timestamp_ms);
+
+        // Log metrics periodically (every 30 frames = 1 second @ 30fps)
+        if frame_number.is_multiple_of(30) {
+            debug!(
+                event = "webcam_sync_metrics",
+                total_frames = self.metrics.total_webcam_frames,
+                dropped_frames = self.metrics.dropped_webcam_frames,
+                drift_ms = self.metrics.webcam_drift_ms,
+                drop_rate = format!("{:.2}%", (self.metrics.dropped_webcam_frames as f64 / self.metrics.total_webcam_frames as f64) * 100.0),
+                "Webcam synchronization metrics"
+            );
+        }
+
+        true  // Process frame
+    }
+
     /// Get current synchronization metrics
     pub fn get_metrics(&self) -> &SyncMetrics {
         &self.metrics
@@ -219,7 +330,10 @@ impl FrameSynchronizer {
         let audio_drift_ok = self.metrics.system_audio_drift_ms.abs() <= self.drift_threshold_ms
             && self.metrics.mic_audio_drift_ms.abs() <= self.drift_threshold_ms;
 
-        drift_ok && drops_acceptable && audio_drift_ok
+        // Check webcam drift (Story 4.6 - if webcam is being processed)
+        let webcam_drift_ok = self.metrics.webcam_drift_ms.abs() <= self.drift_threshold_ms;
+
+        drift_ok && drops_acceptable && audio_drift_ok && webcam_drift_ok
     }
 
     /// Process an audio sample and detect drift from video timing
@@ -321,6 +435,7 @@ impl FrameSynchronizer {
     pub fn reset(&mut self) {
         self.metrics = SyncMetrics::new();
         self.last_timestamp_ms = None;
+        self.last_webcam_timestamp_ms = None;
         info!("Frame synchronizer reset");
     }
 }

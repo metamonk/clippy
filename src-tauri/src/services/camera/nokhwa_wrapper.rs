@@ -405,7 +405,7 @@ impl CameraCapture {
                 next_frame_time = next_frame_time + frame_interval;
 
                 // Capture frame
-                let frame_data = match camera.frame() {
+                let rgb_data = match camera.frame() {
                     Ok(frame) => frame.buffer().to_vec(),
                     Err(e) => {
                         warn!("Failed to capture camera frame: {}", e);
@@ -413,12 +413,27 @@ impl CameraCapture {
                     }
                 };
 
+                // Convert RGB to BGRA (nokhwa returns RGB, FFmpeg expects BGRA)
+                // RGB has 3 bytes per pixel, BGRA has 4 bytes per pixel
+                let pixel_count = (width * height) as usize;
+                let mut bgra_data = Vec::with_capacity(pixel_count * 4);
+
+                for i in 0..pixel_count {
+                    let rgb_idx = i * 3;
+                    if rgb_idx + 2 < rgb_data.len() {
+                        bgra_data.push(rgb_data[rgb_idx + 2]); // B
+                        bgra_data.push(rgb_data[rgb_idx + 1]); // G
+                        bgra_data.push(rgb_data[rgb_idx]);     // R
+                        bgra_data.push(255);                    // A (fully opaque)
+                    }
+                }
+
                 // Calculate timestamp since recording start
                 let timestamp_ms = recording_start.elapsed().as_millis() as u64;
 
                 // Create timestamped frame
                 let frame = crate::services::ffmpeg::TimestampedFrame {
-                    data: frame_data,
+                    data: bgra_data,
                     timestamp_ms,
                     width,
                     height,

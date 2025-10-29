@@ -36,7 +36,7 @@ export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPr
       if (!active) {
         // Stop preview if not active
         try {
-          await stopCameraPreview();
+          await stopCameraPreview(cameraIndex);
         } catch {
           // Ignore errors when stopping (might not be running)
         }
@@ -134,7 +134,7 @@ export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPr
         unlisten();
       }
 
-      stopCameraPreview().catch((err) => {
+      stopCameraPreview(cameraIndex).catch((err) => {
         console.warn('Failed to stop camera preview:', err);
       });
     };

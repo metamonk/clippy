@@ -6,8 +6,12 @@ import { calculateClipPosition, formatTimeSimple } from '@/lib/timeline/timeUtil
 import { TIMELINE_DEFAULTS } from '@/types/timeline';
 import { useTimelineStore } from '@/stores/timelineStore';
 
+// Story 3.3: Vertical drag threshold ratio for determining inter-track moves
+const VERTICAL_DRAG_THRESHOLD_RATIO = 0.5;
+
 interface TimelineClipProps {
   clip: Clip;
+  trackId: string; // Story 3.3: Track ID for inter-track dragging
   trackHeight?: number;
   pixelsPerSecond?: number;
   yPosition: number;
@@ -31,13 +35,14 @@ interface TimelineClipProps {
  */
 export const TimelineClip: React.FC<TimelineClipProps> = ({
   clip,
+  trackId,
   trackHeight = TIMELINE_DEFAULTS.TRACK_HEIGHT,
   pixelsPerSecond = TIMELINE_DEFAULTS.PIXELS_PER_SECOND,
   yPosition,
   onSelect,
   isSelected = false,
 }) => {
-  const { updateClip, setSelectedClip } = useTimelineStore();
+  const { updateClip, setSelectedClip, moveClip, moveClipToTrack, setHoveredTrack, tracks } = useTimelineStore();
 
   // Handle clip selection
   const handleClipClick = () => {
@@ -49,7 +54,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   const [leftHandleHover, setLeftHandleHover] = useState(false);
   const [rightHandleHover, setRightHandleHover] = useState(false);
 
-  // Track dragging state
+  // Track dragging state for trim handles
   const dragStateRef = useRef<{
     isDragging: boolean;
     handle: 'left' | 'right' | null;
@@ -62,6 +67,19 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
     startX: 0,
     startTrimIn: 0,
     startTrimOut: 0,
+  });
+
+  // Story 3.3: Track repositioning drag state (separate from trim)
+  const repositionDragRef = useRef<{
+    isDragging: boolean;
+    startX: number;
+    startY: number;
+    originalStartTime: number;
+  }>({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    originalStartTime: 0,
   });
 
   // Calculate visual duration (trimmed duration)
@@ -167,6 +185,94 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
     window.addEventListener('mouseup', handleMouseUp);
   };
 
+  // Story 3.3: Clip repositioning drag handlers (horizontal + vertical)
+  const handleClipMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+    // Don't start reposition drag if clicking on trim handles
+    if (dragStateRef.current.isDragging) return;
+
+    e.cancelBubble = true;
+
+    repositionDragRef.current = {
+      isDragging: true,
+      startX: e.evt.clientX,
+      startY: e.evt.clientY,
+      originalStartTime: clip.startTime,
+    };
+
+    // Add window-level mouse move and mouse up listeners
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!repositionDragRef.current.isDragging) return;
+
+      const deltaY = moveEvent.clientY - repositionDragRef.current.startY;
+
+      // Calculate which track is being hovered based on Y position
+      const targetTrackIndex = Math.floor((moveEvent.clientY - yPosition) / trackHeight);
+      const targetTrack = tracks[targetTrackIndex];
+
+      if (targetTrack && targetTrack.id !== trackId) {
+        // Inter-track hover detected - check for collision
+        const clipDuration = clip.trimOut - clip.trimIn;
+        const clipEnd = clip.startTime + clipDuration;
+
+        const hasCollision = targetTrack.clips.some((existingClip) => {
+          const existingEnd = existingClip.startTime + (existingClip.trimOut - existingClip.trimIn);
+          return !(clipEnd <= existingClip.startTime || clip.startTime >= existingEnd);
+        });
+
+        // Update hover state with collision info (Story 3.3 Review M-1)
+        setHoveredTrack({ trackId: targetTrack.id, canDrop: !hasCollision });
+      } else {
+        // Clear hover state when not over a different track
+        setHoveredTrack(null);
+      }
+    };
+
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      if (!repositionDragRef.current.isDragging) {
+        return;
+      }
+
+      repositionDragRef.current.isDragging = false;
+
+      const deltaX = upEvent.clientX - repositionDragRef.current.startX;
+      const deltaY = upEvent.clientY - repositionDragRef.current.startY;
+
+      // Clear hover state
+      setHoveredTrack(null);
+
+      // Determine if this is a vertical drag (inter-track) or horizontal drag (reposition)
+      const isVerticalDrag = Math.abs(deltaY) > trackHeight * VERTICAL_DRAG_THRESHOLD_RATIO;
+
+      if (isVerticalDrag) {
+        // Inter-track move detected
+        const targetTrackIndex = Math.floor((upEvent.clientY - yPosition) / trackHeight);
+        const targetTrack = tracks[targetTrackIndex];
+
+        if (targetTrack && targetTrack.id !== trackId) {
+          const success = moveClipToTrack(clip.id, targetTrack.id);
+
+          // Story 3.3 Review M-2: If inter-track move fails, preserve horizontal movement
+          if (!success && Math.abs(deltaX) > 5) {
+            const deltaTime = (deltaX / pixelsPerSecond) * 1000;
+            const newStartTime = Math.max(0, repositionDragRef.current.originalStartTime + deltaTime);
+            moveClip(clip.id, newStartTime, true); // Record history on successful horizontal move
+          }
+        }
+      } else if (Math.abs(deltaX) > 5) {
+        // Horizontal repositioning only
+        const deltaTime = (deltaX / pixelsPerSecond) * 1000;
+        const newStartTime = Math.max(0, repositionDragRef.current.originalStartTime + deltaTime);
+        moveClip(clip.id, newStartTime, true); // Story 3.3 Review H-1: Record history only on drag completion
+      }
+
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
   return (
     <Group x={x} y={yPosition}>
       {/* Clip background rectangle (visible portion only) */}
@@ -181,6 +287,8 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
         cornerRadius={4}
         onClick={handleClipClick}
         onTap={handleClipClick}
+        onMouseDown={handleClipMouseDown}
+        cursor="move"
       />
 
       {/* Left trim handle (only show when selected) */}

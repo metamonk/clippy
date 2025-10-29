@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Layer, Stage, Group, Text } from 'react-konva';
 import { useTimelineStore } from '@/stores/timelineStore';
 // import { useMediaLibraryStore } from '@/stores/mediaLibraryStore'; // TODO: Use when loading media
@@ -7,8 +7,10 @@ import { TimeRuler } from './TimeRuler';
 import { Playhead } from './Playhead';
 import { TimelineTrack } from './TimelineTrack';
 import { calculateTimelineWidth, pixelsToMs } from '@/lib/timeline/timeUtils';
+import { getEffectiveDuration } from '@/lib/timeline/clipOperations';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
+import type { Clip } from '@/types/timeline';
 
 interface TimelineProps {
   width: number;
@@ -37,13 +39,42 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
   const storeSelectedClipId = useTimelineStore((state) => state.selectedClipId);
   const getClip = useTimelineStore((state) => state.getClip);
   const resetTrim = useTimelineStore((state) => state.resetTrim);
+  const splitClip = useTimelineStore((state) => state.splitClip); // Story 3.4 AC#1
+  const undo = useTimelineStore((state) => state.undo); // Story 3.3 AC#5
 
   // Subscribe to media library
   // const getMediaFile = useMediaLibraryStore((state) => state.getMediaFile); // TODO: Use when loading media
 
-  // Subscribe to player store for click-to-seek
+  // Subscribe to player store for click-to-seek and split
+  const playheadPosition = usePlayerStore((state) => state.playheadPosition);
   const setPlayheadPosition = usePlayerStore((state) => state.setPlayheadPosition);
   const seek = usePlayerStore((state) => state.seek);
+
+  // Story 3.3 AC#5: Keyboard shortcut for undo (Cmd+Z / Ctrl+Z)
+  // Story 3.4 AC#1: Keyboard shortcut for split (Cmd+B / Ctrl+B)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+Z (macOS) or Ctrl+Z (Windows/Linux) - Undo
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        undo();
+      }
+
+      // Cmd+B (macOS) or Ctrl+B (Windows/Linux) - Split clip at playhead
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault();
+
+        // Find clip at current playhead position
+        const clipAtPlayhead = findClipAtPlayhead();
+        if (clipAtPlayhead) {
+          splitClip(clipAtPlayhead.id, playheadPosition);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, splitClip, playheadPosition]);
 
   // Calculate timeline dimensions
   const minTimelineWidth = Math.max(
@@ -79,6 +110,21 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
     [viewConfig.pixelsPerSecond, setPlayheadPosition, seek]
   );
 
+  // Story 3.4 AC#6: Find clip at playhead position
+  const findClipAtPlayhead = useCallback((): Clip | null => {
+    for (const track of tracks) {
+      for (const clip of track.clips) {
+        const clipStart = clip.startTime;
+        const clipEnd = clip.startTime + getEffectiveDuration(clip);
+
+        if (playheadPosition >= clipStart && playheadPosition < clipEnd) {
+          return clip;
+        }
+      }
+    }
+    return null;
+  }, [tracks, playheadPosition]);
+
   // Handle reset trim button click
   const handleResetTrim = useCallback(() => {
     if (storeSelectedClipId) {
@@ -86,11 +132,23 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
     }
   }, [storeSelectedClipId, resetTrim]);
 
+  // Story 3.4 AC#1: Handle split button click
+  const handleSplit = useCallback(() => {
+    const clipAtPlayhead = findClipAtPlayhead();
+    if (clipAtPlayhead) {
+      splitClip(clipAtPlayhead.id, playheadPosition);
+    }
+  }, [findClipAtPlayhead, splitClip, playheadPosition]);
+
   // Check if selected clip has been trimmed
   const selectedClip = storeSelectedClipId ? getClip(storeSelectedClipId) : null;
   const showResetButton = selectedClip && (
     selectedClip.trimIn > 0 || selectedClip.trimOut < selectedClip.duration
   );
+
+  // Story 3.4 AC#1: Check if playhead is over a clip (for split button)
+  const clipAtPlayhead = findClipAtPlayhead();
+  const showSplitButton = clipAtPlayhead !== null;
 
   return (
     <div
@@ -129,6 +187,36 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
           }}
         >
           Reset Trim
+        </button>
+      )}
+
+      {/* Story 3.4 AC#1: Split Button */}
+      {showSplitButton && (
+        <button
+          onClick={handleSplit}
+          title="Split clip at playhead (Cmd+B)"
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: showResetButton ? '110px' : '8px', // Position to left of reset button if both showing
+            zIndex: 10,
+            padding: '6px 12px',
+            backgroundColor: '#4a4a4a',
+            color: '#ffffff',
+            border: '1px solid #666666',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontFamily: 'Arial, sans-serif',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#5a5a5a';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#4a4a4a';
+          }}
+        >
+          Split (Cmd+B)
         </button>
       )}
 

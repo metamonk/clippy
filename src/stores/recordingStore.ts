@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
+import type { Camera } from '../types/recording';
 
 export type RecordingStatus = 'idle' | 'recording' | 'stopping' | 'error';
 
@@ -34,6 +35,12 @@ interface RecordingState {
   /** Audio source configuration */
   audioSources: AudioSourceConfig;
 
+  /** Available cameras list */
+  cameras: Camera[];
+
+  /** Selected camera for webcam recording */
+  selectedCamera: Camera | null;
+
   /** Start a new recording */
   startRecording: (recordingId: string) => void;
 
@@ -54,6 +61,12 @@ interface RecordingState {
 
   /** Update audio source configuration */
   setAudioSources: (config: Partial<AudioSourceConfig>) => void;
+
+  /** Set available cameras */
+  setCameras: (cameras: Camera[]) => void;
+
+  /** Set selected camera */
+  setSelectedCamera: (camera: Camera | null) => void;
 }
 
 /**
@@ -80,6 +93,8 @@ export const useRecordingStore = create<RecordingState>()(
         systemAudio: false,
         microphone: false,
       },
+      cameras: [],
+      selectedCamera: null,
 
       startRecording: (recordingId: string) =>
         set(
@@ -151,6 +166,8 @@ export const useRecordingStore = create<RecordingState>()(
               systemAudio: false,
               microphone: false,
             },
+            cameras: [],
+            selectedCamera: null,
           },
           false,
           'reset'
@@ -166,6 +183,24 @@ export const useRecordingStore = create<RecordingState>()(
           }),
           false,
           'setAudioSources'
+        ),
+
+      setCameras: (cameras) =>
+        set(
+          {
+            cameras,
+          },
+          false,
+          'setCameras'
+        ),
+
+      setSelectedCamera: (camera) =>
+        set(
+          {
+            selectedCamera: camera,
+          },
+          false,
+          'setSelectedCamera'
         ),
     }),
     {
