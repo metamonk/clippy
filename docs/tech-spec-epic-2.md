@@ -1464,3 +1464,29 @@ jobs:
 - Integration tests skip ScreenCaptureKit tests if unsupported (feature flag)
 - Manual testing checklist for audio/visual quality
 - Document tested hardware configurations
+
+---
+
+## Post-Review Follow-ups
+
+Action items from story reviews that impact Epic 2 architecture or cross-story concerns:
+
+### Story 2.5 Review (2025-10-29) - RESOLVED
+
+**High Priority (COMPLETED):**
+- ✅ Add `libc = "0.2"` dependency to `src-tauri/Cargo.toml` for explicit declaration of `libc::statvfs` usage in disk space checking (cmd_check_disk_space) - RESOLVED: Added at line 48 (2025-10-29)
+
+**Medium Priority (COMPLETED):**
+- ✅ Add edge case validation in `src/stores/recordingStore.ts` resumeRecording - null check for `state.startTime` to prevent incorrect pausedMs accumulation - RESOLVED: Validation added at lines 155-161, all 27 tests passing (2025-10-29)
+
+**Low Priority (DEFERRED TO EPIC 4):**
+- Resolve recording output directory discrepancy: Align code path `~/Movies/clippy/recordings` with tech spec `~/Documents/clippy/recordings` - DEFERRED: Will centralize path configuration in Epic 4 Recording Preferences UI
+- Add safety comment to unsafe block in cmd_check_disk_space explaining why FFI to libc::statvfs is safe - DEFERRED: Future refactoring pass
+
+**Review Outcome:**
+- Initial Review (2025-10-29): Changes Requested (H1, M1 blocking)
+- Re-Review (2025-10-29): APPROVED - All blocking issues resolved, story marked DONE
+
+**References:**
+- Story 2.5 review findings: H1, M1, L1, L2
+- Backlog entries: 2025-10-29 (4 items added, 2 closed, 2 deferred)

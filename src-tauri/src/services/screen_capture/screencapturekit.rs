@@ -356,6 +356,17 @@ impl ScreenCapture {
         })
     }
 
+    /// Get the capture dimensions (width and height)
+    ///
+    /// Returns the display dimensions being captured.
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (width, height) in pixels
+    pub fn get_dimensions(&self) -> (u32, u32) {
+        (self.width as u32, self.height as u32)
+    }
+
     /// Enable system audio capture
     ///
     /// Configures ScreenCaptureKit to capture system audio (output audio) alongside video.

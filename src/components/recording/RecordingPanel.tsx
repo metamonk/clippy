@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { invoke } from '@tauri-apps/api/core';
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,11 @@ import {
   startWebcamRecording,
   stopRecording,
   stopWebcamRecording,
+  pauseRecording,
+  resumeRecording,
+  cancelRecording,
+  checkDiskSpace,
+  sendRecordingNotification,
 } from '@/lib/tauri/recording';
 import { Monitor, Clock, Camera } from 'lucide-react';
 
@@ -60,13 +66,17 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
   const recordingId = useRecordingStore((state) => state.recordingId);
   const elapsedMs = useRecordingStore((state) => state.elapsedMs);
   const selectedCamera = useRecordingStore((state) => state.selectedCamera);
-  const startRecording = useRecordingStore((state) => state.startRecording);
+  const startRecordingStore = useRecordingStore((state) => state.startRecording);
   const stopRecordingStore = useRecordingStore((state) => state.stopRecording);
+  const pauseRecordingStore = useRecordingStore((state) => state.pauseRecording);
+  const resumeRecordingStore = useRecordingStore((state) => state.resumeRecording);
+  const cancelRecordingStore = useRecordingStore((state) => state.cancelRecording);
   const updateElapsedTime = useRecordingStore((state) => state.updateElapsedTime);
   const setError = useRecordingStore((state) => state.setError);
   const setStopping = useRecordingStore((state) => state.setStopping);
 
   const isRecording = status === 'recording';
+  const isPaused = status === 'paused';
   const isStopping = status === 'stopping';
 
   // Check permissions when panel opens or recording mode changes
@@ -80,17 +90,54 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
     }
   }, [open, recordingMode]);
 
-  // Update elapsed time during recording
+  // Update elapsed time during recording (but not when paused)
   useEffect(() => {
-    if (!isRecording) return;
+    if (!isRecording || isPaused) return;
 
     const interval = setInterval(() => {
-      const elapsed = Date.now() - (useRecordingStore.getState().startTime || 0);
+      const state = useRecordingStore.getState();
+      const elapsed = Date.now() - (state.startTime || 0) - state.pausedMs;
       updateElapsedTime(elapsed);
     }, 100); // Update every 100ms for smooth display
 
     return () => clearInterval(interval);
-  }, [isRecording, updateElapsedTime]);
+  }, [isRecording, isPaused, updateElapsedTime]);
+
+  // Periodic disk space monitoring during recording
+  useEffect(() => {
+    if (!isRecording || isPaused) return;
+
+    const checkInterval = setInterval(async () => {
+      try {
+        // Check disk space in recordings directory (~/Documents/clippy/recordings)
+        const homeDir = await invoke<string>('cmd_get_home_dir');
+        const recordingsPath = `${homeDir}/Documents/clippy/recordings`;
+        const availableBytes = await checkDiskSpace(recordingsPath);
+        const availableMB = availableBytes / (1024 * 1024);
+
+        // If less than 100MB available, warn user
+        if (availableMB < 100) {
+          toast.warning('Low Disk Space', {
+            description: `Only ${availableMB.toFixed(0)}MB available. Recording may stop soon.`,
+            duration: 5000,
+          });
+        }
+
+        // If less than 50MB, stop recording gracefully
+        if (availableMB < 50 && recordingId) {
+          toast.error('Disk Space Exhausted', {
+            description: 'Recording stopped due to low disk space.',
+            duration: 10000,
+          });
+          await handleStopRecording();
+        }
+      } catch (err) {
+        console.error('Failed to check disk space:', err);
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(checkInterval);
+  }, [isRecording, isPaused, recordingId]);
 
   const checkPermission = async () => {
     try {
@@ -131,6 +178,30 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
 
   const handleStartRecording = async () => {
     try {
+      // Pre-recording disk space check (AC #8, #9)
+      try {
+        const homeDir = await invoke<string>('cmd_get_home_dir');
+        const recordingsPath = `${homeDir}/Documents/clippy/recordings`;
+        const availableBytes = await checkDiskSpace(recordingsPath);
+        const availableMB = availableBytes / (1024 * 1024);
+
+        // Estimate file size: 5MB/min (as per AC #9)
+        // Warn if less than 10 minutes of recording space available
+        const estimatedMinutes = availableMB / 5;
+
+        if (estimatedMinutes < 10) {
+          toast.warning('Low Disk Space', {
+            description: `Only ~${Math.floor(estimatedMinutes)} minutes of recording space available (${availableMB.toFixed(0)}MB free)`,
+            duration: 8000,
+          });
+
+          // Don't block recording, just warn
+        }
+      } catch (err) {
+        console.error('Failed to check disk space before recording:', err);
+        // Don't block recording on disk check failure
+      }
+
       let id: string;
 
       if (recordingMode === 'screen') {
@@ -143,6 +214,18 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
 
         // Start screen recording
         id = await startScreenRecording();
+
+        // Send native macOS notification (AC #4)
+        try {
+          await sendRecordingNotification(
+            'Recording Started',
+            'Screen recording is now active'
+          );
+        } catch (err) {
+          console.error('Failed to send notification:', err);
+          // Don't block recording on notification failure
+        }
+
         toast.success('Recording Started', {
           description: 'Screen recording is now active',
         });
@@ -168,6 +251,20 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
         // Get microphone setting from store
         const enableMicrophone = useRecordingStore.getState().audioSources.microphone;
         id = await startWebcamRecording(selectedCamera.id, enableMicrophone);
+
+        // Send native macOS notification (AC #4)
+        try {
+          await sendRecordingNotification(
+            'Webcam Recording Started',
+            enableMicrophone
+              ? 'Webcam recording with microphone is now active'
+              : 'Webcam recording is now active'
+          );
+        } catch (err) {
+          console.error('Failed to send notification:', err);
+          // Don't block recording on notification failure
+        }
+
         toast.success('Webcam Recording Started', {
           description: enableMicrophone
             ? 'Webcam recording with microphone is now active'
@@ -177,7 +274,7 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
         throw new Error('Invalid recording mode');
       }
 
-      startRecording(id);
+      startRecordingStore(id);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       setError(errorMessage);
@@ -213,6 +310,63 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       setError(errorMessage);
       toast.error('Failed to Stop Recording', {
+        description: errorMessage,
+      });
+    }
+  };
+
+  const handlePauseRecording = async () => {
+    if (!recordingId) return;
+
+    try {
+      await pauseRecording(recordingId);
+      pauseRecordingStore();
+
+      toast.info('Recording Paused', {
+        description: 'Click Resume to continue recording',
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      toast.error('Failed to Pause Recording', {
+        description: errorMessage,
+      });
+    }
+  };
+
+  const handleResumeRecording = async () => {
+    if (!recordingId) return;
+
+    try {
+      await resumeRecording(recordingId);
+      resumeRecordingStore();
+
+      toast.success('Recording Resumed', {
+        description: 'Recording is now active again',
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      toast.error('Failed to Resume Recording', {
+        description: errorMessage,
+      });
+    }
+  };
+
+  const handleCancelRecording = async () => {
+    if (!recordingId) return;
+
+    try {
+      await cancelRecording(recordingId);
+      cancelRecordingStore();
+
+      toast.info('Recording Cancelled', {
+        description: 'Partial recording has been discarded',
+      });
+
+      // Close panel after cancel
+      onOpenChange(false);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      toast.error('Failed to Cancel Recording', {
         description: errorMessage,
       });
     }
@@ -272,13 +426,17 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
               <div className="flex flex-col items-center gap-4">
                 <RecordingControls
                   isRecording={isRecording}
+                  isPaused={isPaused}
                   isStopping={isStopping}
                   onStartRecording={handleStartRecording}
                   onStopRecording={handleStopRecording}
+                  onPauseRecording={handlePauseRecording}
+                  onResumeRecording={handleResumeRecording}
+                  onCancelRecording={handleCancelRecording}
                 />
 
                 {/* Duration Display */}
-                {isRecording && (
+                {(isRecording || isPaused) && (
                   <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                     <Clock className="w-4 h-4" />
                     <span className="text-sm font-mono">
@@ -344,13 +502,17 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
               <div className="flex flex-col items-center gap-4">
                 <RecordingControls
                   isRecording={isRecording}
+                  isPaused={isPaused}
                   isStopping={isStopping}
                   onStartRecording={handleStartRecording}
                   onStopRecording={handleStopRecording}
+                  onPauseRecording={handlePauseRecording}
+                  onResumeRecording={handleResumeRecording}
+                  onCancelRecording={handleCancelRecording}
                 />
 
                 {/* Duration Display */}
-                {isRecording && (
+                {(isRecording || isPaused) && (
                   <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                     <Clock className="w-4 h-4" />
                     <span className="text-sm font-mono">

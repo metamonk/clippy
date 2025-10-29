@@ -22,6 +22,22 @@ pub struct Clip {
 
     /// Trim end point in milliseconds (default duration)
     pub trim_out: u64,
+
+    /// Audio fade-in duration in milliseconds (Story 3.10)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fade_in: Option<u64>,
+
+    /// Audio fade-out duration in milliseconds (Story 3.10)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fade_out: Option<u64>,
+
+    /// Volume level (0.0 to 1.0, Story 3.9)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume: Option<f64>,
+
+    /// Whether clip is muted (Story 3.9)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub muted: Option<bool>,
 }
 
 /// Track containing ordered clips

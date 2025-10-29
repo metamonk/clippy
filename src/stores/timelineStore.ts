@@ -77,6 +77,12 @@ interface TimelineState extends Timeline {
 
   /** Split clip at specified time (Story 3.4 AC#1, AC#2, AC#6) */
   splitClip: (clipId: string, splitTime: number) => boolean;
+
+  /** Set clip fade-in duration (Story 3.10 AC#3, AC#6) */
+  setClipFadeIn: (clipId: string, duration: number) => void;
+
+  /** Set clip fade-out duration (Story 3.10 AC#3, AC#6) */
+  setClipFadeOut: (clipId: string, duration: number) => void;
 }
 
 /**
@@ -675,6 +681,58 @@ export const useTimelineStore = create<TimelineState>()(
 
         return true;
       },
+
+      // Story 3.10: Set clip fade-in duration (AC#3, AC#6)
+      setClipFadeIn: (clipId: string, duration: number) =>
+        set(
+          (state) => {
+            // Validate duration is non-negative
+            if (duration < 0) {
+              console.warn('Fade-in duration cannot be negative');
+              return state;
+            }
+
+            const updatedTracks = state.tracks.map((track) => ({
+              ...track,
+              clips: track.clips.map((clip) => {
+                if (clip.id === clipId) {
+                  return { ...clip, fadeIn: duration };
+                }
+                return clip;
+              }),
+            }));
+
+            return { tracks: updatedTracks };
+          },
+          false,
+          'setClipFadeIn'
+        ),
+
+      // Story 3.10: Set clip fade-out duration (AC#3, AC#6)
+      setClipFadeOut: (clipId: string, duration: number) =>
+        set(
+          (state) => {
+            // Validate duration is non-negative
+            if (duration < 0) {
+              console.warn('Fade-out duration cannot be negative');
+              return state;
+            }
+
+            const updatedTracks = state.tracks.map((track) => ({
+              ...track,
+              clips: track.clips.map((clip) => {
+                if (clip.id === clipId) {
+                  return { ...clip, fadeOut: duration };
+                }
+                return clip;
+              }),
+            }));
+
+            return { tracks: updatedTracks };
+          },
+          false,
+          'setClipFadeOut'
+        ),
     }),
     {
       name: 'timeline-store',

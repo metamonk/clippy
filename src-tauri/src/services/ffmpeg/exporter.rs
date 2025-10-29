@@ -371,6 +371,38 @@ impl VideoExporter {
         // Set duration (trim length)
         command.arg("-t").arg(format!("{:.3}", trim_duration_sec));
 
+        // Story 3.10: Apply audio fade filters if clip has fade properties
+        let mut audio_filters = Vec::new();
+
+        // Fade-in filter (applied at clip start, relative to trimmed segment)
+        if let Some(fade_in_ms) = clip.fade_in {
+            if fade_in_ms > 0 {
+                let fade_in_sec = fade_in_ms as f64 / 1000.0;
+                audio_filters.push(format!("afade=t=in:st=0:d={:.3}", fade_in_sec));
+            }
+        }
+
+        // Fade-out filter (applied at clip end, relative to trimmed segment)
+        if let Some(fade_out_ms) = clip.fade_out {
+            if fade_out_ms > 0 {
+                let fade_out_sec = fade_out_ms as f64 / 1000.0;
+                let fade_out_start = trim_duration_sec - fade_out_sec;
+                audio_filters.push(format!("afade=t=out:st={:.3}:d={:.3}", fade_out_start, fade_out_sec));
+            }
+        }
+
+        // Apply audio filters if any exist
+        if !audio_filters.is_empty() {
+            let audio_filter_str = audio_filters.join(",");
+            command.arg("-af").arg(&audio_filter_str);
+
+            tracing::debug!(
+                event = "audio_filters_applied",
+                filters = %audio_filter_str,
+                "Applied audio fade filters to single clip export"
+            );
+        }
+
         // Apply encoding settings
         self.add_encoding_params(command, config);
 
@@ -412,10 +444,35 @@ impl VideoExporter {
             );
             filter_parts.push(video_filter);
 
-            // Audio filter: atrim and reset timestamps
+            // Story 3.10: Build audio filter chain with fade support
+            let trim_duration_sec = trim_end_sec - trim_start_sec;
+            let mut audio_filter_chain = vec![
+                format!("atrim=start={:.3}:end={:.3}", trim_start_sec, trim_end_sec),
+                "asetpts=PTS-STARTPTS".to_string(),
+            ];
+
+            // Add fade-in if clip has fade_in property
+            if let Some(fade_in_ms) = clip.fade_in {
+                if fade_in_ms > 0 {
+                    let fade_in_sec = fade_in_ms as f64 / 1000.0;
+                    audio_filter_chain.push(format!("afade=t=in:st=0:d={:.3}", fade_in_sec));
+                }
+            }
+
+            // Add fade-out if clip has fade_out property
+            if let Some(fade_out_ms) = clip.fade_out {
+                if fade_out_ms > 0 {
+                    let fade_out_sec = fade_out_ms as f64 / 1000.0;
+                    let fade_out_start = trim_duration_sec - fade_out_sec;
+                    audio_filter_chain.push(format!("afade=t=out:st={:.3}:d={:.3}", fade_out_start, fade_out_sec));
+                }
+            }
+
             let audio_filter = format!(
-                "[{}:a]atrim=start={:.3}:end={:.3},asetpts=PTS-STARTPTS[a{}]",
-                idx, trim_start_sec, trim_end_sec, idx
+                "[{}:a]{}[a{}]",
+                idx,
+                audio_filter_chain.join(","),
+                idx
             );
             filter_parts.push(audio_filter);
         }

@@ -96,3 +96,50 @@ export async function startWebcamRecording(
 export async function stopWebcamRecording(recordingId: string): Promise<string> {
   return invoke<string>('cmd_stop_webcam_recording', { recordingId });
 }
+
+/**
+ * Pause the current recording
+ *
+ * @param recordingId - The UUID of the recording to pause
+ */
+export async function pauseRecording(recordingId: string): Promise<void> {
+  return invoke('cmd_pause_recording', { recordingId });
+}
+
+/**
+ * Resume a paused recording
+ *
+ * @param recordingId - The UUID of the recording to resume
+ */
+export async function resumeRecording(recordingId: string): Promise<void> {
+  return invoke('cmd_resume_recording', { recordingId });
+}
+
+/**
+ * Cancel the current recording (discards partial recording)
+ *
+ * @param recordingId - The UUID of the recording to cancel
+ */
+export async function cancelRecording(recordingId: string): Promise<void> {
+  return invoke('cmd_cancel_recording', { recordingId });
+}
+
+/**
+ * Check available disk space at the given path
+ * Returns available bytes
+ *
+ * @param path - The directory path to check (default: recordings directory)
+ */
+export async function checkDiskSpace(path: string): Promise<number> {
+  return invoke<number>('cmd_check_disk_space', { path });
+}
+
+/**
+ * Send a native macOS notification
+ *
+ * @param title - The notification title
+ * @param body - The notification body
+ */
+export async function sendRecordingNotification(title: string, body: string): Promise<void> {
+  return invoke('cmd_send_recording_notification', { title, body });
+}

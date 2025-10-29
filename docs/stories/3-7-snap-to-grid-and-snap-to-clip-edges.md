@@ -1,6 +1,6 @@
 # Story 3.7: Snap-to-Grid and Snap-to-Clip Edges
 
-Status: review
+Status: done
 
 ## Story
 

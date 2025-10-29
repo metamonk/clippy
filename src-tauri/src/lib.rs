@@ -32,6 +32,13 @@ use commands::{
     cmd_stop_webcam_recording,
     cmd_start_screen_recording,
     cmd_stop_recording,
+    cmd_pause_recording,
+    cmd_resume_recording,
+    cmd_cancel_recording,
+    cmd_check_disk_space,
+    cmd_send_recording_notification,
+    cmd_get_home_dir,
+    cmd_get_available_windows,
 };
 
 /// Initialize logging system with file output to ~/Library/Logs/clippy/app.log
@@ -145,7 +152,14 @@ pub fn run() {
             cmd_start_webcam_recording,
             cmd_stop_webcam_recording,
             cmd_start_screen_recording,
-            cmd_stop_recording
+            cmd_stop_recording,
+            cmd_pause_recording,
+            cmd_resume_recording,
+            cmd_cancel_recording,
+            cmd_check_disk_space,
+            cmd_send_recording_notification,
+            cmd_get_home_dir,
+            cmd_get_available_windows
         ])
         .setup(|app| {
             use tauri::menu::*;

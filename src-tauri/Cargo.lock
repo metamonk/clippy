@@ -611,6 +611,7 @@ dependencies = [
  "dirs",
  "ffmpeg-sidecar",
  "lazy_static",
+ "libc",
  "libmpv2",
  "nokhwa",
  "objc",

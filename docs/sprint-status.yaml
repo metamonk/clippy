@@ -61,11 +61,11 @@ development_status:
   2-2-full-screen-recording-with-video-capture: done
   2-3-real-time-ffmpeg-encoding-during-recording: done
   2-4-system-audio-and-microphone-capture: done  # All blockers resolved: Send trait fixed, system audio API implemented, FFmpeg architecture clarified
-  2-5-recording-controls-status-feedback: done
+  2-5-recording-controls-status-feedback: done  # Review #2 outcome: Approved (all high/medium severity issues resolved)
   2-6-auto-import-recordings-to-media-library: done
   2-7-basic-webcam-recording-setup: done
   2-8-webcam-recording-with-audio-save: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: completed
 
   # Epic 3: Multi-Track Timeline & Editing Maturity
   epic-3: backlog
@@ -73,19 +73,20 @@ development_status:
   3-2-multiple-clips-per-track-with-sequencing: done
   3-3-drag-clips-between-tracks: done
   3-4-split-clip-at-playhead: done
-  3-5-delete-clips-with-ripple-option: backlog
-  3-6-timeline-zoom-and-precision-editing: backlog
-  3-7-snap-to-grid-and-snap-to-clip-edges: backlog
-  3-8-audio-waveform-visualization: backlog
-  3-9-per-clip-volume-control: backlog
-  3-10-audio-fade-in-out: backlog
+  3-5-delete-clips-with-ripple-option: done
+  3-6-timeline-zoom-and-precision-editing: done
+  3-7-snap-to-grid-and-snap-to-clip-edges: done
+  3-8-audio-waveform-visualization: done
+  3-9-per-clip-volume-control: done
+  3-9-1-preview-playback-volume-control: done
+  3-10-audio-fade-in-out: review
   epic-3-retrospective: optional
 
   # Epic 4: Advanced Recording & PiP Composition
   epic-4: backlog
-  4-1-window-selection-for-screen-recording: backlog
-  4-2-recording-configuration-panel: backlog
-  4-3-multi-audio-track-recording-architecture: backlog
+  4-1-window-selection-for-screen-recording: in-progress
+  4-2-recording-configuration-panel: in-progress
+  4-3-multi-audio-track-recording-architecture: done
   4-4-webcam-preview-in-recording-panel: backlog
   4-5-pip-position-and-size-configuration: backlog
   4-6-simultaneous-screen-webcam-recording: backlog

@@ -1,10 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { Group, Rect, Text } from 'react-konva';
+import { Group, Rect, Text, Line } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Clip } from '@/types/timeline';
 import { calculateClipPosition, formatTimeSimple } from '@/lib/timeline/timeUtils';
 import { TIMELINE_DEFAULTS } from '@/types/timeline';
 import { useTimelineStore } from '@/stores/timelineStore';
+import { validateFadeDuration } from '@/lib/timeline/clipOperations';
 
 // Story 3.3: Vertical drag threshold ratio for determining inter-track moves
 const VERTICAL_DRAG_THRESHOLD_RATIO = 0.5;
@@ -42,7 +43,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   onSelect,
   isSelected = false,
 }) => {
-  const { updateClip, setSelectedClip, moveClip, moveClipToTrack, setHoveredTrack, tracks } = useTimelineStore();
+  const { updateClip, setSelectedClip, moveClip, moveClipToTrack, setHoveredTrack, tracks, setClipFadeIn, setClipFadeOut } = useTimelineStore();
 
   // Handle clip selection
   const handleClipClick = () => {
@@ -53,6 +54,10 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   // Hover states for trim handles
   const [leftHandleHover, setLeftHandleHover] = useState(false);
   const [rightHandleHover, setRightHandleHover] = useState(false);
+
+  // Story 3.10: Hover states for fade handles
+  const [leftFadeHandleHover, setLeftFadeHandleHover] = useState(false);
+  const [rightFadeHandleHover, setRightFadeHandleHover] = useState(false);
 
   // Track dragging state for trim handles
   const dragStateRef = useRef<{
@@ -80,6 +85,21 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
     startX: 0,
     startY: 0,
     originalStartTime: 0,
+  });
+
+  // Story 3.10: Track fade handle dragging state
+  const fadeDragStateRef = useRef<{
+    isDragging: boolean;
+    handle: 'left' | 'right' | null;
+    startX: number;
+    startFadeIn: number;
+    startFadeOut: number;
+  }>({
+    isDragging: false,
+    handle: null,
+    startX: 0,
+    startFadeIn: 0,
+    startFadeOut: 0,
   });
 
   // Calculate visual duration (trimmed duration)
@@ -273,6 +293,88 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
     window.addEventListener('mouseup', handleMouseUp);
   };
 
+  // Story 3.10: Fade-in handle drag handlers
+  const handleLeftFadeMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+    e.cancelBubble = true;
+
+    fadeDragStateRef.current = {
+      isDragging: true,
+      handle: 'left',
+      startX: e.evt.clientX,
+      startFadeIn: clip.fadeIn ?? 0,
+      startFadeOut: clip.fadeOut ?? 0,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!fadeDragStateRef.current.isDragging || fadeDragStateRef.current.handle !== 'left') return;
+
+      const deltaX = moveEvent.clientX - fadeDragStateRef.current.startX;
+      const deltaTime = (deltaX / pixelsPerSecond) * 1000; // Convert pixels to milliseconds
+
+      let newFadeIn = fadeDragStateRef.current.startFadeIn + deltaTime;
+
+      // Constrain: fadeIn must be >= 0 and <= visualDuration
+      newFadeIn = Math.max(0, newFadeIn);
+      newFadeIn = Math.min(visualDuration, newFadeIn);
+
+      // Validate combined fade durations don't exceed clip duration
+      if (validateFadeDuration(clip, newFadeIn, fadeDragStateRef.current.startFadeOut)) {
+        setClipFadeIn(clip.id, newFadeIn);
+      }
+    };
+
+    const handleMouseUp = () => {
+      fadeDragStateRef.current.isDragging = false;
+      fadeDragStateRef.current.handle = null;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Story 3.10: Fade-out handle drag handlers
+  const handleRightFadeMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+    e.cancelBubble = true;
+
+    fadeDragStateRef.current = {
+      isDragging: true,
+      handle: 'right',
+      startX: e.evt.clientX,
+      startFadeIn: clip.fadeIn ?? 0,
+      startFadeOut: clip.fadeOut ?? 0,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!fadeDragStateRef.current.isDragging || fadeDragStateRef.current.handle !== 'right') return;
+
+      const deltaX = moveEvent.clientX - fadeDragStateRef.current.startX;
+      const deltaTime = -(deltaX / pixelsPerSecond) * 1000; // Negative because dragging left increases fade-out
+
+      let newFadeOut = fadeDragStateRef.current.startFadeOut + deltaTime;
+
+      // Constrain: fadeOut must be >= 0 and <= visualDuration
+      newFadeOut = Math.max(0, newFadeOut);
+      newFadeOut = Math.min(visualDuration, newFadeOut);
+
+      // Validate combined fade durations don't exceed clip duration
+      if (validateFadeDuration(clip, fadeDragStateRef.current.startFadeIn, newFadeOut)) {
+        setClipFadeOut(clip.id, newFadeOut);
+      }
+    };
+
+    const handleMouseUp = () => {
+      fadeDragStateRef.current.isDragging = false;
+      fadeDragStateRef.current.handle = null;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
   return (
     <Group x={x} y={yPosition}>
       {/* Clip background rectangle (visible portion only) */}
@@ -349,6 +451,72 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
           fontFamily="monospace"
           opacity={0.8}
           listening={false}
+        />
+      )}
+
+      {/* Story 3.10: Fade curve overlays (visual representation of fades) */}
+      {isSelected && (clip.fadeIn ?? 0) > 0 && (
+        <Rect
+          x={0}
+          y={clipPadding}
+          width={Math.min((clip.fadeIn! / 1000) * pixelsPerSecond, width)}
+          height={clipInnerHeight}
+          fill="rgba(0, 150, 255, 0.15)"
+          listening={false}
+        />
+      )}
+      {isSelected && (clip.fadeOut ?? 0) > 0 && (
+        <Rect
+          x={Math.max(width - (clip.fadeOut! / 1000) * pixelsPerSecond, 0)}
+          y={clipPadding}
+          width={Math.min((clip.fadeOut! / 1000) * pixelsPerSecond, width)}
+          height={clipInnerHeight}
+          fill="rgba(0, 150, 255, 0.15)"
+          listening={false}
+        />
+      )}
+
+      {/* Story 3.10: Fade-in handle (triangular, left side) */}
+      {isSelected && width > 40 && (
+        <Line
+          points={[
+            handleWidth + 2, // x1: inset from left trim handle
+            clipPadding + 4, // y1: top
+            handleWidth + 12, // x2: base of triangle
+            clipPadding + (clipInnerHeight / 2), // y2: middle
+            handleWidth + 2, // x3: back to left
+            clipPadding + clipInnerHeight - 4, // y3: bottom
+          ]}
+          closed={true}
+          fill={leftFadeHandleHover ? '#88ccff' : 'rgba(100, 180, 255, 0.8)'}
+          stroke={leftFadeHandleHover ? '#ffffff' : 'rgba(255, 255, 255, 0.6)'}
+          strokeWidth={1}
+          onMouseDown={handleLeftFadeMouseDown}
+          onMouseEnter={() => setLeftFadeHandleHover(true)}
+          onMouseLeave={() => setLeftFadeHandleHover(false)}
+          cursor="ew-resize"
+        />
+      )}
+
+      {/* Story 3.10: Fade-out handle (triangular, right side) */}
+      {isSelected && width > 40 && (
+        <Line
+          points={[
+            width - handleWidth - 2, // x1: inset from right trim handle
+            clipPadding + 4, // y1: top
+            width - handleWidth - 12, // x2: base of triangle
+            clipPadding + (clipInnerHeight / 2), // y2: middle
+            width - handleWidth - 2, // x3: back to right
+            clipPadding + clipInnerHeight - 4, // y3: bottom
+          ]}
+          closed={true}
+          fill={rightFadeHandleHover ? '#88ccff' : 'rgba(100, 180, 255, 0.8)'}
+          stroke={rightFadeHandleHover ? '#ffffff' : 'rgba(255, 255, 255, 0.6)'}
+          strokeWidth={1}
+          onMouseDown={handleRightFadeMouseDown}
+          onMouseEnter={() => setRightFadeHandleHover(true)}
+          onMouseLeave={() => setRightFadeHandleHover(false)}
+          cursor="ew-resize"
         />
       )}
     </Group>

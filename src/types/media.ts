@@ -7,6 +7,29 @@ export interface Resolution {
 }
 
 /**
+ * Waveform data for audio visualization
+ *
+ * Contains normalized peak values and metadata for rendering audio waveforms
+ * on the timeline. Generated using Web Audio API.
+ */
+export interface WaveformData {
+  /** Normalized peak values (0-1 range) for visualization */
+  peaks: number[];
+
+  /** Effective sample rate for the peaks array (samples/second) */
+  sampleRate: number;
+
+  /** Audio duration in milliseconds */
+  duration: number;
+
+  /** Number of audio channels (1=mono, 2=stereo) */
+  channels: number;
+
+  /** ISO 8601 timestamp of when waveform was generated */
+  generatedAt: string;
+}
+
+/**
  * Media file metadata
  *
  * This interface represents a video file that has been imported into the media library.
@@ -39,4 +62,7 @@ export interface MediaFile {
 
   /** ISO 8601 timestamp of when the file was imported */
   importedAt: string;
+
+  /** Optional waveform data for audio visualization (cached after generation) */
+  waveformData?: WaveformData;
 }

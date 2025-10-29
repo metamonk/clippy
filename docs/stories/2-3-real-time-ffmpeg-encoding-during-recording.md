@@ -1,6 +1,6 @@
 # Story 2.3: Real-Time FFmpeg Encoding During Recording
 
-Status: review
+Status: done
 
 ## Story
 

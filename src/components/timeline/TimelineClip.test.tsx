@@ -47,6 +47,7 @@ describe('TimelineClip', () => {
       const { container } = render(
         <TimelineClip
           clip={mockClip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}
@@ -60,6 +61,7 @@ describe('TimelineClip', () => {
       const { container } = render(
         <TimelineClip
           clip={mockClip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}
@@ -76,6 +78,7 @@ describe('TimelineClip', () => {
       const { container } = render(
         <TimelineClip
           clip={mockClip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}
@@ -98,6 +101,7 @@ describe('TimelineClip', () => {
       const { container } = render(
         <TimelineClip
           clip={trimmedClip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}
@@ -118,6 +122,7 @@ describe('TimelineClip', () => {
       render(
         <TimelineClip
           clip={mockClip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}
@@ -142,6 +147,7 @@ describe('TimelineClip', () => {
       render(
         <TimelineClip
           clip={trimmedClip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}
@@ -162,6 +168,7 @@ describe('TimelineClip', () => {
       render(
         <TimelineClip
           clip={clip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}
@@ -182,6 +189,7 @@ describe('TimelineClip', () => {
       render(
         <TimelineClip
           clip={mockClip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}
@@ -199,6 +207,7 @@ describe('TimelineClip', () => {
       const { container } = render(
         <TimelineClip
           clip={mockClip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}
@@ -222,6 +231,7 @@ describe('TimelineClip', () => {
       const { container } = render(
         <TimelineClip
           clip={narrowClip}
+          trackId="track-1"
           yPosition={0}
           trackHeight={80}
           pixelsPerSecond={50}

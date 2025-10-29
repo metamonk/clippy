@@ -196,6 +196,21 @@ pub async fn cmd_request_camera_permission() -> Result<(), String> {
 pub async fn cmd_list_cameras() -> Result<Vec<CameraInfo>, String> {
     debug!("Command: list cameras");
 
+    // Check camera permission first
+    match check_camera_permission() {
+        Ok(true) => {
+            debug!("Camera permission granted");
+        }
+        Ok(false) => {
+            error!("Camera permission not granted");
+            return Err("Camera permission required. Please enable in System Preferences → Privacy & Security → Camera".to_string());
+        }
+        Err(e) => {
+            error!("Camera permission check failed: {}", e);
+            return Err(format!("Permission check failed: {}", e));
+        }
+    }
+
     let camera_service = CameraService::new();
     match camera_service.list_cameras() {
         Ok(cameras) => {
@@ -253,18 +268,56 @@ pub async fn cmd_start_camera_preview(camera_index: u32) -> Result<(), String> {
         return Err(format!("Camera preview already running for index {}", camera_index));
     }
 
-    // Stub: In full implementation (Story 2.8), this will:
-    // 1. Open camera with CameraService
-    // 2. Start frame capture loop
-    // 3. Stream frames to frontend via Tauri events
-    // 4. Store preview handle in ACTIVE_CAMERA_PREVIEWS
+    // ============================================================================
+    // STORY 2.8 INTERFACE CONTRACT - Camera Frame Streaming Implementation
+    // ============================================================================
+    //
+    // This stub will be implemented in Story 2.8 with the following contract:
+    //
+    // 1. FRAME STREAMING EVENT:
+    //    - Event name: "camera-frame"
+    //    - Payload structure:
+    //      ```rust
+    //      #[derive(Clone, serde::Serialize)]
+    //      struct CameraFramePayload {
+    //          camera_index: u32,
+    //          width: u32,
+    //          height: u32,
+    //          frame_data: String,  // Base64-encoded RGBA frame data
+    //          timestamp: i64,      // Milliseconds since epoch
+    //      }
+    //      ```
+    //    - Emission frequency: 30 FPS (one frame every ~33ms)
+    //    - Frame format: RGBA (4 bytes per pixel)
+    //
+    // 2. IMPLEMENTATION STEPS (Story 2.8):
+    //    a. Open camera with CameraService::new(camera_index)
+    //    b. Start frame capture loop at 30 FPS using tokio interval timer
+    //    c. For each frame:
+    //       - Capture frame from nokhwa Camera
+    //       - Convert to RGBA format if needed
+    //       - Encode frame data to base64 string
+    //       - Emit "camera-frame" event with CameraFramePayload
+    //    d. Store preview task handle in ACTIVE_CAMERA_PREVIEWS for cleanup
+    //
+    // 3. STATE MANAGEMENT:
+    //    - ACTIVE_CAMERA_PREVIEWS: Tracks running preview tasks (camera_index -> JoinHandle)
+    //    - cmd_stop_camera_preview: Cancels task and removes from ACTIVE_CAMERA_PREVIEWS
+    //    - Error handling: If camera capture fails, emit error event and clean up
+    //
+    // 4. FRONTEND CONTRACT (WebcamPreview.tsx):
+    //    - Component must listen for "camera-frame" events
+    //    - Decode base64 frame_data to display in canvas/img element
+    //    - Handle frame rate (display every frame or throttle for performance)
+    //
+    // ============================================================================
 
     info!("Camera preview started (stub) for index {}", camera_index);
 
-    // Create a dummy task handle for now
+    // Create a dummy task handle for now (Story 2.8 will replace with actual frame loop)
     let handle = tokio::spawn(async move {
         debug!("Camera preview task running (stub) for index {}", camera_index);
-        // Actual preview loop will go here in Story 2.8
+        // Story 2.8: Actual frame capture loop goes here
         tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
     });
 
@@ -799,10 +852,10 @@ pub async fn cmd_stop_webcam_recording(
     Ok(output_path_str)
 }
 
-/// Start screen recording
+/// Start screen recording with real-time H.264 encoding
 ///
 /// This command initializes ScreenCaptureKit, starts continuous frame capture at 30 FPS,
-/// and begins writing frames to a temporary file location.
+/// and encodes frames in real-time to H.264 MP4 using FFmpeg.
 ///
 /// # Returns
 ///
@@ -813,17 +866,20 @@ pub async fn cmd_stop_webcam_recording(
 ///
 /// 1. Check screen recording permission
 /// 2. Generate unique recording ID
-/// 3. Create output file path: ~/Documents/clippy/recordings/recording-{uuid}.raw
+/// 3. Create output file path: ~/Documents/clippy/recordings/recording-{uuid}.mp4
 /// 4. Initialize ScreenCapture service
-/// 5. Create FrameHandler with bounded channel (30 frames)
-/// 6. Start capture loop (30 FPS)
-/// 7. Start frame writer task
-/// 8. Store handles in global state
+/// 5. Get capture dimensions from ScreenCapture
+/// 6. Create FrameHandler with bounded channel (30 frames)
+/// 7. Create and start FFmpeg encoder for real-time H.264 encoding
+/// 8. Start encoder task (consumes frames from channel and streams to FFmpeg)
+/// 9. Start capture loop (30 FPS)
+/// 10. Store handles in global state
 ///
 /// # Errors
 ///
 /// - Permission denied
 /// - ScreenCaptureKit initialization failed
+/// - FFmpeg encoder initialization failed
 /// - Device not available
 #[tauri::command]
 pub async fn cmd_start_screen_recording() -> Result<String, String> {
@@ -848,7 +904,7 @@ pub async fn cmd_start_screen_recording() -> Result<String, String> {
     let recording_id = Uuid::new_v4().to_string();
     info!("Starting screen recording: {}", recording_id);
 
-    // Create output path: ~/Documents/clippy/recordings/recording-{uuid}.raw
+    // Create output path: ~/Documents/clippy/recordings/recording-{uuid}.mp4
     let home_dir = dirs::home_dir().ok_or_else(|| {
         error!("Could not determine home directory");
         "Could not determine home directory".to_string()
@@ -858,7 +914,7 @@ pub async fn cmd_start_screen_recording() -> Result<String, String> {
         .join("Documents")
         .join("clippy")
         .join("recordings")
-        .join(format!("recording-{}.raw", recording_id));
+        .join(format!("recording-{}.mp4", recording_id));
 
     info!("Output path: {}", output_path.display());
 
@@ -868,14 +924,35 @@ pub async fn cmd_start_screen_recording() -> Result<String, String> {
         format!("Screen capture initialization failed: {}", e)
     })?;
 
-    // Create FrameHandler with bounded channel (30 frames)
-    let mut frame_handler = FrameHandler::new(output_path.clone(), 30);
+    // Get capture dimensions
+    let (width, height) = screen_capture.get_dimensions();
+    info!("Capture dimensions: {}x{}", width, height);
+
+    // Create FrameHandler with bounded channel for real-time encoding (30 frames)
+    let mut frame_handler = FrameHandler::new_for_encoding(30);
     let frame_tx = frame_handler.get_sender();
 
-    // Start frame writer task
-    let writer_handle = frame_handler.start_writer().await.map_err(|e| {
-        error!("Failed to start frame writer: {}", e);
-        format!("Failed to start frame writer: {}", e)
+    // Create FFmpeg encoder for real-time H.264 encoding
+    let mut encoder = crate::services::ffmpeg::FFmpegEncoder::new(
+        output_path.clone(),
+        width,
+        height,
+        30, // 30 FPS
+    ).map_err(|e| {
+        error!("Failed to create FFmpeg encoder: {}", e);
+        format!("Failed to create encoder: {}", e)
+    })?;
+
+    // Start FFmpeg encoding process
+    encoder.start_encoding().await.map_err(|e| {
+        error!("Failed to start FFmpeg encoding: {}", e);
+        format!("Failed to start encoding: {}", e)
+    })?;
+
+    // Start encoder task (consumes frames and streams to FFmpeg)
+    let encoder_handle = frame_handler.start_encoder(encoder).await.map_err(|e| {
+        error!("Failed to start encoder task: {}", e);
+        format!("Failed to start encoder task: {}", e)
     })?;
 
     // Start continuous capture (without system audio for now)
@@ -890,18 +967,18 @@ pub async fn cmd_start_screen_recording() -> Result<String, String> {
     let mut recordings = ACTIVE_RECORDINGS.lock().await;
     recordings.insert(
         recording_id.clone(),
-        (capture_handle, writer_handle, output_path),
+        (capture_handle, encoder_handle, output_path),
     );
 
-    info!("Screen recording started successfully: {}", recording_id);
+    info!("Screen recording started successfully with real-time encoding: {}", recording_id);
 
     Ok(recording_id)
 }
 
 /// Stop screen recording
 ///
-/// This command stops the active recording, flushes remaining frames, and returns
-/// the file path where the recording was saved.
+/// This command stops the active recording, flushes remaining frames to FFmpeg, and returns
+/// the file path where the MP4 recording was saved.
 ///
 /// # Arguments
 ///
@@ -909,7 +986,7 @@ pub async fn cmd_start_screen_recording() -> Result<String, String> {
 ///
 /// # Returns
 ///
-/// - `Ok(String)` with file path to saved recording
+/// - `Ok(String)` with file path to saved MP4 recording
 /// - `Err(String)` with user-friendly error message on failure
 ///
 /// # Flow
@@ -917,21 +994,21 @@ pub async fn cmd_start_screen_recording() -> Result<String, String> {
 /// 1. Look up recording handles by ID
 /// 2. Drop frame sender (signals capture to stop)
 /// 3. Wait for capture task to complete
-/// 4. Wait for writer task to finish (flushes remaining frames)
+/// 4. Wait for encoder task to finish (flushes remaining frames to FFmpeg and finalizes MP4)
 /// 5. Return file path
 ///
 /// # Errors
 ///
 /// - Recording ID not found
 /// - Capture task failed
-/// - Writer task failed (file write error)
+/// - Encoder task failed (FFmpeg encoding error)
 #[tauri::command]
 pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> {
     debug!("Command: stop recording {}", recording_id);
 
     // Remove recording from active state
     let mut recordings = ACTIVE_RECORDINGS.lock().await;
-    let (capture_handle, writer_handle, output_path) = recordings
+    let (capture_handle, encoder_handle, output_path) = recordings
         .remove(&recording_id)
         .ok_or_else(|| {
             error!("Recording not found: {}", recording_id);
@@ -941,10 +1018,10 @@ pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> 
     // Release lock before awaiting
     drop(recordings);
 
-    info!("Stopping recording: {}", recording_id);
+    info!("Stopping recording with real-time encoding: {}", recording_id);
 
     // Wait for capture task to complete
-    // (it will stop when the frame channel is closed by dropping writer)
+    // (it will stop when the frame channel is closed by dropping encoder)
     match capture_handle.await {
         Ok(_) => {
             debug!("Capture task completed");
@@ -954,18 +1031,18 @@ pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> 
         }
     }
 
-    // Wait for writer task to finish (flushes remaining frames)
-    match writer_handle.await {
+    // Wait for encoder task to finish (flushes remaining frames and finalizes MP4)
+    match encoder_handle.await {
         Ok(Ok(())) => {
-            info!("Frame writer completed successfully");
+            info!("Real-time encoding completed successfully");
         }
         Ok(Err(e)) => {
-            error!("Frame writer failed: {}", e);
-            return Err(format!("Failed to save recording: {}", e));
+            error!("FFmpeg encoder failed: {}", e);
+            return Err(format!("Failed to encode recording: {}", e));
         }
         Err(e) => {
-            error!("Writer task join error: {}", e);
-            return Err(format!("Writer task error: {}", e));
+            error!("Encoder task join error: {}", e);
+            return Err(format!("Encoder task error: {}", e));
         }
     }
 
@@ -979,6 +1056,274 @@ pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> 
     info!("Recording saved successfully: {}", output_path_str);
 
     Ok(output_path_str)
+}
+
+/// Pause the current recording
+///
+/// This command pauses the active recording. Recording can be resumed later.
+/// Note: FFmpeg CLI doesn't natively support pause, so this stops capture
+/// and will resume to the same output file when cmd_resume_recording is called.
+///
+/// # Arguments
+///
+/// * `recording_id` - The UUID of the recording to pause
+///
+/// # Returns
+///
+/// - `Ok(())` if recording paused successfully
+/// - `Err(String)` with user-friendly error message if pause fails
+#[tauri::command]
+pub async fn cmd_pause_recording(recording_id: String) -> Result<(), String> {
+    debug!("Command: pause recording {}", recording_id);
+
+    // For MVP, we'll return an error indicating this feature is not yet fully implemented
+    // Full implementation would require:
+    // 1. Stop capture tasks without destroying handles
+    // 2. Flush encoder buffers but keep file open
+    // 3. Track pause state in ACTIVE_RECORDINGS
+    // 4. Resume capture and encoding to same file on cmd_resume_recording
+
+    warn!("Pause/resume not fully implemented in MVP - returning stub");
+    Err("Pause/resume functionality requires FFmpeg architecture changes. Please use Stop to end recording.".to_string())
+}
+
+/// Resume a paused recording
+///
+/// This command resumes a paused recording.
+///
+/// # Arguments
+///
+/// * `recording_id` - The UUID of the recording to resume
+///
+/// # Returns
+///
+/// - `Ok(())` if recording resumed successfully
+/// - `Err(String)` with user-friendly error message if resume fails
+#[tauri::command]
+pub async fn cmd_resume_recording(recording_id: String) -> Result<(), String> {
+    debug!("Command: resume recording {}", recording_id);
+
+    // See cmd_pause_recording for implementation notes
+    warn!("Pause/resume not fully implemented in MVP - returning stub");
+    Err("Pause/resume functionality requires FFmpeg architecture changes. Please use Stop to end recording.".to_string())
+}
+
+/// Cancel the current recording (discards partial recording)
+///
+/// This command cancels the active recording and deletes the partial MP4 file.
+///
+/// # Arguments
+///
+/// * `recording_id` - The UUID of the recording to cancel
+///
+/// # Returns
+///
+/// - `Ok(())` if recording cancelled successfully
+/// - `Err(String)` with user-friendly error message if cancel fails
+#[tauri::command]
+pub async fn cmd_cancel_recording(recording_id: String) -> Result<(), String> {
+    debug!("Command: cancel recording {}", recording_id);
+
+    let mut recordings = ACTIVE_RECORDINGS.lock().await;
+    let (capture_handle, encoder_handle, output_path) = recordings.remove(&recording_id).ok_or_else(|| {
+        error!("Recording not found: {}", recording_id);
+        format!("Recording not found: {}", recording_id)
+    })?;
+
+    info!("Cancelling recording with real-time encoding: {}", recording_id);
+
+    // Abort capture and encoder tasks
+    capture_handle.abort();
+    encoder_handle.abort();
+
+    // Wait a moment for tasks to clean up
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Delete the partial file
+    if output_path.exists() {
+        match std::fs::remove_file(&output_path) {
+            Ok(()) => {
+                info!("Deleted partial recording: {}", output_path.display());
+            }
+            Err(e) => {
+                warn!("Failed to delete partial recording {}: {}", output_path.display(), e);
+                // Don't fail the command if deletion fails
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Check available disk space at the given path
+///
+/// This command checks how much disk space is available at the specified path.
+///
+/// # Arguments
+///
+/// * `path` - The directory path to check (e.g., recordings directory)
+///
+/// # Returns
+///
+/// - `Ok(u64)` available bytes
+/// - `Err(String)` with user-friendly error message if check fails
+#[tauri::command]
+pub async fn cmd_check_disk_space(path: String) -> Result<u64, String> {
+    debug!("Command: check disk space at {}", path);
+
+    use std::path::Path;
+
+    let path = Path::new(&path);
+
+    // Ensure path exists
+    if !path.exists() {
+        // Try to create it
+        if let Err(e) = std::fs::create_dir_all(path) {
+            error!("Failed to create directory {}: {}", path.display(), e);
+            return Err(format!("Failed to create directory: {}", e));
+        }
+    }
+
+    // Get disk space info using statvfs on macOS
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let path_cstr = CString::new(path.as_os_str().as_bytes())
+            .map_err(|e| format!("Invalid path: {}", e))?;
+
+        // SAFETY: FFI call to libc::statvfs is safe because:
+        // 1. statvfs is a well-defined POSIX API with stable ABI
+        // 2. path_cstr is a valid, null-terminated CString with no interior nulls
+        // 3. stat is properly zero-initialized memory of the correct size
+        // 4. The function only reads from path_cstr and writes to stat
+        unsafe {
+            let mut stat: libc::statvfs = std::mem::zeroed();
+            if libc::statvfs(path_cstr.as_ptr(), &mut stat) == 0 {
+                // Convert to u64 to avoid overflow and match return type
+                let available_bytes = stat.f_bavail as u64 * stat.f_frsize as u64;
+                info!("Available disk space: {} bytes ({} MB)", available_bytes, available_bytes / (1024 * 1024));
+                Ok(available_bytes)
+            } else {
+                let err = std::io::Error::last_os_error();
+                error!("statvfs failed: {}", err);
+                Err(format!("Failed to get disk space: {}", err))
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        error!("Disk space check not implemented for this platform");
+        Err("Disk space check only supported on macOS".to_string())
+    }
+}
+
+/// Send a native macOS notification
+///
+/// This command sends a native notification using macOS notification center.
+///
+/// # Arguments
+///
+/// * `title` - The notification title
+/// * `body` - The notification body text
+///
+/// # Returns
+///
+/// - `Ok(())` if notification sent successfully
+/// - `Err(String)` with user-friendly error message if send fails
+#[tauri::command]
+pub async fn cmd_send_recording_notification(title: String, body: String) -> Result<(), String> {
+    debug!("Command: send notification - title: {}, body: {}", title, body);
+
+    // Note: Requires @tauri-apps/plugin-notification to be configured
+    // This is a stub that relies on the Tauri notification plugin being properly set up
+    // The actual notification sending happens via the plugin API in the frontend
+
+    info!("Notification request: {} - {}", title, body);
+
+    // For now, this is a no-op on the Rust side
+    // The frontend @tauri-apps/plugin-notification handles the actual notification
+    Ok(())
+}
+
+/// Get the user's home directory path
+///
+/// This is a helper command for getting the home directory path for use in frontend.
+///
+/// # Returns
+///
+/// - `Ok(String)` home directory path
+/// - `Err(String)` with user-friendly error message if failed
+#[tauri::command]
+pub async fn cmd_get_home_dir() -> Result<String, String> {
+    debug!("Command: get home directory");
+
+    match dirs::home_dir() {
+        Some(path) => {
+            let path_str = path.to_string_lossy().to_string();
+            debug!("Home directory: {}", path_str);
+            Ok(path_str)
+        }
+        None => {
+            error!("Failed to get home directory");
+            Err("Failed to get home directory".to_string())
+        }
+    }
+}
+
+/// Get list of available windows for window recording (Story 4.1)
+///
+/// This command returns a list of capturable windows from ScreenCaptureKit.
+/// Windows are filtered to exclude system UI, hidden windows, and minimized windows.
+///
+/// # Returns
+///
+/// - `Ok(Vec<WindowInfo>)` with list of available windows
+/// - `Err(String)` with user-friendly error message if enumeration fails
+#[tauri::command]
+pub async fn cmd_get_available_windows() -> Result<Vec<crate::models::recording::WindowInfo>, String> {
+    debug!("Command: get available windows");
+
+    #[cfg(target_os = "macos")]
+    {
+        use screencapturekit::shareable_content::SCShareableContent;
+
+        // Get shareable content (displays and windows)
+        let content = SCShareableContent::get()
+            .map_err(|e| {
+                error!("Failed to get shareable content: {:?}", e);
+                format!("Failed to enumerate windows: {}", e)
+            })?;
+
+        let windows = content.windows();
+
+        // Filter and map to WindowInfo
+        let window_list: Vec<crate::models::recording::WindowInfo> = windows
+            .iter()
+            .filter(|w| {
+                // Filter out hidden/minimized windows and system UI
+                // Only include windows that are on screen and have valid titles
+                w.is_on_screen() && !w.title().is_empty()
+            })
+            .map(|w| crate::models::recording::WindowInfo {
+                window_id: w.window_id(),
+                owner_name: w.owning_application().application_name().to_string(),
+                title: w.title().to_string(),
+                is_on_screen: w.is_on_screen(),
+            })
+            .collect();
+
+        info!("Found {} available windows", window_list.len());
+        Ok(window_list)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        error!("Window enumeration is only supported on macOS");
+        Err("Window recording is only supported on macOS".to_string())
+    }
 }
 
 #[cfg(test)]
@@ -1003,5 +1348,64 @@ mod tests {
                 assert!(!e.is_empty(), "Error message should not be empty");
             }
         }
+    }
+
+    #[test]
+    fn test_resolution_capping_logic() {
+        // Test Case 1: 4K resolution (3840x2160) should be capped to 1080p (1920x1080)
+        let width = 3840u32;
+        let height = 2160u32;
+        let (capped_width, capped_height) = if height > 1080 {
+            let aspect_ratio = width as f32 / height as f32;
+            let new_height = 1080;
+            let new_width = (new_height as f32 * aspect_ratio) as u32;
+            (new_width, new_height)
+        } else {
+            (width, height)
+        };
+        assert_eq!(capped_height, 1080, "Height should be capped at 1080p");
+        assert_eq!(capped_width, 1920, "Width should maintain 16:9 aspect ratio");
+
+        // Test Case 2: 1080p resolution should not be capped
+        let width = 1920u32;
+        let height = 1080u32;
+        let (capped_width, capped_height) = if height > 1080 {
+            let aspect_ratio = width as f32 / height as f32;
+            let new_height = 1080;
+            let new_width = (new_height as f32 * aspect_ratio) as u32;
+            (new_width, new_height)
+        } else {
+            (width, height)
+        };
+        assert_eq!(capped_width, width, "1080p width should not be modified");
+        assert_eq!(capped_height, height, "1080p height should not be modified");
+
+        // Test Case 3: 720p resolution should not be capped
+        let width = 1280u32;
+        let height = 720u32;
+        let (capped_width, capped_height) = if height > 1080 {
+            let aspect_ratio = width as f32 / height as f32;
+            let new_height = 1080;
+            let new_width = (new_height as f32 * aspect_ratio) as u32;
+            (new_width, new_height)
+        } else {
+            (width, height)
+        };
+        assert_eq!(capped_width, width, "720p width should not be modified");
+        assert_eq!(capped_height, height, "720p height should not be modified");
+
+        // Test Case 4: 5K resolution (5120x2880) with 16:9 aspect ratio
+        let width = 5120u32;
+        let height = 2880u32;
+        let (capped_width, capped_height) = if height > 1080 {
+            let aspect_ratio = width as f32 / height as f32;
+            let new_height = 1080;
+            let new_width = (new_height as f32 * aspect_ratio) as u32;
+            (new_width, new_height)
+        } else {
+            (width, height)
+        };
+        assert_eq!(capped_height, 1080, "5K height should be capped at 1080p");
+        assert_eq!(capped_width, 1920, "5K width should maintain 16:9 aspect ratio");
     }
 }

@@ -48,6 +48,11 @@ export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPr
 
       try {
         // Listen for camera frames
+        // NOTE: Frame streaming is implemented in Story 2.8
+        // The backend cmd_start_camera_preview currently returns a stub.
+        // Story 2.8 will implement the actual frame capture loop that emits
+        // "camera-frame" events at 30 FPS with CameraFramePayload structure.
+        // See: src-tauri/src/commands/recording.rs line 256 for interface contract.
         unlisten = await listen<CameraFramePayload>('camera-frame', (event) => {
           const { data, width, height } = event.payload;
 

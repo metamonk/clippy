@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import { devtools } from 'zustand/middleware';
-import type { Camera } from '../types/recording';
+import { devtools, persist } from 'zustand/middleware';
+import { invoke } from '@tauri-apps/api/core';
+import type { Camera, FrameRate, Resolution, WindowInfo } from '../types/recording';
 
-export type RecordingStatus = 'idle' | 'recording' | 'stopping' | 'error';
+export type RecordingStatus = 'idle' | 'recording' | 'paused' | 'stopping' | 'error';
 
 /** Audio source configuration for recording */
 export interface AudioSourceConfig {
@@ -26,6 +27,9 @@ interface RecordingState {
   /** Elapsed recording duration in milliseconds */
   elapsedMs: number;
 
+  /** Accumulated pause duration in milliseconds */
+  pausedMs: number;
+
   /** Last error message */
   error: string | null;
 
@@ -34,6 +38,12 @@ interface RecordingState {
 
   /** Audio source configuration */
   audioSources: AudioSourceConfig;
+
+  /** Frame rate for recording (Story 4.2) */
+  frameRate: FrameRate;
+
+  /** Resolution for recording (Story 4.2) */
+  resolution: Resolution;
 
   /** Available cameras list */
   cameras: Camera[];
@@ -46,6 +56,15 @@ interface RecordingState {
 
   /** Stop the current recording */
   stopRecording: (filePath: string) => void;
+
+  /** Pause the current recording */
+  pauseRecording: () => void;
+
+  /** Resume the paused recording */
+  resumeRecording: () => void;
+
+  /** Cancel the current recording */
+  cancelRecording: () => void;
 
   /** Update elapsed time during recording */
   updateElapsedTime: (elapsedMs: number) => void;
@@ -61,6 +80,12 @@ interface RecordingState {
 
   /** Update audio source configuration */
   setAudioSources: (config: Partial<AudioSourceConfig>) => void;
+
+  /** Set frame rate (Story 4.2) */
+  setFrameRate: (frameRate: FrameRate) => void;
+
+  /** Set resolution (Story 4.2) */
+  setResolution: (resolution: Resolution) => void;
 
   /** Set available cameras */
   setCameras: (cameras: Camera[]) => void;
@@ -78,21 +103,26 @@ interface RecordingState {
  *
  * Following ADR-003: Using Zustand with devtools for state management
  * Following ADR-005: All timestamps in MILLISECONDS
+ * Story 4.2: Persist configuration (frameRate, resolution, audioSources) to localStorage
  */
 export const useRecordingStore = create<RecordingState>()(
   devtools(
-    (set) => ({
+    persist(
+      (set) => ({
       // Initial state
       status: 'idle',
       recordingId: null,
       startTime: null,
       elapsedMs: 0,
+      pausedMs: 0,
       error: null,
       savedFilePath: null,
       audioSources: {
         systemAudio: false,
         microphone: false,
       },
+      frameRate: 30,
+      resolution: '1080p',
       cameras: [],
       selectedCamera: null,
 
@@ -117,10 +147,62 @@ export const useRecordingStore = create<RecordingState>()(
             recordingId: null,
             startTime: null,
             elapsedMs: 0,
+            pausedMs: 0,
             savedFilePath: filePath,
           },
           false,
           'stopRecording'
+        ),
+
+      pauseRecording: () =>
+        set(
+          (state) => ({
+            status: 'paused',
+            // Store the elapsed time when paused
+            elapsedMs: state.startTime ? Date.now() - state.startTime - state.pausedMs : state.elapsedMs,
+          }),
+          false,
+          'pauseRecording'
+        ),
+
+      resumeRecording: () =>
+        set(
+          (state) => {
+            // Validate state before resume
+            if (!state.startTime) {
+              console.error('Invalid state: startTime is null during resume');
+              return {
+                status: 'error',
+                error: 'Invalid recording state - cannot resume',
+              };
+            }
+
+            const now = Date.now();
+            const pauseStartTime = state.startTime + state.elapsedMs + state.pausedMs;
+            const pauseDuration = now - pauseStartTime;
+
+            return {
+              status: 'recording',
+              pausedMs: state.pausedMs + pauseDuration,
+              startTime: state.startTime,
+            };
+          },
+          false,
+          'resumeRecording'
+        ),
+
+      cancelRecording: () =>
+        set(
+          {
+            status: 'idle',
+            recordingId: null,
+            startTime: null,
+            elapsedMs: 0,
+            pausedMs: 0,
+            savedFilePath: null,
+          },
+          false,
+          'cancelRecording'
         ),
 
       updateElapsedTime: (elapsedMs: number) =>
@@ -155,20 +237,21 @@ export const useRecordingStore = create<RecordingState>()(
 
       reset: () =>
         set(
-          {
+          (state) => ({
             status: 'idle',
             recordingId: null,
             startTime: null,
             elapsedMs: 0,
+            pausedMs: 0,
             error: null,
             savedFilePath: null,
-            audioSources: {
-              systemAudio: false,
-              microphone: false,
-            },
+            // Keep persisted configuration (Story 4.2)
+            audioSources: state.audioSources,
+            frameRate: state.frameRate,
+            resolution: state.resolution,
             cameras: [],
             selectedCamera: null,
-          },
+          }),
           false,
           'reset'
         ),
@@ -183,6 +266,24 @@ export const useRecordingStore = create<RecordingState>()(
           }),
           false,
           'setAudioSources'
+        ),
+
+      setFrameRate: (frameRate) =>
+        set(
+          {
+            frameRate,
+          },
+          false,
+          'setFrameRate'
+        ),
+
+      setResolution: (resolution) =>
+        set(
+          {
+            resolution,
+          },
+          false,
+          'setResolution'
         ),
 
       setCameras: (cameras) =>
@@ -202,7 +303,16 @@ export const useRecordingStore = create<RecordingState>()(
           false,
           'setSelectedCamera'
         ),
-    }),
+      }),
+      {
+        name: 'recording-config-storage',
+        partialize: (state) => ({
+          frameRate: state.frameRate,
+          resolution: state.resolution,
+          audioSources: state.audioSources,
+        }),
+      }
+    ),
     {
       name: 'recording-store',
     }
