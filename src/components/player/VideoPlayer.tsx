@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "@/stores/playerStore";
 import { useTimelineStore } from "@/stores/timelineStore";
 import { toast } from "sonner";
+import { setMpvVolume, applyMpvFadeFilters, clearMpvAudioFilters } from "@/lib/tauri/mpv";
 
 /**
  * VideoPlayer props
@@ -344,6 +345,47 @@ export function VideoPlayer({
       }
     };
   }, [isPlaying, setPlayheadPosition, selectedClip, videoLoaded]);
+
+  // Apply volume and fade filters for selected clip during playback (Story 3.9.1/3.10.1)
+  useEffect(() => {
+    if (!videoLoaded || !isPlaying || mode !== 'timeline' || !selectedClip) {
+      // Clear filters when not playing or no clip selected
+      if (videoLoaded && !isPlaying) {
+        clearMpvAudioFilters().catch(console.error);
+      }
+      return;
+    }
+
+    const applyAudioFilters = async () => {
+      try {
+        // Apply volume control (Story 3.9.1)
+        const clipVolume = selectedClip.volume !== undefined ? selectedClip.volume * 200 : 100; // Convert 0-1 to 0-200
+        const clipMuted = selectedClip.muted ?? false;
+
+        await setMpvVolume(clipVolume, clipMuted);
+        console.log(`[VideoPlayer] Applied volume: ${clipVolume}%, muted: ${clipMuted}`);
+
+        // Apply fade filters if present (Story 3.10.1)
+        const fadeIn = selectedClip.fadeIn ?? 0;
+        const fadeOut = selectedClip.fadeOut ?? 0;
+
+        if (fadeIn > 0 || fadeOut > 0) {
+          // Calculate clip duration from trim points
+          const clipDuration = selectedClip.trimOut - selectedClip.trimIn;
+
+          await applyMpvFadeFilters(fadeIn, fadeOut, clipDuration);
+          console.log(`[VideoPlayer] Applied fades: in=${fadeIn}ms, out=${fadeOut}ms, duration=${clipDuration}ms`);
+        } else {
+          // Clear fade filters if no fades specified
+          await clearMpvAudioFilters();
+        }
+      } catch (error) {
+        console.error('[VideoPlayer] Failed to apply audio filters:', error);
+      }
+    };
+
+    applyAudioFilters();
+  }, [videoLoaded, isPlaying, mode, selectedClip]);
 
   // Frame capture and rendering loop
   useEffect(() => {

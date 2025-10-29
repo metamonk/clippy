@@ -130,10 +130,10 @@ interface RecordingState {
   setSelectedWindow: (windowId: number | null) => void;
 
   /** Set PiP position (Story 4.5) */
-  setPipPosition: (position: PipPosition) => void;
+  setPipPosition: (position: PipPosition | null) => void;
 
   /** Set PiP size (Story 4.5) */
-  setPipSize: (size: PipSize) => void;
+  setPipSize: (size: PipSize | null) => void;
 
   /** Set PiP preset (Story 4.5) */
   setPipPreset: (preset: PipPreset) => void;
@@ -304,6 +304,16 @@ export const useRecordingStore = create<RecordingState>()(
             resolution: state.resolution,
             cameras: [],
             selectedCamera: null,
+            // Reset recording mode and window selection
+            recordingMode: 'screen',
+            screenRecordingMode: state.screenRecordingMode, // Preserve for Story 4.1 persistence
+            availableWindows: [],
+            selectedWindowId: null,
+            lastSelectedWindowId: state.lastSelectedWindowId, // Preserve for Story 4.1 persistence
+            // Preserve PiP settings (Story 4.5)
+            pipPosition: state.pipPosition,
+            pipSize: state.pipSize,
+            pipPreset: state.pipPreset,
           }),
           false,
           'reset'

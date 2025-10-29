@@ -6,6 +6,8 @@ import { useRecordingStore } from '@/stores/recordingStore';
 
 describe('AudioSourceSelector', () => {
   beforeEach(() => {
+    // Reset audio sources to defaults for test isolation
+    useRecordingStore.getState().setAudioSources({ systemAudio: false, microphone: false });
     // Reset store before each test
     useRecordingStore.getState().reset();
   });

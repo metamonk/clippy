@@ -127,8 +127,8 @@ export function getDefaultScreenDimensions(): ScreenDimensions {
 export async function getScreenDimensions(): Promise<ScreenDimensions> {
   try {
     // Dynamically import to avoid issues in test environment
-    const { primaryDisplay } = await import('@tauri-apps/plugin-os');
-    const display = await primaryDisplay();
+    const { primaryMonitor } = await import('@tauri-apps/api/window');
+    const display = await primaryMonitor();
 
     if (display && display.size) {
       return {

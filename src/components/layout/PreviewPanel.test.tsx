@@ -58,7 +58,7 @@ describe("PreviewPanel", () => {
     const { container } = render(<PreviewPanel />);
     const panel = container.firstChild as HTMLElement;
 
-    expect(panel).toHaveClass("h-2/5");
+    expect(panel).toHaveClass("flex-1");
   });
 
   it("is keyboard focusable", () => {

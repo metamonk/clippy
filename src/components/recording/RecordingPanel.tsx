@@ -28,19 +28,23 @@ import WebcamPreview from './WebcamPreview';
 import { WindowSelector } from './WindowSelector';
 import { RecordingModeToggle } from './RecordingModeToggle';
 import { useRecordingStore } from '@/stores/recordingStore';
+import { useMediaLibraryStore } from '@/stores/mediaLibraryStore';
 import {
   checkScreenRecordingPermission,
   checkCameraPermission,
   startScreenRecording,
   startWebcamRecording,
+  startPipRecording,
   stopRecording,
   stopWebcamRecording,
+  stopPipRecording,
   pauseRecording,
   resumeRecording,
   cancelRecording,
   checkDiskSpace,
   sendRecordingNotification,
 } from '@/lib/tauri/recording';
+import { importMedia } from '@/lib/tauri/media';
 import { Monitor, Clock, Camera } from 'lucide-react';
 
 export interface RecordingPanelProps {
@@ -71,11 +75,12 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
   const elapsedMs = useRecordingStore((state) => state.elapsedMs);
   const selectedCamera = useRecordingStore((state) => state.selectedCamera);
   const recordingMode = useRecordingStore((state) => state.recordingMode); // Story 4.4
-  const setRecordingMode = useRecordingStore((state) => state.setRecordingMode); // Story 4.4
   const selectedWindowId = useRecordingStore((state) => state.selectedWindowId); // Story 4.1
   const frameRate = useRecordingStore((state) => state.frameRate); // Story 4.2
   const resolution = useRecordingStore((state) => state.resolution); // Story 4.2
   const audioSources = useRecordingStore((state) => state.audioSources); // Story 4.2
+  const pipPosition = useRecordingStore((state) => state.pipPosition); // Story 4.5/4.6
+  const pipSize = useRecordingStore((state) => state.pipSize); // Story 4.5/4.6
   const startRecordingStore = useRecordingStore((state) => state.startRecording);
   const stopRecordingStore = useRecordingStore((state) => state.stopRecording);
   const pauseRecordingStore = useRecordingStore((state) => state.pauseRecording);
@@ -84,6 +89,9 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
   const updateElapsedTime = useRecordingStore((state) => state.updateElapsedTime);
   const setError = useRecordingStore((state) => state.setError);
   const setStopping = useRecordingStore((state) => state.setStopping);
+
+  // Media library store
+  const addMediaFile = useMediaLibraryStore((state) => state.addMediaFile);
 
   const isRecording = status === 'recording';
   const isPaused = status === 'paused';
@@ -341,6 +349,66 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
             ? 'Webcam recording with microphone is now active'
             : 'Webcam recording is now active',
         });
+      } else if (recordingMode === 'pip') {
+        // Story 4.6: PiP recording (screen + webcam simultaneously)
+        // Check both screen and camera permissions
+        const screenGranted = await checkScreenRecordingPermission();
+        if (!screenGranted) {
+          setShowPermissionPrompt(true);
+          return;
+        }
+
+        const cameraGranted = await checkCameraPermission();
+        if (!cameraGranted) {
+          toast.error('Camera Permission Required', {
+            description: 'Please grant camera permission to record with PiP mode',
+          });
+          return;
+        }
+
+        // Ensure a camera is selected
+        if (!selectedCamera) {
+          toast.error('No Camera Selected', {
+            description: 'Please select a camera before starting PiP recording',
+          });
+          return;
+        }
+
+        // Get PiP configuration from store
+        // Use defaults if not configured (bottom-right corner, 320x180)
+        const pipX = pipPosition?.x ?? 1600; // Default: right side (1920 - 320)
+        const pipY = pipPosition?.y ?? 900; // Default: bottom (1080 - 180)
+        const pipWidth = pipSize?.width ?? 320;
+        const pipHeight = pipSize?.height ?? 180;
+
+        // Generate output path
+        const homeDir = await invoke<string>('cmd_get_home_dir');
+        const outputPath = `${homeDir}/Documents/clippy/recordings/pip-${Date.now()}.mp4`;
+
+        // Start PiP recording
+        id = await startPipRecording(
+          selectedCamera.id,
+          pipX,
+          pipY,
+          pipWidth,
+          pipHeight,
+          outputPath
+        );
+
+        // Send native macOS notification
+        try {
+          await sendRecordingNotification(
+            'PiP Recording Started',
+            'Screen and webcam recording is now active'
+          );
+        } catch (err) {
+          console.error('Failed to send notification:', err);
+          // Don't block recording on notification failure
+        }
+
+        toast.success('PiP Recording Started', {
+          description: 'Screen and webcam recording with picture-in-picture is now active',
+        });
       } else {
         throw new Error('Invalid recording mode');
       }
@@ -364,16 +432,33 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
       let filePath: string;
       if (recordingMode === 'webcam') {
         filePath = await stopWebcamRecording(recordingId);
+      } else if (recordingMode === 'pip') {
+        // Story 4.6: Stop PiP recording
+        filePath = await stopPipRecording(recordingId);
       } else {
+        // Screen recording mode
         filePath = await stopRecording(recordingId);
       }
 
       stopRecordingStore(filePath);
 
-      toast.success('Recording Saved', {
-        description: `Recording saved to ${filePath}`,
-        duration: 5000,
-      });
+      // Import the recording to the media library
+      try {
+        const mediaFile = await importMedia(filePath);
+        addMediaFile(mediaFile);
+
+        toast.success('Recording Saved', {
+          description: `Recording saved and imported to library`,
+          duration: 5000,
+        });
+      } catch (importErr) {
+        // Recording was saved but import failed - still show success but warn
+        console.error('Failed to import recording to library:', importErr);
+        toast.success('Recording Saved', {
+          description: `Recording saved to ${filePath}, but failed to import to library`,
+          duration: 5000,
+        });
+      }
 
       // Close panel after successful stop
       onOpenChange(false);
@@ -456,7 +541,7 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <div className="flex items-center gap-3">
               {recordingMode === 'screen' ? (
@@ -474,7 +559,7 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
           {/* Recording Mode Toggle - Story 4.4 */}
           {!isRecording && <RecordingModeToggle />}
 
-          <div className="space-y-6 py-4">
+          <div className="space-y-6 py-4 overflow-y-auto flex-1">
             {/* Screen Recording Mode (Story 4.1) */}
             {recordingMode === 'screen' && (
               <>
@@ -693,16 +778,16 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
 
               {/* Recording Controls */}
               <div className="flex flex-col items-center gap-4">
-                <Button
-                  size="lg"
-                  disabled={true}
-                  className="w-full"
-                >
-                  PiP Recording Coming in Story 4.6
-                </Button>
-                <p className="text-sm text-gray-500 text-center">
-                  Picture-in-picture recording will be available in Story 4.6
-                </p>
+                <RecordingControls
+                  isRecording={isRecording}
+                  isPaused={isPaused}
+                  isStopping={isStopping}
+                  onStartRecording={handleStartRecording}
+                  onStopRecording={handleStopRecording}
+                  onPauseRecording={handlePauseRecording}
+                  onResumeRecording={handleResumeRecording}
+                  onCancelRecording={handleCancelRecording}
+                />
 
                 {/* Duration Display */}
                 {(isRecording || isPaused) && (
@@ -716,13 +801,15 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
               </div>
 
               {/* Information */}
-              {!isRecording && hasPermission && hasCameraPermission && (
+              {!isRecording && hasPermission && hasCameraPermission && selectedCamera && (
                 <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-md text-sm">
-                  <p className="font-semibold mb-2">Preview Mode</p>
+                  <p className="font-semibold mb-2">Ready for PiP Recording</p>
                   <ul className="list-disc list-inside space-y-1 ml-2 text-gray-700 dark:text-gray-300">
-                    <li>Webcam preview is active</li>
-                    <li>Configure screen and camera settings above</li>
-                    <li>PiP recording will be implemented in Story 4.6</li>
+                    <li>Click "Record Screen" to start recording screen and webcam simultaneously</li>
+                    <li>Webcam will appear as overlay on screen recording</li>
+                    <li>Recording at 30 FPS with real-time composition</li>
+                    <li>Configure PiP position and size in Story 4.5 settings</li>
+                    <li>Click "Stop Recording" when finished</li>
                   </ul>
                 </div>
               )}

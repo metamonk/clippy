@@ -10,6 +10,7 @@ vi.mock('react-konva', () => ({
   Group: ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => <div data-testid="konva-group" {...props}>{children}</div>,
   Rect: (props: { [key: string]: unknown }) => <div data-testid="konva-rect" {...props} />,
   Text: (props: { [key: string]: unknown }) => <div data-testid="konva-text" {...props} />,
+  Line: (props: { [key: string]: unknown }) => <div data-testid="konva-line" {...props} />,
 }));
 
 describe('TimelineClip', () => {

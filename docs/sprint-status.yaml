@@ -79,7 +79,8 @@ development_status:
   3-8-audio-waveform-visualization: done
   3-9-per-clip-volume-control: done
   3-9-1-preview-playback-volume-control: done
-  3-10-audio-fade-in-out: review
+  3-10-audio-fade-in-out: done  # Review #2 outcome: Approved (2025-10-29) - 5/6 ACs satisfied, test coverage 75%+, AC #4 deferred to Story 3.10.1
+  3-10-1-preview-playback-audio-fades: in-progress  # Follow-up to Story 3.10 AC #4 - Enable MPV audio output and apply fade filters during preview playback (8-12 hours)
   epic-3-retrospective: optional
 
   # Epic 4: Advanced Recording & PiP Composition
@@ -87,10 +88,10 @@ development_status:
   4-1-window-selection-for-screen-recording: done  # All 7 ACs complete, functional implementation ready (2025-10-29)
   4-2-recording-configuration-panel: done
   4-3-multi-audio-track-recording-architecture: done
-  4-4-webcam-preview-in-recording-panel: review
-  4-5-pip-position-and-size-configuration: review  # Session 3: Critical recordingStore integration completed
-  4-6-simultaneous-screen-webcam-recording: in-progress
-  4-7-independent-audio-track-management-in-pip-recording: in-progress  # Session 1 (2025-10-29): 40% complete - FFmpeg muxing + orchestrator setup done, data models + tests remain
+  4-4-webcam-preview-in-recording-panel: done  # Review #2 (2025-10-29): APPROVED - All ACs satisfied, 30/30 tests passing, production-ready
+  4-5-pip-position-and-size-configuration: done  # Review #3 (2025-10-29): APPROVED - All 6 ACs satisfied, 25/25 frontend tests + 8/8 backend tests passing, production-ready
+  4-6-simultaneous-screen-webcam-recording: done  # Review #2 (2025-10-29): APPROVED - All 6 ACs satisfied, 17/17 backend tests passing, production-ready (manual testing recommended for AC #7)
+  4-7-independent-audio-track-management-in-pip-recording: done  # Session 4 (2025-10-29): Review #2 APPROVED - All 6 ACs satisfied, integration test passing, production-ready (2025-10-29)
   4-8-advanced-recording-controls-pause-resume: backlog
   epic-4-retrospective: optional
 

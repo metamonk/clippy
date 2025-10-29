@@ -51,10 +51,16 @@ so that audio transitions sound professional without abrupt starts/stops.
 - [x] Task 5: Add unit and integration tests (AC: #1-6)
   - [x] Subtask 5.1: Unit test: Clip model fade properties defaults and serialization (validated via existing clipOperations tests with optional properties)
   - [x] Subtask 5.2: Unit test: Fade duration validation (validateFadeDuration function added to clipOperations.ts)
-  - [ ] Subtask 5.3: Component test: Fade handle drag updates clip state correctly **[DEFERRED - Requires UI implementation]**
+  - [x] Subtask 5.3: Component test: Fade handle drag updates clip state correctly **[COMPLETED - Review #2: 19 comprehensive tests added]**
   - [ ] Subtask 5.4: Integration test: Fade effects audible during preview playback **[DEFERRED - Requires playback implementation]**
   - [ ] Subtask 5.5: Integration test: Exported video contains correct fade curves **[MANUAL TESTING RECOMMENDED]**
   - [ ] Subtask 5.6: E2E test: Full workflow from fade adjustment to export **[DEFERRED - Requires UI implementation]**
+
+### Review Follow-ups (AI) - Added 2025-10-29 Review #2
+
+- [x] **[AI-Review][High]** Create Story 3.10.1: Preview Playback Audio Fades (AC #4) - ✅ COMPLETED (2025-10-29): Story file created at docs/stories/3-10-1-preview-playback-audio-fades.md and added to sprint status (backlog)
+- [x] **[AI-Review][Medium]** Document AC #4 limitation in Epic 3 retrospective and release notes - ✅ COMPLETED (2025-10-29): Documented in docs/epic-3-retrospective.md and RELEASE_NOTES.md with workarounds and resolution plan
+- [ ] **[AI-Review][Low]** Address compilation errors from other stories before Epic 3 completion - Fix Rust/TypeScript errors from Stories 4.6, 3.9, 3.6 (not blocking Story 3.10). Files: screencapturekit.rs, orchestrator.rs, test files
 
 ## Dev Notes
 
@@ -611,6 +617,53 @@ export function validateFadeDuration(clip: Clip, fadeIn: number, fadeOut: number
 
 ---
 
+## Senior Developer Review #2 (AI) - Summary
+
+**Reviewer:** zeno
+**Date:** 2025-10-29
+**Review Type:** Follow-up Review
+**Outcome:** **APPROVE** ✅
+
+### Progress Since First Review
+
+**✅ Completed (4 of 5 Critical Items):**
+1. Test coverage improved from <40% to 75%+ (19 new component tests + 35+ validation tests)
+2. TimelineClip test failures fixed (no more `trackId` errors)
+3. Unused `deltaY` variable removed
+4. Fade validation logic enhanced (negative check, 5s max, combined duration)
+
+**❌ Remains Deferred:**
+- AC #4 (Preview playback fades) - MPV audio still disabled
+- First review acknowledged this could be deferred to future story
+
+### Acceptance Criteria: 5/6 Satisfied (83%)
+
+| AC | Status |
+|----|--------|
+| #1: Fade handles on edges | ✅ SATISFIED |
+| #2: Visual fade curve | ✅ SATISFIED |
+| #3: Adjustable 0-5s | ✅ SATISFIED |
+| #4: Preview playback | ❌ DEFERRED |
+| #5: FFmpeg export | ✅ SATISFIED |
+| #6: Independent fades | ✅ SATISFIED |
+
+### Approval Conditions
+
+1. ✅ Create Story 3.10.1 for AC #4 (added to Review Follow-ups above)
+2. ✅ Document AC #4 limitation in release notes (added to Review Follow-ups above)
+3. ⚠️ Address compilation errors from other stories before Epic 3 completion
+
+**Rationale for Approval:**
+- 4 of 5 critical action items resolved
+- Test coverage exceeds Epic 3 target (70%+)
+- All code quality issues fixed
+- Substantial user value delivered (fade UI + export)
+- No new issues introduced by Story 3.10
+
+---
+
 ## Change Log
 
-- **2025-10-29:** Senior Developer Review notes appended (Outcome: Changes Requested)
+- **2025-10-29:** Senior Developer Review #1 notes appended (Outcome: Changes Requested)
+- **2025-10-29:** Senior Developer Review #2 completed (Outcome: Approve) - Test coverage improved 75%+, 4/5 action items resolved, 3 follow-up tasks added
+- **2025-10-29:** Review follow-up tasks completed: Story 3.10.1 created, AC #4 limitation documented in Epic 3 retrospective and release notes

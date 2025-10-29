@@ -12,8 +12,15 @@ describe('recordingStore', () => {
     // Clear persisted state from localStorage before each test
     localStorage.clear();
 
+    // Manually reset to true initial state (including persisted config)
+    const store = useRecordingStore.getState();
+    store.setAudioSources({ systemAudio: false, microphone: false });
+    store.setFrameRate(30);
+    store.setResolution('1080p');
+    store.setScreenRecordingMode('fullscreen');
+
     // Reset store to initial state before each test
-    useRecordingStore.getState().reset();
+    store.reset();
   });
 
   describe('initial state', () => {
@@ -384,12 +391,6 @@ describe('recordingStore', () => {
     describe('refreshWindows', () => {
       it('should update available windows list', async () => {
         const { refreshWindows } = useRecordingStore.getState();
-
-        // Mock invoke to return window list
-        const mockWindows = [
-          { windowId: 1, ownerName: 'Safari', title: 'Test Page', isOnScreen: true },
-          { windowId: 2, ownerName: 'Chrome', title: 'Google', isOnScreen: true },
-        ];
 
         // Since we can't mock invoke in this test, we'll just verify the function exists
         expect(refreshWindows).toBeDefined();

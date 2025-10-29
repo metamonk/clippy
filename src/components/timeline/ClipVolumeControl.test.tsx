@@ -14,7 +14,6 @@ describe('ClipVolumeControl (Story 3.9)', () => {
           trackNumber: 1,
           clips: [],
           trackType: 'video',
-          label: 'Track 1',
         },
       ],
       totalDuration: 0,
@@ -23,14 +22,11 @@ describe('ClipVolumeControl (Story 3.9)', () => {
         trackHeight: 80,
         rulerHeight: 30,
         zoomLevel: 1.0,
-        scrollPosition: 0,
       },
       history: [],
       historyIndex: -1,
       selectedClipId: null,
       hoveredTrackState: null,
-      snapEnabled: true,
-      snapThreshold: 100,
     });
   });
 

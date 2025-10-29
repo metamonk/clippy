@@ -19,10 +19,27 @@ use crate::services::ffmpeg::{CompositorFrame, FFmpegCompositor, FFmpegEncoder, 
 use crate::services::recording::FrameSynchronizer;
 use crate::services::screen_capture::ScreenCapture;
 use anyhow::{Context, Result};
+use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
+
+/// Convert f32 audio samples to PCM i16le bytes (Story 4.7)
+///
+/// Audio samples are normalized f32 (-1.0 to 1.0).
+/// PCM format is signed 16-bit little-endian (-32768 to 32767).
+fn audio_samples_to_pcm_bytes(samples: &[f32]) -> Vec<u8> {
+    samples
+        .iter()
+        .flat_map(|&sample| {
+            let clamped = sample.clamp(-1.0, 1.0);
+            let i16_sample = (clamped * 32767.0) as i16;
+            i16_sample.to_le_bytes()
+        })
+        .collect()
+}
 
 /// Configuration for multi-stream recording
 #[derive(Debug, Clone)]
@@ -102,6 +119,9 @@ pub struct RecordingOrchestrator {
 
     /// Active capture handles
     capture_handles: Vec<JoinHandle<()>>,
+
+    /// Video-only temp file path (Story 4.7 - for audio muxing)
+    video_only_path: Option<PathBuf>,
 }
 
 impl RecordingOrchestrator {
@@ -181,6 +201,7 @@ impl RecordingOrchestrator {
             synchronizer,
             encoder: None,
             capture_handles: Vec::new(),
+            video_only_path: None,
         })
     }
 
@@ -203,9 +224,16 @@ impl RecordingOrchestrator {
             "Starting multi-stream recording"
         );
 
-        // Create FFmpeg encoder
+        // Create FFmpeg encoder (Story 4.7: encode to temp video-only file for later muxing)
+        let video_only_path = self.config.output_path.with_file_name(
+            format!("{}_video_only.mp4", self.config.output_path.file_stem().unwrap().to_str().unwrap())
+        );
+
+        // Store video-only path for audio muxing in stop_recording()
+        self.video_only_path = Some(video_only_path.clone());
+
         let mut encoder = FFmpegEncoder::new(
-            self.config.output_path.clone(),
+            video_only_path,
             self.config.width,
             self.config.height,
             self.config.fps,
@@ -273,12 +301,47 @@ impl RecordingOrchestrator {
             }
         }
 
+        // Create PCM file paths for audio muxing (Story 4.7)
+        let output_path = self.config.output_path.clone();
+        let system_audio_pcm_path = output_path.with_file_name(
+            format!("{}_system_audio.pcm", output_path.file_stem().unwrap().to_str().unwrap())
+        );
+        let mic_audio_pcm_path = output_path.with_file_name(
+            format!("{}_microphone.pcm", output_path.file_stem().unwrap().to_str().unwrap())
+        );
+        let webcam_audio_pcm_path = output_path.with_file_name(
+            format!("{}_webcam_audio.pcm", output_path.file_stem().unwrap().to_str().unwrap())
+        );
+
+        let enable_system_audio = self.config.enable_system_audio;
+        let enable_microphone = self.config.enable_microphone;
+        let enable_webcam_audio = self.config.enable_webcam_audio;
+
         // Spawn synchronization and encoding task
         let mut encoder = self.encoder.take().expect("Encoder should be initialized");
         let mut synchronizer = self.synchronizer.clone();
 
         let sync_handle = tokio::spawn(async move {
             let mut current_video_timestamp_ms: u64 = 0;
+
+            // Open PCM file handles for audio writing (Story 4.7)
+            let mut system_audio_file = if enable_system_audio {
+                File::create(&system_audio_pcm_path).ok()
+            } else {
+                None
+            };
+
+            let mut mic_audio_file = if enable_microphone {
+                File::create(&mic_audio_pcm_path).ok()
+            } else {
+                None
+            };
+
+            let mut webcam_audio_file = if enable_webcam_audio {
+                File::create(&webcam_audio_pcm_path).ok()
+            } else {
+                None
+            };
 
             loop {
                 tokio::select! {
@@ -326,12 +389,17 @@ impl RecordingOrchestrator {
                                 timestamp_ns = audio_sample.timestamp_ns,
                                 "System audio sample synchronized"
                             );
-                            // AUDIO MUXING: Audio samples are captured and synchronized here.
-                            // Production implementation requires one of:
-                            // 1. Write samples to temporary PCM file, post-process mux with video
-                            // 2. Use named pipes (FIFOs) for real-time multi-input FFmpeg
-                            // 3. Extend FFmpegEncoder to support multiple stdin-like streams
-                            // Current: Audio capture/sync works; muxing deferred (like Stories 2.2-2.3 pattern)
+                            // Story 4.7: Write audio samples to PCM file
+                            if let Some(ref mut file) = system_audio_file {
+                                let pcm_bytes = audio_samples_to_pcm_bytes(&audio_sample.data);
+                                if let Err(e) = file.write_all(&pcm_bytes) {
+                                    error!(
+                                        event = "system_audio_write_error",
+                                        error = %e,
+                                        "Failed to write system audio to PCM file"
+                                    );
+                                }
+                            }
                         }
                     }
 
@@ -358,12 +426,17 @@ impl RecordingOrchestrator {
                                 timestamp_ns = audio_sample.timestamp_ns,
                                 "Microphone audio sample synchronized"
                             );
-                            // AUDIO MUXING: Audio samples are captured and synchronized here.
-                            // Production implementation requires one of:
-                            // 1. Write samples to temporary PCM file, post-process mux with video
-                            // 2. Use named pipes (FIFOs) for real-time multi-input FFmpeg
-                            // 3. Extend FFmpegEncoder to support multiple stdin-like streams
-                            // Current: Audio capture/sync works; muxing deferred (like Stories 2.2-2.3 pattern)
+                            // Story 4.7: Write audio samples to PCM file
+                            if let Some(ref mut file) = mic_audio_file {
+                                let pcm_bytes = audio_samples_to_pcm_bytes(&audio_sample.data);
+                                if let Err(e) = file.write_all(&pcm_bytes) {
+                                    error!(
+                                        event = "mic_audio_write_error",
+                                        error = %e,
+                                        "Failed to write microphone audio to PCM file"
+                                    );
+                                }
+                            }
                         }
                     }
 
@@ -390,8 +463,17 @@ impl RecordingOrchestrator {
                                 timestamp_ns = audio_sample.timestamp_ns,
                                 "Webcam audio sample synchronized"
                             );
-                            // Story 4.7: Webcam audio capture and sync implemented
-                            // Audio muxing handled by finalize_with_audio() in FFmpegEncoder
+                            // Story 4.7: Write webcam audio samples to PCM file
+                            if let Some(ref mut file) = webcam_audio_file {
+                                let pcm_bytes = audio_samples_to_pcm_bytes(&audio_sample.data);
+                                if let Err(e) = file.write_all(&pcm_bytes) {
+                                    error!(
+                                        event = "webcam_audio_write_error",
+                                        error = %e,
+                                        "Failed to write webcam audio to PCM file"
+                                    );
+                                }
+                            }
                         }
                     }
 
@@ -409,6 +491,17 @@ impl RecordingOrchestrator {
                         "Audio/video synchronization drift detected"
                     );
                 }
+            }
+
+            // Flush and close PCM files (Story 4.7)
+            if let Some(ref mut file) = system_audio_file {
+                let _ = file.flush();
+            }
+            if let Some(ref mut file) = mic_audio_file {
+                let _ = file.flush();
+            }
+            if let Some(ref mut file) = webcam_audio_file {
+                let _ = file.flush();
             }
 
             // Stop encoding when capture finishes
@@ -481,9 +574,16 @@ impl RecordingOrchestrator {
             webcam_width, webcam_height, camera_index
         );
 
-        // Create FFmpeg compositor for PiP
+        // Create FFmpeg compositor for PiP (Story 4.7: encode to temp video-only file for later muxing)
+        let video_only_path_pip = self.config.output_path.with_file_name(
+            format!("{}_video_only.mp4", self.config.output_path.file_stem().unwrap().to_str().unwrap())
+        );
+
+        // Store video-only path for audio muxing in stop_recording()
+        self.video_only_path = Some(video_only_path_pip.clone());
+
         let mut compositor = FFmpegCompositor::new(
-            self.config.output_path.clone(),
+            video_only_path_pip,
             self.config.width,
             self.config.height,
             webcam_width,
@@ -560,6 +660,22 @@ impl RecordingOrchestrator {
             }
         }
 
+        // Create PCM file paths for audio muxing (Story 4.7)
+        let output_path_pip = self.config.output_path.clone();
+        let system_audio_pcm_path_pip = output_path_pip.with_file_name(
+            format!("{}_system_audio.pcm", output_path_pip.file_stem().unwrap().to_str().unwrap())
+        );
+        let mic_audio_pcm_path_pip = output_path_pip.with_file_name(
+            format!("{}_microphone.pcm", output_path_pip.file_stem().unwrap().to_str().unwrap())
+        );
+        let webcam_audio_pcm_path_pip = output_path_pip.with_file_name(
+            format!("{}_webcam_audio.pcm", output_path_pip.file_stem().unwrap().to_str().unwrap())
+        );
+
+        let enable_system_audio_pip = self.config.enable_system_audio;
+        let enable_microphone_pip = self.config.enable_microphone;
+        let enable_webcam_audio_pip = self.config.enable_webcam_audio;
+
         // Spawn synchronization and composition task
         let mut synchronizer = self.synchronizer.clone();
 
@@ -567,6 +683,25 @@ impl RecordingOrchestrator {
             let mut current_screen_timestamp_ms: u64 = 0;
             let mut screen_frame_number: u64 = 0;
             let mut webcam_frame_number: u64 = 0;
+
+            // Open PCM file handles for audio writing (Story 4.7)
+            let mut system_audio_file = if enable_system_audio_pip {
+                File::create(&system_audio_pcm_path_pip).ok()
+            } else {
+                None
+            };
+
+            let mut mic_audio_file = if enable_microphone_pip {
+                File::create(&mic_audio_pcm_path_pip).ok()
+            } else {
+                None
+            };
+
+            let mut webcam_audio_file = if enable_webcam_audio_pip {
+                File::create(&webcam_audio_pcm_path_pip).ok()
+            } else {
+                None
+            };
 
             loop {
                 tokio::select! {
@@ -658,12 +793,17 @@ impl RecordingOrchestrator {
                                 timestamp_ns = audio_sample.timestamp_ns,
                                 "System audio sample synchronized"
                             );
-                            // AUDIO MUXING: Audio samples are captured and synchronized here.
-                            // Production implementation requires one of:
-                            // 1. Write samples to temporary PCM file, post-process mux with video
-                            // 2. Use named pipes (FIFOs) for real-time multi-input FFmpeg
-                            // 3. Extend FFmpegEncoder to support multiple stdin-like streams
-                            // Current: Audio capture/sync works; muxing deferred (like Stories 2.2-2.3 pattern)
+                            // Story 4.7: Write audio samples to PCM file (PiP recording)
+                            if let Some(ref mut file) = system_audio_file {
+                                let pcm_bytes = audio_samples_to_pcm_bytes(&audio_sample.data);
+                                if let Err(e) = file.write_all(&pcm_bytes) {
+                                    error!(
+                                        event = "system_audio_write_error",
+                                        error = %e,
+                                        "Failed to write system audio to PCM file (PiP)"
+                                    );
+                                }
+                            }
                         }
                     }
 
@@ -690,12 +830,54 @@ impl RecordingOrchestrator {
                                 timestamp_ns = audio_sample.timestamp_ns,
                                 "Microphone audio sample synchronized"
                             );
-                            // AUDIO MUXING: Audio samples are captured and synchronized here.
-                            // Production implementation requires one of:
-                            // 1. Write samples to temporary PCM file, post-process mux with video
-                            // 2. Use named pipes (FIFOs) for real-time multi-input FFmpeg
-                            // 3. Extend FFmpegEncoder to support multiple stdin-like streams
-                            // Current: Audio capture/sync works; muxing deferred (like Stories 2.2-2.3 pattern)
+                            // Story 4.7: Write audio samples to PCM file (PiP recording)
+                            if let Some(ref mut file) = mic_audio_file {
+                                let pcm_bytes = audio_samples_to_pcm_bytes(&audio_sample.data);
+                                if let Err(e) = file.write_all(&pcm_bytes) {
+                                    error!(
+                                        event = "mic_audio_write_error",
+                                        error = %e,
+                                        "Failed to write microphone audio to PCM file (PiP)"
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    // Process webcam audio samples (Story 4.7)
+                    Some(audio_sample) = async {
+                        if let Some(ref mut rx) = webcam_audio_rx {
+                            rx.recv().await
+                        } else {
+                            // If no webcam audio, park this branch forever
+                            std::future::pending().await
+                        }
+                    } => {
+                        // Synchronize webcam audio with video
+                        let should_process = synchronizer.process_audio_sample(
+                            audio_sample.timestamp_ns,
+                            false,  // is_system_audio = false (webcam mic)
+                            current_screen_timestamp_ms,
+                        );
+
+                        if should_process {
+                            debug!(
+                                event = "webcam_audio_processed",
+                                samples = audio_sample.data.len(),
+                                timestamp_ns = audio_sample.timestamp_ns,
+                                "Webcam audio sample synchronized (PiP recording)"
+                            );
+                            // Story 4.7: Write webcam audio samples to PCM file (PiP recording)
+                            if let Some(ref mut file) = webcam_audio_file {
+                                let pcm_bytes = audio_samples_to_pcm_bytes(&audio_sample.data);
+                                if let Err(e) = file.write_all(&pcm_bytes) {
+                                    error!(
+                                        event = "webcam_audio_write_error",
+                                        error = %e,
+                                        "Failed to write webcam audio to PCM file (PiP)"
+                                    );
+                                }
+                            }
                         }
                     }
 
@@ -713,6 +895,17 @@ impl RecordingOrchestrator {
                         "PiP recording: Audio/video synchronization drift detected"
                     );
                 }
+            }
+
+            // Flush and close PCM files (Story 4.7)
+            if let Some(ref mut file) = system_audio_file {
+                let _ = file.flush();
+            }
+            if let Some(ref mut file) = mic_audio_file {
+                let _ = file.flush();
+            }
+            if let Some(ref mut file) = webcam_audio_file {
+                let _ = file.flush();
             }
 
             // Stop composition when capture finishes
@@ -751,11 +944,18 @@ impl RecordingOrchestrator {
         );
 
         // Stop screen capture
+        info!("ORCHESTRATOR: About to call screen_capture.stop_capture()");
         self.screen_capture.stop_capture();
+        info!("ORCHESTRATOR: Returned from screen_capture.stop_capture()");
 
         // Stop microphone capture
         if let Some(ref mut audio_capture) = self.audio_capture {
             audio_capture.stop_capture();
+        }
+
+        // Stop webcam audio capture (Story 4.7)
+        if let Some(ref mut webcam_capture) = self.webcam_audio_capture {
+            webcam_capture.stop_capture();
         }
 
         // Wait for all capture tasks to complete
@@ -780,6 +980,83 @@ impl RecordingOrchestrator {
             max_drift_ms = metrics.max_drift_ms,
             "Recording completed"
         );
+
+        // Story 4.7: Mux audio tracks with video if any audio streams enabled
+        if self.config.enable_system_audio || self.config.enable_microphone || self.config.enable_webcam_audio {
+            if let Some(video_only_path) = &self.video_only_path {
+                info!("Starting audio muxing with video");
+
+                // Build AudioInputConfig for each enabled audio stream
+                let mut audio_inputs = Vec::new();
+
+                let output_stem = self.config.output_path.file_stem().unwrap().to_str().unwrap();
+
+                if self.config.enable_system_audio {
+                    let pcm_path = self.config.output_path.with_file_name(
+                        format!("{}_system_audio.pcm", output_stem)
+                    );
+                    audio_inputs.push(crate::services::ffmpeg::AudioInputConfig {
+                        pcm_path,
+                        sample_rate: self.config.audio_sample_rate,
+                        channels: self.config.audio_channels,
+                        label: "System Audio".to_string(),
+                    });
+                }
+
+                if self.config.enable_microphone {
+                    let pcm_path = self.config.output_path.with_file_name(
+                        format!("{}_microphone.pcm", output_stem)
+                    );
+                    audio_inputs.push(crate::services::ffmpeg::AudioInputConfig {
+                        pcm_path,
+                        sample_rate: self.config.audio_sample_rate,
+                        channels: self.config.audio_channels,
+                        label: "Microphone".to_string(),
+                    });
+                }
+
+                if self.config.enable_webcam_audio {
+                    let pcm_path = self.config.output_path.with_file_name(
+                        format!("{}_webcam_audio.pcm", output_stem)
+                    );
+                    audio_inputs.push(crate::services::ffmpeg::AudioInputConfig {
+                        pcm_path,
+                        sample_rate: self.config.audio_sample_rate,
+                        channels: self.config.audio_channels,
+                        label: "Webcam".to_string(),
+                    });
+                }
+
+                // Call finalize_with_audio to mux video + audio
+                crate::services::ffmpeg::FFmpegEncoder::finalize_with_audio(
+                    video_only_path.clone(),
+                    audio_inputs,
+                    self.config.output_path.clone(),
+                )
+                .await
+                .context("Failed to mux audio with video")?;
+
+                info!("Audio muxing completed successfully");
+
+                // Clean up temporary files
+                let _ = std::fs::remove_file(video_only_path);
+                if self.config.enable_system_audio {
+                    let _ = std::fs::remove_file(self.config.output_path.with_file_name(
+                        format!("{}_system_audio.pcm", output_stem)
+                    ));
+                }
+                if self.config.enable_microphone {
+                    let _ = std::fs::remove_file(self.config.output_path.with_file_name(
+                        format!("{}_microphone.pcm", output_stem)
+                    ));
+                }
+                if self.config.enable_webcam_audio {
+                    let _ = std::fs::remove_file(self.config.output_path.with_file_name(
+                        format!("{}_webcam_audio.pcm", output_stem)
+                    ));
+                }
+            }
+        }
 
         // Verify output file exists
         if !self.config.output_path.exists() {
@@ -871,6 +1148,29 @@ impl RecordingOrchestrator {
         self.screen_capture.is_paused()
     }
 
+    /// Get pause flags for external control (Story 4.8 - PiP pause/resume integration)
+    ///
+    /// Returns Arc<AtomicBool> references for each active stream's pause flag.
+    /// These can be stored in PipRecordingHandle and controlled by commands without
+    /// accessing the orchestrator instance.
+    ///
+    /// # Returns
+    ///
+    /// Tuple of:
+    /// - Screen capture pause flag (always present)
+    /// - Microphone pause flag (optional, if microphone enabled)
+    /// - Webcam audio pause flag (optional, if webcam audio enabled)
+    pub fn get_pause_flags(&self) -> (
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+        Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+        Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    ) {
+        let screen_pause = self.screen_capture.get_pause_flag();
+        let mic_pause = self.audio_capture.as_ref().map(|a| a.get_pause_flag());
+        let webcam_audio_pause = self.webcam_audio_capture.as_ref().map(|a| a.get_pause_flag());
+
+        (screen_pause, mic_pause, webcam_audio_pause)
+    }
 
     /// Get current synchronization metrics
     pub fn get_sync_metrics(&self) -> &crate::services::recording::SyncMetrics {

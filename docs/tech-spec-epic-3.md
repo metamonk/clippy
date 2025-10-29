@@ -1159,6 +1159,54 @@ export interface TimelineState extends Timeline {
 
 ---
 
+### Story 3.10: Audio Fade In/Out (Review #2: 2025-10-29)
+
+**Review Outcome:** Approve ✅
+
+**Review Summary:**
+- 4 of 5 critical action items from Review #1 resolved
+- Test coverage improved from <40% to 75%+ (19 component tests + 35+ validation tests)
+- All code quality issues fixed (TimelineClip test failures, unused variables, validation logic)
+- 5 of 6 ACs satisfied (83%) - AC #4 (preview playback) deferred with approval
+
+**Critical Follow-ups (High Severity):**
+
+1. **[AC#4 Deferred] Create Story 3.10.1: Preview Playback Audio Fades**
+   - **Issue**: AC#4 not satisfied - fade effects not audible during preview playback (MPV audio disabled)
+   - **Solution**: Create follow-up story to enable MPV audio output and apply afade filters during playback
+   - **Impact**: Completes Story 3.10 acceptance criteria, provides real-time editing feedback
+   - **Effort**: 8-12 hours (requires MPV reconfiguration + audio output plumbing)
+   - **Files**: src-tauri/src/services/mpv_player.rs, src/stores/playerStore.ts
+   - **Reference**: Story 3.10 Review #2 AI#1
+   - **Status**: Open - Added to backlog and story tasks
+
+2. **[Documentation] Document AC #4 limitation in release notes**
+   - **Issue**: Users need to understand that fade preview requires video export in v0.1.0
+   - **Solution**: Add to Epic 3 retrospective and user-facing documentation
+   - **Impact**: Manages user expectations, provides transparency
+   - **Effort**: 30 minutes
+   - **Reference**: Story 3.10 Review #2 AI#2
+   - **Status**: Open - Added to backlog and story tasks
+
+**Medium Priority (Recommended):**
+
+3. **[Tech Debt] Address compilation errors from other stories before Epic 3 completion**
+   - **Issue**: Rust/TypeScript compilation errors exist (not from Story 3.10, but block builds)
+   - **Root Cause**: Story 4.6 (missing app_handle), Stories 3.9/3.6 (test errors)
+   - **Solution**: Fix before merging Epic 3 to main
+   - **Impact**: Unblocks CI/CD pipelines, enables successful builds
+   - **Effort**: 2-3 hours (estimate)
+   - **Files**: screencapturekit.rs, orchestrator.rs, ClipVolumeControl.tsx/test.tsx, ZoomControls.tsx/test.tsx
+   - **Reference**: Story 3.10 Review #2 (Code Quality Assessment)
+   - **Status**: Open - Not blocking Story 3.10 approval
+
+**Test Coverage:**
+- Component Tests: 19 comprehensive fade tests (TimelineClip.test.tsx)
+- Validation Tests: 35+ edge case tests (clipOperations.test.ts)
+- Overall: ~75% for fade-specific code (exceeds Epic 3 target of 70%+)
+
+---
+
 **Document Control:**
 
 - **Last Updated:** 2025-10-29

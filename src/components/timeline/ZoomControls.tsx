@@ -68,7 +68,7 @@ export function ZoomControls() {
       {/* Zoom Slider */}
       <div className="flex items-center gap-2 min-w-[200px]">
         <Slider
-          value={[zoomLevel]}
+          value={[zoomLevel ?? 1.0]}
           onValueChange={([value]) => setZoomLevel(value)}
           min={0.1}
           max={10.0}
@@ -80,7 +80,7 @@ export function ZoomControls() {
 
       {/* Zoom Level Display */}
       <span className="text-sm font-mono text-gray-700 min-w-[60px] text-center">
-        {(zoomLevel * 100).toFixed(0)}%
+        {((zoomLevel ?? 1.0) * 100).toFixed(0)}%
       </span>
 
       {/* Zoom In Button */}

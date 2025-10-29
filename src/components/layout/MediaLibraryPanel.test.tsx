@@ -24,7 +24,7 @@ describe("MediaLibraryPanel", () => {
     const { container } = render(<MediaLibraryPanel />);
     const panel = container.firstChild as HTMLElement;
 
-    expect(panel).toHaveClass("w-1/5");
+    expect(panel).toHaveClass("w-80");
   });
 
   it("is keyboard focusable", () => {

@@ -293,3 +293,77 @@ pub fn mpv_capture_frame(state: State<MpvPlayerState>) -> MpvResponse {
         }
     }
 }
+
+/// Set volume for current playback (Story 3.9.1/3.10.1)
+#[tauri::command]
+pub fn mpv_set_volume(volume: f32, muted: bool, state: State<MpvPlayerState>) -> MpvResponse {
+    info!("[Command] mpv_set_volume called with volume: {}, muted: {}", volume, muted);
+
+    let player = state.0.lock().unwrap();
+
+    match player.as_ref() {
+        Some(mpv) => match mpv.set_volume(volume, muted) {
+            Ok(_) => MpvResponse::success("Volume set successfully"),
+            Err(e) => {
+                error!("[Command] Failed to set volume: {}", e);
+                MpvResponse::error(format!("Failed to set volume: {}", e))
+            }
+        },
+        None => {
+            error!("[Command] MPV player not initialized");
+            MpvResponse::error("MPV player not initialized")
+        }
+    }
+}
+
+/// Apply fade-in and fade-out audio filters (Story 3.10.1)
+#[tauri::command]
+pub fn mpv_apply_fade_filters(
+    fade_in_ms: u64,
+    fade_out_ms: u64,
+    clip_duration_ms: u64,
+    state: State<MpvPlayerState>
+) -> MpvResponse {
+    info!(
+        "[Command] mpv_apply_fade_filters called with fade_in: {}ms, fade_out: {}ms, duration: {}ms",
+        fade_in_ms, fade_out_ms, clip_duration_ms
+    );
+
+    let player = state.0.lock().unwrap();
+
+    match player.as_ref() {
+        Some(mpv) => match mpv.apply_fade_filters(fade_in_ms, fade_out_ms, clip_duration_ms) {
+            Ok(_) => MpvResponse::success("Fade filters applied successfully"),
+            Err(e) => {
+                error!("[Command] Failed to apply fade filters: {}", e);
+                MpvResponse::error(format!("Failed to apply fade filters: {}", e))
+            }
+        },
+        None => {
+            error!("[Command] MPV player not initialized");
+            MpvResponse::error("MPV player not initialized")
+        }
+    }
+}
+
+/// Clear all audio filters (Story 3.10.1)
+#[tauri::command]
+pub fn mpv_clear_audio_filters(state: State<MpvPlayerState>) -> MpvResponse {
+    info!("[Command] mpv_clear_audio_filters called");
+
+    let player = state.0.lock().unwrap();
+
+    match player.as_ref() {
+        Some(mpv) => match mpv.clear_audio_filters() {
+            Ok(_) => MpvResponse::success("Audio filters cleared successfully"),
+            Err(e) => {
+                error!("[Command] Failed to clear audio filters: {}", e);
+                MpvResponse::error(format!("Failed to clear audio filters: {}", e))
+            }
+        },
+        None => {
+            error!("[Command] MPV player not initialized");
+            MpvResponse::error("MPV player not initialized")
+        }
+    }
+}

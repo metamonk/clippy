@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Group, Rect, Text, Line } from 'react-konva';
+import { Group, Rect, Text, Line, Circle } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Clip } from '@/types/timeline';
 import { calculateClipPosition, formatTimeSimple } from '@/lib/timeline/timeUtils';
@@ -127,6 +127,15 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   const strokeColor = isSelected ? '#ffffff' : '#666666';
   const textColor = '#ffffff';
   // const trimmedRegionColor = '#2a2a2a'; // TODO: Use for visual trim regions
+
+  // Story 4.7: Multi-audio track indicator colors
+  const getAudioTrackColor = (label: string): string => {
+    const normalizedLabel = label.toLowerCase();
+    if (normalizedLabel.includes('system')) return '#4a9eff'; // Blue for system audio
+    if (normalizedLabel.includes('microphone') || normalizedLabel.includes('mic')) return '#ff4a6e'; // Red for microphone
+    if (normalizedLabel.includes('webcam') || normalizedLabel.includes('camera')) return '#4aff6e'; // Green for webcam
+    return '#888888'; // Gray for unknown tracks
+  };
 
   // Mouse event handlers for trim handles (using window-level tracking)
   const handleLeftTrimMouseDown = (e: KonvaEventObject<MouseEvent>) => {
@@ -516,6 +525,25 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
           onMouseLeave={() => setRightFadeHandleHover(false)}
           cursor="ew-resize"
         />
+      )}
+
+      {/* Story 4.7: Multi-audio track indicators (show when clip has multiple audio tracks) */}
+      {clip.audioTracks && clip.audioTracks.length > 0 && width > 80 && (
+        <>
+          {clip.audioTracks.map((track, index) => (
+            <Circle
+              key={`audio-track-${track.trackIndex}`}
+              x={8 + index * 10} // Horizontal spacing: 8px offset + 10px per indicator
+              y={clipPadding + clipInnerHeight - 6} // Position near bottom of clip
+              radius={3}
+              fill={getAudioTrackColor(track.label)}
+              stroke="#ffffff"
+              strokeWidth={0.5}
+              listening={false}
+              opacity={track.muted ? 0.3 : 0.9} // Dim muted tracks
+            />
+          ))}
+        </>
       )}
     </Group>
   );

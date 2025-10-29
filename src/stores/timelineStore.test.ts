@@ -1100,7 +1100,6 @@ describe('timelineStore', () => {
 
     it('records current state to history', () => {
       const state = useTimelineStore.getState();
-      const trackId = state.tracks[0].id;
 
       const historyLengthBefore = state.history.length;
 

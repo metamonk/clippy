@@ -28,7 +28,7 @@ describe("TimelinePanel", () => {
     const { container } = render(<TimelinePanel />);
     const panel = container.firstChild as HTMLElement;
 
-    expect(panel).toHaveClass("h-3/5");
+    expect(panel).toHaveClass("flex-1");
   });
 
   it("is keyboard focusable", () => {

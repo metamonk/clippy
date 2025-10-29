@@ -63,7 +63,7 @@ describe("MediaImport", () => {
   it("should show supported formats message", () => {
     render(<MediaImport />);
 
-    expect(screen.getByText(/Supports MP4 and MOV files/i)).toBeInTheDocument();
+    expect(screen.getByText(/Supports MP4, MOV, and WebM files/i)).toBeInTheDocument();
   });
 
   it("should open file picker when button is clicked", async () => {
@@ -80,7 +80,7 @@ describe("MediaImport", () => {
       filters: [
         {
           name: "Video",
-          extensions: ["mp4", "mov"],
+          extensions: ["mp4", "mov", "webm"],
         },
       ],
     });

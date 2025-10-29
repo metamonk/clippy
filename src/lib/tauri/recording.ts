@@ -152,3 +152,42 @@ export async function sendRecordingNotification(title: string, body: string): Pr
 export async function getAvailableWindows(): Promise<WindowInfo[]> {
   return invoke<WindowInfo[]>('cmd_get_available_windows');
 }
+
+/**
+ * Start Picture-in-Picture (PiP) recording - screen + webcam simultaneously (Story 4.6)
+ * Returns a recording ID (UUID) for tracking
+ *
+ * @param cameraIndex - The index of the camera to use for the webcam feed
+ * @param pipX - X position of the PiP overlay (pixels from left)
+ * @param pipY - Y position of the PiP overlay (pixels from top)
+ * @param pipWidth - Width of the PiP overlay in pixels
+ * @param pipHeight - Height of the PiP overlay in pixels
+ * @param outputPath - Path where the composited MP4 will be saved
+ */
+export async function startPipRecording(
+  cameraIndex: number,
+  pipX: number,
+  pipY: number,
+  pipWidth: number,
+  pipHeight: number,
+  outputPath: string
+): Promise<string> {
+  return invoke<string>('cmd_start_pip_recording', {
+    cameraIndex,
+    pipX,
+    pipY,
+    pipWidth,
+    pipHeight,
+    outputPath,
+  });
+}
+
+/**
+ * Stop Picture-in-Picture (PiP) recording (Story 4.6)
+ * Returns the file path where the composited recording was saved
+ *
+ * @param recordingId - The UUID of the PiP recording to stop
+ */
+export async function stopPipRecording(recordingId: string): Promise<string> {
+  return invoke<string>('cmd_stop_pip_recording', { recordingId });
+}

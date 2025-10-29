@@ -94,6 +94,12 @@ struct VideoStreamOutput {
     last_frame_time: std::sync::Arc<std::sync::Mutex<std::time::Instant>>,
     /// Pause flag for discarding frames during pause (Story 4.8)
     is_paused: Arc<AtomicBool>,
+    /// Tokio runtime handle for spawning async tasks from system callback threads
+    runtime_handle: tokio::runtime::Handle,
+    /// Consecutive failure counter to prevent infinite loops
+    consecutive_failures: Arc<std::sync::atomic::AtomicU32>,
+    /// Abort flag to signal critical failure to main loop
+    should_abort: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "macos")]
@@ -105,6 +111,7 @@ impl SCStreamOutputTrait for VideoStreamOutput {
     ) {
         // Only process video frames
         if of_type != SCStreamOutputType::Screen {
+            debug!("Non-screen buffer received: {:?}", of_type);
             return;
         }
 
@@ -116,9 +123,32 @@ impl SCStreamOutputTrait for VideoStreamOutput {
 
         // Extract pixel buffer from sample buffer
         let pixel_buffer = match sample_buffer.get_pixel_buffer() {
-            Ok(buffer) => buffer,
+            Ok(buffer) => {
+                // Reset failure counter and log success
+                let prev_failures = self.consecutive_failures.swap(0, Ordering::Relaxed);
+                if prev_failures > 0 {
+                    info!("Successfully recovered from {} consecutive pixel buffer failures", prev_failures);
+                }
+                buffer
+            }
             Err(e) => {
-                warn!("Failed to get pixel buffer from sample buffer: {:?}", e);
+                let failure_count = self.consecutive_failures.fetch_add(1, Ordering::Relaxed) + 1;
+
+                if failure_count == 1 {
+                    warn!("Failed to get pixel buffer from sample buffer: {:?} (failure #{}/100)", e, failure_count);
+                    warn!("This may indicate ScreenCaptureKit is using IOSurface or compressed format");
+                    warn!("Consider checking macOS ScreenCaptureKit API version or pixel format settings");
+                } else if failure_count <= 10 {
+                    warn!("Failed to get pixel buffer from sample buffer: {:?} (failure #{}/100)", e, failure_count);
+                } else if failure_count == 100 {
+                    error!("CRITICAL: 100 consecutive pixel buffer failures. Stopping capture to prevent infinite loop.");
+                    error!("This typically indicates incompatible stream configuration or display format issues.");
+                    error!("Possible causes: wrong pixel format, display permissions, or incompatible display mode.");
+                    // Signal main loop to abort
+                    self.should_abort.store(true, Ordering::Relaxed);
+                } else if failure_count % 100 == 0 {
+                    error!("CRITICAL: {} consecutive failures - capture loop should have stopped", failure_count);
+                }
                 return;
             }
         };
@@ -139,6 +169,9 @@ impl SCStreamOutputTrait for VideoStreamOutput {
         let frame_data = lock_guard.as_slice().to_vec();
 
         // Lock guard automatically unlocks when dropped
+
+        // Log every successful frame at INFO level for debugging
+        info!("Frame captured successfully: {}x{}, {} bytes, sending to encoder", width, height, frame_data.len());
 
         // Calculate timestamp since recording start
         let timestamp_ms = if let Ok(guard) = self.recording_start.lock() {
@@ -165,17 +198,13 @@ impl SCStreamOutputTrait for VideoStreamOutput {
         }
 
         // Send frame through channel (blocking if channel is full - backpressure)
-        // Use Handle::current() to spawn on the Tokio runtime from any thread
+        // Use stored runtime handle to spawn on the Tokio runtime from any thread
         let tx = self.frame_tx.clone();
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async move {
-                if let Err(e) = tx.send(frame).await {
-                    error!("Failed to send frame: {}", e);
-                }
-            });
-        } else {
-            warn!("No Tokio runtime available - cannot send frame");
-        }
+        self.runtime_handle.spawn(async move {
+            if let Err(e) = tx.send(frame).await {
+                error!("Failed to send frame: {}", e);
+            }
+        });
     }
 }
 
@@ -188,6 +217,8 @@ struct AudioStreamOutput {
     channels: u16,
     /// Pause flag for discarding audio samples during pause (Story 4.8)
     is_paused: Arc<AtomicBool>,
+    /// Tokio runtime handle for spawning async tasks from system callback threads
+    runtime_handle: tokio::runtime::Handle,
 }
 
 #[cfg(target_os = "macos")]
@@ -239,17 +270,13 @@ impl SCStreamOutputTrait for AudioStreamOutput {
         };
 
         // Send audio sample through channel
-        // Use Handle::current() to spawn on the Tokio runtime from any thread
+        // Use stored runtime handle to spawn on the Tokio runtime from any thread
         let tx = self.audio_tx.clone();
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async move {
-                if let Err(e) = tx.send(audio_sample).await {
-                    error!("Failed to send audio sample: {}", e);
-                }
-            });
-        } else {
-            warn!("No Tokio runtime available - cannot send audio sample");
-        }
+        self.runtime_handle.spawn(async move {
+            if let Err(e) = tx.send(audio_sample).await {
+                error!("Failed to send audio sample: {}", e);
+            }
+        });
     }
 }
 
@@ -334,6 +361,8 @@ pub struct ScreenCapture {
     window_id: Option<u32>,
     /// Pause flag for frame/sample discard (Story 4.8)
     is_paused: Arc<AtomicBool>,
+    /// Stop signal for capture loop
+    stop_signal: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "macos")]
@@ -372,10 +401,28 @@ impl ScreenCapture {
             }
         }
 
-        // Get display dimensions (use standard 1920x1080 for now)
-        // In real implementation, would query CGMainDisplayID dimensions
-        let width = 1920;
-        let height = 1080;
+        // Get actual display dimensions from ScreenCaptureKit
+        let (width, height) = {
+            match SCShareableContent::get() {
+                Ok(content) => {
+                    let displays = content.displays();
+                    if displays.is_empty() {
+                        warn!("No displays found, using default 1920x1080");
+                        (1920, 1080)
+                    } else {
+                        let display = &displays[0];
+                        let w = display.width();
+                        let h = display.height();
+                        debug!("Detected display dimensions: {}x{}", w, h);
+                        (w as usize, h as usize)
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to get display dimensions: {:?}, using default 1920x1080", e);
+                    (1920, 1080)
+                }
+            }
+        };
 
         info!(
             "ScreenCapture initialized successfully: {}x{}, window_id: {:?}",
@@ -389,6 +436,7 @@ impl ScreenCapture {
             audio_config: SystemAudioConfig::default(),
             window_id,
             is_paused: Arc::new(AtomicBool::new(false)),
+            stop_signal: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -571,10 +619,19 @@ impl ScreenCapture {
             window_id
         );
 
+        // Reset stop signal for new recording
+        self.stop_signal.store(false, Ordering::Relaxed);
+
+        // Clone stop signal for capture task
+        let stop_signal = self.stop_signal.clone();
+
         // Spawn capture task
         let handle = tokio::spawn(async move {
             // Story 4.1 - AC #7: Initialize last frame time for window closure detection
             let last_frame_time = std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+
+            // Create abort flag for critical failure detection (must be outside scope)
+            let should_abort = Arc::new(AtomicBool::new(false));
 
             // Create and start capture stream (in a scope to drop non-Send types)
             let stream = {
@@ -629,13 +686,17 @@ impl ScreenCapture {
                 };
 
                 // Configure stream
+                info!("Configuring stream: {}x{} @ BGRA format", width, height);
                 let config = match SCStreamConfiguration::new()
                     .set_width(width as u32)
                     .and_then(|c| c.set_height(height as u32))
                     .and_then(|c| c.set_pixel_format(PixelFormat::BGRA))
                     .and_then(|c| c.set_shows_cursor(true))
                 {
-                    Ok(c) => c,
+                    Ok(c) => {
+                        info!("Stream configuration successful");
+                        c
+                    }
                     Err(e) => {
                         error!("Failed to configure stream: {:?}", e);
                         return;
@@ -679,6 +740,9 @@ impl ScreenCapture {
                     recording_start: recording_start.clone(),
                     last_frame_time: last_frame_time.clone(),
                     is_paused: is_paused.clone(), // Story 4.8
+                    runtime_handle: tokio::runtime::Handle::current(),
+                    consecutive_failures: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+                    should_abort: should_abort.clone(),
                 };
 
                 // Create SCStream
@@ -695,6 +759,7 @@ impl ScreenCapture {
                         sample_rate: audio_config.sample_rate,
                         channels: audio_config.channels,
                         is_paused: is_paused.clone(), // Story 4.8
+                        runtime_handle: tokio::runtime::Handle::current(),
                     };
                     stream.add_output_handler(audio_output, SCStreamOutputType::Audio);
                     info!("System audio capture enabled ({}Hz, {} channels)",
@@ -718,8 +783,28 @@ impl ScreenCapture {
 
             // Keep stream alive - it will continue capturing until channel is closed
             // The delegate will handle frame callbacks
+            let mut loop_count = 0u32;
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                loop_count += 1;
+
+                // Log every 10 iterations (1 second)
+                if loop_count % 10 == 0 {
+                    debug!("Capture loop alive ({}), checking stop_signal", loop_count);
+                }
+
+                // Check if stop requested
+                let stop_requested = stop_signal.load(Ordering::Relaxed);
+                if stop_requested {
+                    info!("Stop signal received (stop_signal=true), stopping capture");
+                    break;
+                }
+
+                // Check if critical failure occurred (too many pixel buffer failures)
+                if should_abort.load(Ordering::Relaxed) {
+                    error!("Aborting capture due to critical pixel buffer failures");
+                    break;
+                }
 
                 // Check if frame channel is closed
                 if frame_tx.is_closed() {
@@ -764,9 +849,13 @@ impl ScreenCapture {
     /// This method stops the ongoing capture process. The capture task will complete
     /// after processing any remaining frames in the pipeline.
     pub fn stop_capture(&mut self) {
+        info!("stop_capture() called, is_capturing={}", self.is_capturing);
         if self.is_capturing {
-            info!("Stopping screen capture");
+            info!("Stopping screen capture - setting stop signal");
             self.is_capturing = false;
+            self.stop_signal.store(true, Ordering::Relaxed);
+        } else {
+            warn!("stop_capture() called but is_capturing is false - stop signal NOT set");
         }
     }
 
@@ -817,6 +906,19 @@ impl ScreenCapture {
     /// Check if capture is currently paused (Story 4.8)
     pub fn is_paused(&self) -> bool {
         self.is_paused.load(Ordering::Relaxed)
+    }
+
+    /// Get pause flag for external access (Story 4.8)
+    ///
+    /// Returns a clone of the Arc<AtomicBool> pause flag, allowing
+    /// external code (e.g., command layer) to control pause state.
+    pub fn get_pause_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.is_paused)
+    }
+
+    /// Get the stop signal for external control
+    pub fn get_stop_signal(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.stop_signal)
     }
 }
 
@@ -905,7 +1007,7 @@ mod tests {
             let (tx, mut rx) = tokio::sync::mpsc::channel(30);
 
             // Start continuous capture (without audio)
-            let capture_handle = capture.start_continuous_capture(tx, None).unwrap();
+            let capture_handle = capture.start_continuous_capture(tx, None, None).unwrap();
 
             // Receive a few frames to verify streaming
             let mut frame_count = 0;
@@ -942,7 +1044,7 @@ mod tests {
             let (tx, mut rx) = tokio::sync::mpsc::channel(2);
 
             // Start capture (without audio)
-            let _capture_handle = capture.start_continuous_capture(tx, None).unwrap();
+            let _capture_handle = capture.start_continuous_capture(tx, None, None).unwrap();
 
             // Slow consumer - only read every 100ms
             let start = std::time::Instant::now();
@@ -1033,7 +1135,7 @@ mod tests {
             let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel(30);
 
             // Start capture with audio
-            let _capture_handle = capture.start_continuous_capture(video_tx, Some(audio_tx)).unwrap();
+            let _capture_handle = capture.start_continuous_capture(video_tx, Some(audio_tx), None).unwrap();
 
             // Receive a few frames and audio samples
             let mut video_count = 0;

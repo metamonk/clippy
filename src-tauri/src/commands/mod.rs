@@ -18,6 +18,9 @@ pub use mpv::{
     mpv_is_playing,
     mpv_get_video_dimensions,
     mpv_capture_frame,
+    mpv_set_volume,
+    mpv_apply_fade_filters,
+    mpv_clear_audio_filters,
 };
 pub use recording::{
     cmd_check_screen_recording_permission,
@@ -31,6 +34,7 @@ pub use recording::{
     cmd_stop_webcam_recording,
     cmd_start_screen_recording,
     cmd_start_pip_recording,
+    cmd_stop_pip_recording,
     cmd_stop_recording,
     cmd_pause_recording,
     cmd_resume_recording,

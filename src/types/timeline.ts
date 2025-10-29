@@ -3,6 +3,16 @@
  * All timestamps are in MILLISECONDS (ADR-005)
  */
 
+/**
+ * Audio track metadata for multi-audio clips (Story 4.7)
+ */
+export interface AudioTrack {
+  trackIndex: number; // Track index (0-based: 0 = first audio track, 1 = second, etc.)
+  label: string; // Human-readable label (e.g., "System Audio", "Microphone", "Webcam")
+  volume: number; // Volume level for this track (0.0 to 1.0)
+  muted: boolean; // Whether this track is muted
+}
+
 export interface Clip {
   id: string; // UUID
   filePath: string; // Absolute path to media file
@@ -15,6 +25,9 @@ export interface Clip {
   fadeOut?: number; // Fade-out duration (ms)
   volume?: number; // Volume level (0.0 to 1.0)
   muted?: boolean; // Whether clip is muted
+  // Multiple audio tracks for PiP recordings (Story 4.7)
+  // Each track can be independently muted/volume controlled
+  audioTracks?: AudioTrack[];
 }
 
 export interface Track {
@@ -36,6 +49,17 @@ export interface TimelineViewConfig {
   pixelsPerSecond: number; // Zoom level - pixels per second of timeline
   trackHeight: number; // Height of a single track in pixels
   rulerHeight: number; // Height of time ruler in pixels
+  zoomLevel?: number; // Zoom multiplier (0.1x to 10x) - Story 3.6
+}
+
+/**
+ * Snap target for timeline snapping (Story 3.7)
+ */
+export interface SnapTarget {
+  position: number; // Time position in milliseconds
+  type: 'clip-start' | 'clip-end' | 'grid';
+  trackId?: string; // Only for clip snapping
+  clipId?: string; // Only for clip snapping
 }
 
 /**

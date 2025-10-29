@@ -22,7 +22,11 @@ impl MpvPlayer {
         // Use 'null' video output for no window creation, relying on screenshot-based frame capture
         mpv.set_property("vo", "null").map_err(|e| anyhow!("Failed to set video output: {:?}", e))?;
         mpv.set_property("force-window", "no").map_err(|e| anyhow!("Failed to disable window: {:?}", e))?;
-        mpv.set_property("audio", "no").map_err(|e| anyhow!("Failed to disable audio: {:?}", e))?;
+
+        // Enable audio output for preview playback (Story 3.10.1)
+        // Audio driver auto-detected (CoreAudio on macOS, PulseAudio/ALSA on Linux, WASAPI on Windows)
+        mpv.set_property("audio", "yes").map_err(|e| anyhow!("Failed to enable audio: {:?}", e))?;
+
         mpv.set_property("hwdec", "auto").map_err(|e| anyhow!("Failed to enable hardware decoding: {:?}", e))?;
         mpv.set_property("keep-open", "always").map_err(|e| anyhow!("Failed to set keep-open: {:?}", e))?;
         mpv.set_property("pause", "yes").map_err(|e| anyhow!("Failed to start paused: {:?}", e))?;
@@ -214,6 +218,98 @@ impl MpvPlayer {
         let _ = fs::remove_file(&screenshot_path);
 
         Ok(image_data)
+    }
+
+    /// Set volume for current playback (Story 3.9.1/3.10.1)
+    ///
+    /// # Arguments
+    /// * `volume` - Volume in Clippy scale (0-200), where 100 is normal
+    /// * `muted` - If true, volume is set to 0 regardless of volume parameter
+    ///
+    /// # Note
+    /// MPV uses 0-100 scale, conversion: mpv_volume = min(100, clippy_volume / 2)
+    pub fn set_volume(&self, volume: f32, muted: bool) -> Result<()> {
+        let mpv = self.mpv.lock().unwrap();
+
+        let mpv_volume = if muted {
+            0.0_f64
+        } else {
+            // Convert from Clippy's 0-200 scale to MPV's 0-100 scale
+            // Clippy 100% = MPV 50% (normal)
+            // Clippy 200% = MPV 100% (max)
+            ((volume as f64) / 2.0).min(100.0).max(0.0)
+        };
+
+        debug!("[MPV] Setting volume: {} (clippy: {}, muted: {})", mpv_volume, volume, muted);
+
+        mpv.set_property("volume", mpv_volume)
+            .map_err(|e| anyhow!("Failed to set volume: {:?}", e))?;
+
+        Ok(())
+    }
+
+    /// Apply fade-in and fade-out audio filters (Story 3.10.1)
+    ///
+    /// # Arguments
+    /// * `fade_in_ms` - Fade-in duration in milliseconds from clip start
+    /// * `fade_out_ms` - Fade-out duration in milliseconds before clip end
+    /// * `clip_duration_ms` - Total clip duration in milliseconds
+    ///
+    /// # Implementation Note
+    /// Uses MPV's afade audio filter with dynamic timing:
+    /// - Fade-in: `afade=t=in:st=0:d={fade_in_sec}`
+    /// - Fade-out: `afade=t=out:st={start_time}:d={fade_out_sec}`
+    /// Filters are applied in chain: volume → fade-in → fade-out
+    pub fn apply_fade_filters(&self, fade_in_ms: u64, fade_out_ms: u64, clip_duration_ms: u64) -> Result<()> {
+        let mpv = self.mpv.lock().unwrap();
+
+        // Convert milliseconds to seconds for MPV
+        let fade_in_sec = (fade_in_ms as f64) / 1000.0;
+        let fade_out_sec = (fade_out_ms as f64) / 1000.0;
+        let clip_duration_sec = (clip_duration_ms as f64) / 1000.0;
+
+        // Calculate fade-out start time (clip end - fade duration)
+        let fade_out_start = (clip_duration_sec - fade_out_sec).max(0.0);
+
+        // Build audio filter chain
+        let mut filters = Vec::new();
+
+        // Add fade-in filter if duration > 0
+        if fade_in_ms > 0 {
+            filters.push(format!("afade=t=in:st=0:d={}", fade_in_sec));
+        }
+
+        // Add fade-out filter if duration > 0
+        if fade_out_ms > 0 {
+            filters.push(format!("afade=t=out:st={}:d={}", fade_out_start, fade_out_sec));
+        }
+
+        // Apply filters (comma-separated chain)
+        let filter_string = if !filters.is_empty() {
+            filters.join(",")
+        } else {
+            // Clear filters if no fades specified
+            String::from("")
+        };
+
+        debug!("[MPV] Applying audio filters: {}", if filter_string.is_empty() { "none" } else { &filter_string });
+
+        mpv.set_property("af", filter_string.as_str())
+            .map_err(|e| anyhow!("Failed to apply audio filters: {:?}", e))?;
+
+        Ok(())
+    }
+
+    /// Clear all audio filters (Story 3.10.1)
+    pub fn clear_audio_filters(&self) -> Result<()> {
+        let mpv = self.mpv.lock().unwrap();
+
+        debug!("[MPV] Clearing audio filters");
+
+        mpv.set_property("af", "")
+            .map_err(|e| anyhow!("Failed to clear audio filters: {:?}", e))?;
+
+        Ok(())
     }
 }
 

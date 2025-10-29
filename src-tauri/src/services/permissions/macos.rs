@@ -25,6 +25,9 @@
 //! }
 //! ```
 
+// Suppress warnings from objc crate's internal macros which use outdated cfg checks
+#![allow(unexpected_cfgs)]
+
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 

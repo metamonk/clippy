@@ -8,9 +8,6 @@ import { splitClipAtTime } from '@/lib/timeline/clipOperations';
 // Story 3.3: Maximum history depth for undo functionality
 const MAX_HISTORY = 10;
 
-// Story 3.3: Vertical drag threshold ratio (extracted from magic number - Review L-3)
-const VERTICAL_DRAG_THRESHOLD_RATIO = 0.5;
-
 interface TimelineState extends Timeline {
   /** Timeline view configuration (zoom, dimensions) */
   viewConfig: TimelineViewConfig;
@@ -26,6 +23,9 @@ interface TimelineState extends Timeline {
 
   /** Current position in history stack (Story 3.3) */
   historyIndex: number;
+
+  /** Per-track audio settings for multi-audio clips (Story 4.7) */
+  audioTrackSettings: Record<string, Record<number, { volume: number; muted: boolean }>>;
 
   /** Add a clip to a specific track */
   addClip: (trackId: string, clip: Omit<Clip, 'id'>) => void;
@@ -83,6 +83,27 @@ interface TimelineState extends Timeline {
 
   /** Set clip fade-out duration (Story 3.10 AC#3, AC#6) */
   setClipFadeOut: (clipId: string, duration: number) => void;
+
+  /** Set zoom level directly (Story 3.6) */
+  setZoomLevel: (level: number) => void;
+
+  /** Zoom in (Story 3.6) */
+  zoomIn: () => void;
+
+  /** Zoom out (Story 3.6) */
+  zoomOut: () => void;
+
+  /** Toggle clip mute state (Story 3.9) */
+  toggleClipMute: (clipId: string) => void;
+
+  /** Set volume for a specific audio track in a multi-audio clip (Story 4.7) */
+  setAudioTrackVolume: (clipId: string, trackIndex: number, volume: number) => void;
+
+  /** Set muted state for a specific audio track in a multi-audio clip (Story 4.7) */
+  setAudioTrackMuted: (clipId: string, trackIndex: number, muted: boolean) => void;
+
+  /** Get audio track settings for a specific clip and track (Story 4.7) */
+  getAudioTrackSettings: (clipId: string, trackIndex: number) => { volume: number; muted: boolean } | undefined;
 }
 
 /**
@@ -118,6 +139,7 @@ export const useTimelineStore = create<TimelineState>()(
       hoveredTrackState: null,
       history: [],
       historyIndex: -1,
+      audioTrackSettings: {},
       viewConfig: {
         pixelsPerSecond: TIMELINE_DEFAULTS.PIXELS_PER_SECOND,
         trackHeight: TIMELINE_DEFAULTS.TRACK_HEIGHT,
@@ -733,6 +755,125 @@ export const useTimelineStore = create<TimelineState>()(
           false,
           'setClipFadeOut'
         ),
+
+      // Story 3.6: Zoom controls
+      setZoomLevel: (level: number) =>
+        set(
+          (state) => ({
+            viewConfig: {
+              ...state.viewConfig,
+              zoomLevel: Math.max(0.1, Math.min(10, level)), // Clamp between 0.1x and 10x
+            },
+          }),
+          false,
+          'setZoomLevel'
+        ),
+
+      zoomIn: () =>
+        set(
+          (state) => {
+            const currentZoom = state.viewConfig.zoomLevel || 1.0;
+            const newZoom = Math.min(10, currentZoom * 1.2); // 20% increase, max 10x
+            return {
+              viewConfig: {
+                ...state.viewConfig,
+                zoomLevel: newZoom,
+              },
+            };
+          },
+          false,
+          'zoomIn'
+        ),
+
+      zoomOut: () =>
+        set(
+          (state) => {
+            const currentZoom = state.viewConfig.zoomLevel || 1.0;
+            const newZoom = Math.max(0.1, currentZoom / 1.2); // 20% decrease, min 0.1x
+            return {
+              viewConfig: {
+                ...state.viewConfig,
+                zoomLevel: newZoom,
+              },
+            };
+          },
+          false,
+          'zoomOut'
+        ),
+
+      // Story 3.9: Toggle clip mute
+      toggleClipMute: (clipId: string) =>
+        set(
+          (state) => {
+            const updatedTracks = state.tracks.map((track) => ({
+              ...track,
+              clips: track.clips.map((clip) => {
+                if (clip.id === clipId) {
+                  return { ...clip, muted: !clip.muted };
+                }
+                return clip;
+              }),
+            }));
+
+            return { tracks: updatedTracks };
+          },
+          false,
+          'toggleClipMute'
+        ),
+
+      // Story 4.7: Set volume for specific audio track in multi-audio clip
+      setAudioTrackVolume: (clipId: string, trackIndex: number, volume: number) =>
+        set(
+          (state) => {
+            const clipSettings = state.audioTrackSettings[clipId] || {};
+            const trackSettings = clipSettings[trackIndex] || { volume: 1.0, muted: false };
+
+            return {
+              audioTrackSettings: {
+                ...state.audioTrackSettings,
+                [clipId]: {
+                  ...clipSettings,
+                  [trackIndex]: {
+                    ...trackSettings,
+                    volume: Math.max(0, Math.min(2, volume)), // Clamp between 0 and 2 (200%)
+                  },
+                },
+              },
+            };
+          },
+          false,
+          'setAudioTrackVolume'
+        ),
+
+      // Story 4.7: Set muted state for specific audio track in multi-audio clip
+      setAudioTrackMuted: (clipId: string, trackIndex: number, muted: boolean) =>
+        set(
+          (state) => {
+            const clipSettings = state.audioTrackSettings[clipId] || {};
+            const trackSettings = clipSettings[trackIndex] || { volume: 1.0, muted: false };
+
+            return {
+              audioTrackSettings: {
+                ...state.audioTrackSettings,
+                [clipId]: {
+                  ...clipSettings,
+                  [trackIndex]: {
+                    ...trackSettings,
+                    muted,
+                  },
+                },
+              },
+            };
+          },
+          false,
+          'setAudioTrackMuted'
+        ),
+
+      // Story 4.7: Get audio track settings for a specific clip and track
+      getAudioTrackSettings: (clipId: string, trackIndex: number) => {
+        const state = get();
+        return state.audioTrackSettings[clipId]?.[trackIndex];
+      },
     }),
     {
       name: 'timeline-store',

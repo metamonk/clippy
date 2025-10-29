@@ -1,6 +1,6 @@
 # Story 4.8: Advanced Recording Controls (Pause/Resume)
 
-Status: review
+Status: review-v2
 
 ## Story
 
@@ -222,13 +222,33 @@ Story 4.8 was implemented using a **frame/sample discard** approach rather than 
 
 ### Completion Notes List
 
+**Session 1 (Pre-review):**
 - Task 1 (ScreenCaptureKit pause/resume): ✅ COMPLETE with tests
 - Task 2 (Audio capture pause/resume): ✅ COMPLETE with tests
-- Task 3 (Backend commands): ✅ COMPLETE - orchestrator and commands updated
+- Task 3 (Backend commands): ⚠️ PARTIAL - orchestrator done, commands stubbed
 - Task 4 (Segment encoding): ⏭️ SKIPPED - using frame discard approach
 - Task 5 (Frontend UI): ✅ VERIFIED - already complete from Story 2.5
 - Task 6 (Multi-cycle validation): ✅ Unit tests added for pause/resume state
 - Task 7 (Output validation): ✅ Core functionality validated via unit tests
+
+**Session 2 (Review findings H1/H2 addressed - 2025-10-29):**
+
+**Problem:** cmd_pause_recording and cmd_resume_recording were stubs that returned errors. The service layer had pause/resume methods but the command layer couldn't access them because cmd_start_screen_recording doesn't use RecordingOrchestrator and RecordingHandle only stored JoinHandles.
+
+**Solution Implemented (Option B - Simpler MVP):**
+1. Added `get_pause_flag()` method to ScreenCapture (screencapturekit.rs:826) to expose Arc<AtomicBool>
+2. Updated RecordingHandle type to include pause flag as 4th tuple element (recording.rs:31)
+3. Updated cmd_start_screen_recording to extract and store pause flag (recording.rs:1072)
+4. Updated cmd_stop_recording and cmd_cancel_recording to handle new tuple structure
+5. Implemented cmd_pause_recording (recording.rs:1184) to flip pause flag true
+6. Implemented cmd_resume_recording (recording.rs:1217) to flip pause flag false
+
+**Scope:**
+- ✅ Works for simple screen recordings (cmd_start_screen_recording)
+- ⚠️ Multi-stream PiP recordings (cmd_start_pip_recording) still require orchestrator refactor for full pause support
+- Note: RecordingOrchestrator already has pause_recording()/resume_recording() methods that coordinate all streams
+
+**Status:** Command layer integration complete for simple screen recordings. Multi-stream orchestrator pause requires addressing RecordingOrchestrator Send trait issue (known limitation).
 
 ### File List
 

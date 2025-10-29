@@ -408,6 +408,18 @@ impl AudioCapture {
     pub fn is_paused(&self) -> bool {
         self.is_paused.load(Ordering::Relaxed)
     }
+
+    /// Get the pause flag for external control (Story 4.8 - PiP pause/resume integration)
+    ///
+    /// Returns a clone of the Arc<AtomicBool> pause flag that can be used by
+    /// commands to control pause state without accessing the AudioCapture instance.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Arc<AtomicBool>` that can be used to pause/resume capture externally.
+    pub fn get_pause_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.is_paused)
+    }
 }
 
 impl Drop for AudioCapture {
