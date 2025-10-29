@@ -29,6 +29,12 @@ interface PlayerStore {
   /** Target time for seek operation (triggers MPV seek in VideoPlayer) */
   seekTarget: number | null;
 
+  /** Focus context: tracks last user interaction (library vs timeline) - drives automatic mode switching */
+  focusContext: 'source' | 'timeline';
+
+  /** Source video for preview mode (independent of timeline clips) */
+  sourceVideo: MediaFile | null;
+
   /** Set the current video and reset playback state */
   setCurrentVideo: (video: MediaFile | null) => void;
 
@@ -58,6 +64,9 @@ interface PlayerStore {
 
   /** Set playback mode */
   setMode: (mode: 'preview' | 'timeline') => void;
+
+  /** Set focus context (automatically derives mode) */
+  setFocusContext: (context: 'source' | 'timeline') => void;
 }
 
 /**
@@ -76,10 +85,15 @@ export const usePlayerStore = create<PlayerStore>()(
       playheadPosition: 0,
       mode: 'preview',
       seekTarget: null,
+      focusContext: 'source',
+      sourceVideo: null,
 
       setCurrentVideo: (video) =>
         set({
           currentVideo: video,
+          sourceVideo: video,
+          focusContext: 'source',
+          mode: 'preview',
           isPlaying: false,
           currentTime: 0,
           duration: 0,
@@ -107,6 +121,12 @@ export const usePlayerStore = create<PlayerStore>()(
       setPlayheadPosition: (position) => set({ playheadPosition: position }),
 
       setMode: (mode) => set({ mode }),
+
+      setFocusContext: (context) =>
+        set({
+          focusContext: context,
+          mode: context === 'source' ? 'preview' : 'timeline',
+        }),
     }),
     { name: "PlayerStore" }
   )

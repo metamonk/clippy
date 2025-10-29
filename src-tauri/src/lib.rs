@@ -21,6 +21,10 @@ use commands::{
     mpv_is_playing,
     mpv_get_video_dimensions,
     mpv_capture_frame,
+    cmd_check_screen_recording_permission,
+    cmd_request_screen_recording_permission,
+    cmd_start_screen_recording,
+    cmd_stop_recording,
 };
 
 /// Initialize logging system with file output to ~/Library/Logs/clippy/app.log
@@ -123,7 +127,11 @@ pub fn run() {
             mpv_stop,
             mpv_is_playing,
             mpv_get_video_dimensions,
-            mpv_capture_frame
+            mpv_capture_frame,
+            cmd_check_screen_recording_permission,
+            cmd_request_screen_recording_permission,
+            cmd_start_screen_recording,
+            cmd_stop_recording
         ])
         .setup(|app| {
             use tauri::menu::*;

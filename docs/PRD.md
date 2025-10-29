@@ -48,7 +48,8 @@ clippy bridges both gaps as a macOS-native video editor built with Tauri that co
 **FR006: Real-Time Video Preview and Playback**
 - System shall provide **Preview Mode** for playing selected media files independently with basic controls (play/pause, seek, scrub)
 - System shall provide **Timeline Mode** for rendering multi-track composition with PiP overlays in real-time preview window
-- System shall use single MPV (libmpv) playback engine with mode switching for resource efficiency
+- System shall automatically switch between modes based on user's last interaction context: library interactions activate Preview Mode, timeline interactions activate Timeline Mode
+- System shall use single MPV (libmpv) playback engine with automatic mode switching for resource efficiency
 - System shall maintain 30+ FPS playback and frame-accurate seeking (<33ms precision) in both modes
 
 **FR007: Audio Track Management**

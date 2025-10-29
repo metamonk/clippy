@@ -1,0 +1,294 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>5</storyId>
+    <title>Recording Controls & Status Feedback</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-5-recording-controls-status-feedback.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>clear controls and feedback during recording</iWant>
+    <soThat>I know recording is working and can manage it easily</soThat>
+    <tasks>
+- Task 1: Recording Panel UI with Core Controls (AC: #1, #2, #3)
+  - Subtask 1.1: Create RecordingControls.tsx component with start/stop button states
+  - Subtask 1.2: Implement recording duration timer display (MM:SS format)
+  - Subtask 1.3: Add pulsing red dot visual indicator using CSS animation
+  - Subtask 1.4: Wire up controls to recordingStore state management
+  - Subtask 1.5: Add unit tests for RecordingControls component
+
+- Task 2: macOS System Integration (AC: #4)
+  - Subtask 2.1: Create Tauri command cmd_send_recording_notification
+  - Subtask 2.2: Integrate @tauri-apps/plugin-notification for native macOS notifications
+  - Subtask 2.3: Test notification permissions and fallback behavior
+  - Subtask 2.4: Add unit tests for notification command
+
+- Task 3: Pause/Resume Recording Functionality (AC: #5, #6, #7)
+  - Subtask 3.1: Extend recording service to support pause/resume state management
+  - Subtask 3.2: Add pause/resume/cancel buttons to RecordingControls UI
+  - Subtask 3.3: Implement FFmpeg pause mechanism (stop encoding, resume with same output file)
+  - Subtask 3.4: Update recording timer to pause/resume with recording state
+  - Subtask 3.5: Implement cancel recording with cleanup (delete partial file)
+  - Subtask 3.6: Ensure controls remain accessible during all recording states
+  - Subtask 3.7: Add integration tests for pause/resume/cancel workflows
+
+- Task 4: Disk Space Management (AC: #8, #9, #10)
+  - Subtask 4.1: Create Tauri command cmd_check_disk_space to query available space
+  - Subtask 4.2: Implement pre-recording disk space check (5MB/min estimation)
+  - Subtask 4.3: Display warning toast if insufficient space detected
+  - Subtask 4.4: Add periodic disk space monitoring during recording (every 30 seconds)
+  - Subtask 4.5: Implement graceful stop if disk space exhausted (save partial file, notify user)
+  - Subtask 4.6: Add unit tests for disk space checking logic
+  - Subtask 4.7: Add integration tests for disk space exhaustion scenarios
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Recording panel/modal with clear "Start Recording" and "Stop Recording" buttons
+2. Recording duration timer shows elapsed time
+3. Visual indicator (pulsing red dot) shows recording is active
+4. Native macOS notification when recording starts
+5. Pause/resume functionality for screen recording
+6. Can cancel recording (discards partial recording)
+7. Recording controls remain accessible during recording
+8. Check available disk space before starting recording
+9. Display warning if available space &lt; estimated file size (assume 5MB/min for estimation)
+10. Stop recording gracefully if disk space exhausted with partial file save notification
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR002: Screen Recording Capabilities</section>
+        <snippet>System shall provide recording controls (start, stop, pause) and save recordings directly to timeline or media library</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR003: Usability and Reliability</section>
+        <snippet>Recording workflow shall require maximum 2-3 clicks to start. System shall implement graceful error handling with user-friendly messages and actionable suggestions</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>State Management Patterns (Zustand)</section>
+        <snippet>Actions modify state immutably, use selectors to subscribe to specific state slices, enable devtools for debugging</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Error Handling Patterns</section>
+        <snippet>User-facing errors use Toast notifications, internal errors use Console logs (dev) / File logs (Rust), never expose stack traces to users</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Recording Commands</section>
+        <snippet>cmd_start_recording returns recording ID, cmd_stop_recording returns output file path, cmd_get_recording_status returns RecordingStatus</snippet>
+      </doc>
+    </docs>
+
+    <code>
+      <artifact>
+        <path>src/stores/recordingStore.ts</path>
+        <kind>store</kind>
+        <symbol>useRecordingStore</symbol>
+        <lines>1-141</lines>
+        <reason>Existing recording state management with status, recordingId, elapsedMs, and actions. Needs extension for pause/resume/cancel states</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingPanel</symbol>
+        <lines>1-219</lines>
+        <reason>Main recording UI container. Already has permission checks, start/stop controls, duration display. Needs pause/resume/cancel buttons and disk space warnings</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingControls.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingControls</symbol>
+        <lines>N/A</lines>
+        <reason>Existing component for start/stop buttons. Needs extension for pause/resume/cancel buttons and visual indicator states</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_start_screen_recording</symbol>
+        <lines>113-183</lines>
+        <reason>Existing recording start command. Needs companion commands for pause, resume, cancel, check_disk_space, send_notification</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_stop_recording</symbol>
+        <lines>213-266</lines>
+        <reason>Existing recording stop command. Provides pattern for pause/resume/cancel commands</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+        <kind>service</kind>
+        <symbol>ScreenCapture</symbol>
+        <lines>N/A</lines>
+        <reason>Core screen capture service. May need adjustments for pause/resume functionality</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/recording.ts</path>
+        <kind>lib</kind>
+        <symbol>recording</symbol>
+        <lines>N/A</lines>
+        <reason>Tauri command wrappers. Needs new functions for pause, resume, cancel, checkDiskSpace, sendNotification</reason>
+      </artifact>
+    </code>
+
+    <dependencies>
+      <frontend>
+        <package name="react" version="^19.1.0" />
+        <package name="zustand" version="^4" />
+        <package name="sonner" version="^2.0.7" description="Toast notifications for user feedback" />
+        <package name="lucide-react" version="^0.548.0" description="Icons for UI controls" />
+        <package name="@tauri-apps/api" version="^2" />
+        <package name="@tauri-apps/plugin-notification" version="^2" description="Native macOS notifications" />
+      </frontend>
+      <backend>
+        <package name="tauri" version="2" />
+        <package name="tauri-plugin-notification" version="2" description="Native notification support" />
+        <package name="tokio" version="1" features="full" />
+        <package name="screencapturekit" version="0.3" description="macOS screen capture API" />
+        <package name="ffmpeg-sidecar" version="2.1" description="FFmpeg integration for encoding" />
+        <package name="dirs" version="6" description="System directory helpers for disk space checks" />
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Recording state managed via Zustand recordingStore with immutable updates</constraint>
+    <constraint>All Tauri commands in src-tauri/src/commands/recording.rs following existing patterns</constraint>
+    <constraint>Use shadcn/ui components (Button, Toast, Dialog) for consistent UI/UX</constraint>
+    <constraint>Error handling: user-facing errors via toast, backend errors logged to ~/Library/Logs/clippy/app.log</constraint>
+    <constraint>Follow ADR-003: Zustand with devtools for state management</constraint>
+    <constraint>Follow ADR-005: All timestamps in MILLISECONDS</constraint>
+    <constraint>Timer updates every 100ms (not 1000ms) for smooth display</constraint>
+    <constraint>FFmpeg pause mechanism: stop encoding, resume with same output file (CLI doesn't natively support pause)</constraint>
+    <constraint>Disk space estimation: 5MB/min for recording (as specified in AC #9)</constraint>
+    <constraint>Native macOS notifications require @tauri-apps/plugin-notification integration</constraint>
+    <constraint>Graceful degradation for permission and disk space issues</constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>RecordingStore Actions</name>
+      <kind>Zustand store interface</kind>
+      <signature>
+startRecording(recordingId: string): void
+stopRecording(filePath: string): void
+pauseRecording(): void  // NEW
+resumeRecording(): void  // NEW
+cancelRecording(): void  // NEW
+updateElapsedTime(elapsedMs: number): void
+setError(error: string): void
+setStopping(): void
+reset(): void
+      </signature>
+      <path>src/stores/recordingStore.ts</path>
+    </interface>
+
+    <interface>
+      <name>RecordingStore State</name>
+      <kind>Zustand store state</kind>
+      <signature>
+status: 'idle' | 'recording' | 'paused' | 'stopping' | 'error'  // 'paused' is NEW
+recordingId: string | null
+startTime: number | null
+elapsedMs: number
+pausedMs: number  // NEW - accumulated pause time
+error: string | null
+savedFilePath: string | null
+      </signature>
+      <path>src/stores/recordingStore.ts</path>
+    </interface>
+
+    <interface>
+      <name>cmd_pause_recording</name>
+      <kind>Tauri command</kind>
+      <signature>#[tauri::command]
+pub async fn cmd_pause_recording(recording_id: String) -> Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+
+    <interface>
+      <name>cmd_resume_recording</name>
+      <kind>Tauri command</kind>
+      <signature>#[tauri::command]
+pub async fn cmd_resume_recording(recording_id: String) -> Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+
+    <interface>
+      <name>cmd_cancel_recording</name>
+      <kind>Tauri command</kind>
+      <signature>#[tauri::command]
+pub async fn cmd_cancel_recording(recording_id: String) -> Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+
+    <interface>
+      <name>cmd_check_disk_space</name>
+      <kind>Tauri command</kind>
+      <signature>#[tauri::command]
+pub async fn cmd_check_disk_space(path: String) -> Result&lt;u64, String&gt;
+// Returns available bytes</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+
+    <interface>
+      <name>cmd_send_recording_notification</name>
+      <kind>Tauri command</kind>
+      <signature>#[tauri::command]
+pub async fn cmd_send_recording_notification(title: String, body: String) -> Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+
+    <interface>
+      <name>RecordingControls Props</name>
+      <kind>React component props</kind>
+      <signature>
+interface RecordingControlsProps {
+  isRecording: boolean
+  isPaused: boolean  // NEW
+  isStopping: boolean
+  onStartRecording: () => void
+  onStopRecording: () => void
+  onPauseRecording: () => void  // NEW
+  onResumeRecording: () => void  // NEW
+  onCancelRecording: () => void  // NEW
+}
+      </signature>
+      <path>src/components/recording/RecordingControls.tsx</path>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>Frontend: Vitest + React Testing Library for unit tests. Mock Tauri invoke() calls using vi.mock(). Test user interactions, state updates, and error handling. Backend: cargo test for unit/integration tests. Use #[tokio::test] for async tests. Test command success/failure paths and edge cases.</standards>
+
+    <locations>
+      <location>src/components/recording/*.test.tsx</location>
+      <location>src/stores/recordingStore.test.ts</location>
+      <location>src-tauri/src/commands/recording.rs (inline #[cfg(test)] modules)</location>
+    </locations>
+
+    <ideas>
+      <idea ac="1,2,3">Unit tests for RecordingControls: test start/stop/pause/resume/cancel button renders and click handlers, test pulsing red dot visibility when recording, test timer display format (MM:SS)</idea>
+      <idea ac="4">Unit test for cmd_send_recording_notification command, manual test for native macOS notification appearance</idea>
+      <idea ac="5,6,7">Integration tests for pause/resume/cancel workflows: test state transitions (recording -> paused -> recording), test cancel deletes partial file, test controls remain accessible during all states</idea>
+      <idea ac="8,9,10">Unit tests for disk space checking: test pre-recording check with 5MB/min estimation, test warning threshold (available space &lt; estimated), test graceful stop when disk exhausted, integration test with low disk space scenario</idea>
+      <idea ac="3">Test timer continues to update during recording (every 100ms), test timer pauses when recording paused, test timer format edge cases (0:00, 59:59, 60:00+)</idea>
+      <idea ac="7">Test RecordingPanel component remains mounted and accessible during recording, stop recording, and error states</idea>
+    </ideas>
+  </tests>
+</story-context>

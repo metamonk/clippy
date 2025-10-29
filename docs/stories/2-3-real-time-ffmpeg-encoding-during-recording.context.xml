@@ -1,0 +1,259 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>2.3</storyId>
+    <title>Real-Time FFmpeg Encoding During Recording</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-3-real-time-ffmpeg-encoding-during-recording.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a developer</asA>
+    <iWant>screen recordings to be encoded in real-time to prevent memory bloat</iWant>
+    <soThat>long recordings don't crash the application</soThat>
+    <tasks>
+- [ ] **Task 1: Implement FFmpeg Real-Time Encoder Service** (AC: #1, #2, #3)
+  - [ ] Create `src-tauri/src/services/ffmpeg/encoder.rs` with FFmpegEncoder struct
+  - [ ] Implement `start_encoding()` method that spawns FFmpeg process with H.264 codec
+  - [ ] Implement frame streaming via stdin pipe using ffmpeg-sidecar
+  - [ ] Configure FFmpeg arguments for real-time H.264 encoding (preset: fast, crf: 23)
+  - [ ] Implement `write_frame_to_stdin()` method for streaming raw BGRA frames
+  - [ ] Add unit tests for encoder initialization and frame writing
+
+- [ ] **Task 2: Integrate Frame Buffering with Backpressure** (AC: #4)
+  - [ ] Create `src-tauri/src/services/screen_capture/frame_handler.rs`
+  - [ ] Implement bounded channel with 30-frame capacity (1 second @ 30fps)
+  - [ ] Implement capture loop that sends frames to channel
+  - [ ] Add blocking behavior when channel full (backpressure mechanism)
+  - [ ] Add memory monitoring logging to verify bounded memory usage
+  - [ ] Test with 5+ minute recording to verify stable memory (<300MB total)
+
+- [ ] **Task 3: Implement Timestamp-Based Frame Synchronization** (AC: #7, #8)
+  - [ ] Create `src-tauri/src/services/recording/frame_synchronizer.rs`
+  - [ ] Attach high-precision timestamp (milliseconds) to each captured frame
+  - [ ] Implement drift detection by comparing expected vs actual timestamp delta
+  - [ ] Add corrective logic if drift exceeds 50ms threshold
+  - [ ] Log synchronization metrics (drift, corrections applied)
+  - [ ] Test with 30-minute recording to verify <50ms sync tolerance
+
+- [ ] **Task 4: Implement Frame Drop Detection and Logging** (AC: #6)
+  - [ ] Add frame counter in capture loop
+  - [ ] Detect when FFmpeg cannot keep up (channel remains full)
+  - [ ] Log warning message with dropped frame count and timestamp
+  - [ ] Expose frame drop metrics via tracing for debugging
+  - [ ] Test under high CPU load to trigger intentional frame drops
+
+- [ ] **Task 5: Implement Graceful Failure Handling** (AC: #9)
+  - [ ] Detect FFmpeg process crashes or encoding errors
+  - [ ] Stop frame capture immediately on encoding failure
+  - [ ] Finalize partial MP4 file if possible (flush FFmpeg buffers)
+  - [ ] Send user notification via Tauri notification plugin
+  - [ ] Clean up resources (close channels, terminate threads)
+  - [ ] Add integration test for encoding failure scenario
+
+- [ ] **Task 6: Validate Playback of Encoded Output** (AC: #5)
+  - [ ] After recording stops, flush remaining frames to FFmpeg
+  - [ ] Close FFmpeg stdin and wait for process completion
+  - [ ] Validate output MP4 file exists and is non-zero size
+  - [ ] Test playback in MPV (Story 1.3.5) to verify immediate playability
+  - [ ] Verify video metadata (duration, resolution, codec) matches expected values
+
+- [ ] **Task 7: Integration Testing with Story 2.2** (Prerequisites)
+  - [ ] Integrate encoder with screen capture from Story 2.2
+  - [ ] End-to-end test: start recording → capture 5 minutes → stop → verify output
+  - [ ] Test memory stability during recording (use macOS Activity Monitor)
+  - [ ] Verify audio-video sync (if audio captured in Story 2.2)
+  - [ ] Test on both Apple Silicon and Intel Macs
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. FFmpeg encoding pipeline started when recording begins
+2. Captured frames stream to FFmpeg encoder in real-time
+3. Output encoded as H.264 MP4 during recording (not post-processing)
+4. Memory usage remains stable during 5+ minute recordings
+5. Final MP4 file playable immediately after recording stops
+6. Frame drops logged if encoding can't keep up (acceptable for now)
+7. Audio and video remain synchronized within 50ms for recordings up to 30 minutes
+8. Implement timestamp-based frame synchronization to prevent drift
+9. If FFmpeg encoding fails completely, stop recording and save partial file with user notification
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Pattern 2: Real-Time Encoding During Capture (Memory Management)</section>
+        <snippet>Bounded channel (30 frames) pattern prevents memory bloat by using backpressure mechanism. Maximum memory usage: 240MB (30 * 8MB per frame @ 1080p BGRA). If FFmpeg can't keep up, capture thread blocks instead of crashing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Media Processing - FFmpeg Integration</section>
+        <snippet>Uses ffmpeg-sidecar 2.1.0 for real-time encoding during screen recording. Frame streaming via stdin pipes. FFmpeg auto-downloaded at runtime (<100MB). H.264 encoding with macOS VideoToolbox hardware acceleration.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Project Structure - Backend Services</section>
+        <snippet>Services layer contains ffmpeg/encoder.rs for real-time encoding, screen_capture/frame_handler.rs for frame buffering and sync, and recording/frame_synchronizer.rs for timestamp-based frame synchronization.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Screen recording shall capture at 30+ FPS without dropped frames. Memory requirements: minimum 8GB RAM (16GB recommended) for stable long recordings.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Story 2.3: Real-Time FFmpeg Encoding</section>
+        <snippet>Prerequisites: Story 2.2 (Full Screen Recording). Implements real-time encoding to prevent memory bloat during long recordings. Audio-video sync within 50ms for recordings up to 30 minutes.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Documentation</title>
+        <section>Testing Patterns - Rust Unit Tests</section>
+        <snippet>Rust tests use #[cfg(test)] modules with #[test] annotations. Tests placed in same file as implementation code. Unit tests should verify encoder initialization, frame writing, and bounded channel backpressure behavior.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+        <kind>service</kind>
+        <symbol>ScreenCapture</symbol>
+        <lines>58-156</lines>
+        <reason>Existing screen capture service from Story 2.2. Provides capture_single_frame() returning Vec&lt;u8&gt; BGRA data. Need to extend for continuous frame streaming in Task 2.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+        <kind>service</kind>
+        <symbol>VideoExporter</symbol>
+        <lines>11-80</lines>
+        <reason>Existing FFmpeg exporter using ffmpeg-sidecar. Reference implementation for FFmpeg process management, progress tracking, and CLI command building. Pattern to follow for real-time encoder.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_check_screen_recording_permission</symbol>
+        <lines>17-31</lines>
+        <reason>Existing permission check command. Will be used before starting recording to validate screen recording permission granted.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/permissions/macos.rs</path>
+        <kind>service</kind>
+        <symbol>check_screen_recording_permission</symbol>
+        <lines>N/A</lines>
+        <reason>Permission validation service used by ScreenCapture. Must verify permission before initializing encoder to prevent runtime errors.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/mod.rs</path>
+        <kind>module</kind>
+        <symbol>N/A</symbol>
+        <lines>N/A</lines>
+        <reason>Service module registry. Need to register new ffmpeg/encoder, screen_capture/frame_handler, and recording/frame_synchronizer modules.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <package name="ffmpeg-sidecar" version="2.1.0" description="FFmpeg CLI wrapper with auto-download. Already in Cargo.toml. Used for real-time H.264 encoding via stdin pipe." />
+        <package name="tokio" version="1.x" features='["full"]' description="Async runtime for multi-threaded processing. Already in Cargo.toml. Used for bounded mpsc::channel and async encoding task." />
+        <package name="screencapturekit" version="0.3.x" description="ScreenCaptureKit Rust bindings. Already in Cargo.toml. Used by ScreenCapture service for frame capture." />
+        <package name="tracing" version="0.1" description="Structured logging framework. Already in Cargo.toml. Used for frame drop logging and performance metrics." />
+        <package name="chrono" version="0.4.x" features='["serde"]' description="Date/time handling. Already in Cargo.toml. Used for high-precision timestamps in frame synchronization." />
+        <package name="anyhow" version="1.x" description="Flexible error handling. Already in Cargo.toml. Used for error context in encoder operations." />
+        <package name="thiserror" version="1.x" description="Custom error types. Already in Cargo.toml. Used for defining encoding-specific error types." />
+      </rust>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>All new modules must follow snake_case naming: encoder.rs, frame_handler.rs, frame_synchronizer.rs</constraint>
+    <constraint>Structs and enums use PascalCase: FFmpegEncoder, FrameBuffer, SyncError</constraint>
+    <constraint>Use bounded tokio::sync::mpsc::channel(30) for frame buffering - CRITICAL for memory safety</constraint>
+    <constraint>FFmpeg encoder must use preset=fast and crf=23 for real-time H.264 encoding balance</constraint>
+    <constraint>Frame data format is BGRA (4 bytes per pixel) matching ScreenCapture output</constraint>
+    <constraint>Must use tracing crate for all logging (debug, info, warn, error) - no println!</constraint>
+    <constraint>All async functions use async/await with Tokio runtime - no blocking operations on async tasks</constraint>
+    <constraint>Error handling via Result&lt;T, E&gt; with anyhow for service layer, thiserror for custom errors</constraint>
+    <constraint>Unit tests in #[cfg(test)] modules within same file as implementation</constraint>
+    <constraint>Integration tests in separate tests/ directory for end-to-end recording scenarios</constraint>
+    <constraint>Commands registered in src-tauri/src/lib.rs must follow cmd_ prefix convention</constraint>
+    <constraint>Maximum memory budget: 300MB total for encoding pipeline (240MB buffer + 50MB FFmpeg + 20MB overhead)</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>ScreenCapture::capture_single_frame()</name>
+      <kind>method</kind>
+      <signature>pub fn capture_single_frame(&amp;self) -> Result&lt;Vec&lt;u8&gt;, ScreenCaptureError&gt;</signature>
+      <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+      <description>Returns raw BGRA frame data. Will be called in capture loop to stream frames to encoder.</description>
+    </interface>
+    <interface>
+      <name>FfmpegCommand (from ffmpeg-sidecar)</name>
+      <kind>external API</kind>
+      <signature>FfmpegCommand::new() -> Self; .args(&amp;[&amp;str]) -> Self; .spawn() -> Result&lt;FfmpegChild&gt;</signature>
+      <path>External crate: ffmpeg-sidecar 2.1.0</path>
+      <description>FFmpeg process builder. Use for spawning encoder with H.264 arguments and stdin pipe.</description>
+    </interface>
+    <interface>
+      <name>mpsc::channel(capacity)</name>
+      <kind>tokio API</kind>
+      <signature>tokio::sync::mpsc::channel::&lt;T&gt;(usize) -> (Sender&lt;T&gt;, Receiver&lt;T&gt;)</signature>
+      <path>External crate: tokio 1.x</path>
+      <description>Bounded channel for frame buffering. MUST use capacity=30 for backpressure mechanism.</description>
+    </interface>
+    <interface>
+      <name>Tauri Notification Plugin</name>
+      <kind>Tauri plugin</kind>
+      <signature>tauri_plugin_notification::NotificationExt::notify() for user alerts</signature>
+      <path>External plugin: tauri-plugin-notification 2.x</path>
+      <description>Send user notification when FFmpeg encoding fails (AC #9). Already in Cargo.toml.</description>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Rust unit tests use #[cfg(test)] modules with #[test] annotations, placed in the same file as implementation. Async tests use #[tokio::test] for async runtime. TypeScript tests use Vitest with describe/it/expect patterns. Run tests with: `cargo test` (Rust) and `npm run test` (TypeScript). Tests should verify both happy path and error conditions. Integration tests go in src-tauri/tests/ directory for end-to-end scenarios. Use tracing for debug output in tests, not println!.
+    </standards>
+    <locations>
+      <location>src-tauri/src/services/ffmpeg/encoder.rs - Unit tests in #[cfg(test)] module</location>
+      <location>src-tauri/src/services/screen_capture/frame_handler.rs - Unit tests in #[cfg(test)] module</location>
+      <location>src-tauri/src/services/recording/frame_synchronizer.rs - Unit tests in #[cfg(test)] module</location>
+      <location>src-tauri/tests/ - Integration tests for end-to-end recording scenarios</location>
+      <location>src/components/recording/ - Frontend component tests using Vitest + React Testing Library</location>
+    </locations>
+    <ideas>
+      <idea ac="1,2,3">
+        <title>FFmpegEncoder initialization and H.264 configuration</title>
+        <description>Unit test: Verify FFmpegEncoder::new() spawns FFmpeg process with correct arguments (preset=fast, crf=23, H.264 codec). Test write_frame_to_stdin() accepts BGRA frame data and writes to stdin pipe without errors.</description>
+      </idea>
+      <idea ac="4">
+        <title>Bounded channel backpressure mechanism</title>
+        <description>Unit test: Create channel with capacity=30, send 31 frames rapidly, verify 31st send blocks until receiver consumes a frame. Monitor memory usage stays bounded. Test simulates frame capture loop filling channel.</description>
+      </idea>
+      <idea ac="5">
+        <title>Output MP4 playback validation</title>
+        <description>Integration test: Record 10-second test video, stop recording, verify MP4 file exists and is non-zero size. Use ffprobe to validate metadata (codec, resolution, duration). Attempt playback in MPV service to verify immediate playability.</description>
+      </idea>
+      <idea ac="6">
+        <title>Frame drop detection and logging</title>
+        <description>Integration test: Simulate high CPU load scenario where FFmpeg can't keep pace with 30 FPS. Verify frame drops are logged with tracing::warn! including dropped count and timestamp. Parse logs to confirm drop metrics recorded.</description>
+      </idea>
+      <idea ac="7,8">
+        <title>Timestamp-based frame synchronization over 30 minutes</title>
+        <description>Integration test: Record 30-minute test video (or simulate with timestamp injection). Attach chrono::Utc timestamps to each frame. Verify drift detection triggers when delta exceeds 50ms threshold. Validate corrective logic applied and logged.</description>
+      </idea>
+      <idea ac="9">
+        <title>Graceful failure handling on encoding crash</title>
+        <description>Integration test: Kill FFmpeg process mid-recording to simulate crash. Verify capture stops immediately, partial MP4 finalized (if possible), resources cleaned up (channels closed, threads terminated). Mock Tauri notification to verify user alert sent.</description>
+      </idea>
+      <idea ac="all">
+        <title>End-to-end 5-minute recording memory stability</title>
+        <description>Integration test with Story 2.2: Start recording, capture for 5+ minutes at 30 FPS, stop recording. Monitor memory usage throughout (use Activity Monitor or programmatic check). Verify total memory &lt; 300MB, no memory leaks, output MP4 playable.</description>
+      </idea>
+    </ideas>
+  </tests>
+</story-context>

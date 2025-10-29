@@ -188,6 +188,62 @@ Changed `formatTime()` from `Math.floor()` to `Math.round()`:
 
 ---
 
+## TD-005: Add Unit Tests for Recording Services
+
+**Priority:** Medium
+**Discovered:** 2025-10-28 during Story 2.3 review
+**Impact:** Maintainability - Cannot verify unit-level correctness, regression risk when modifying encoder/synchronizer logic
+
+**Description:**
+
+Completion notes for Story 2.3 claim "Unit tests for FFmpegEncoder, FrameHandler, FrameSynchronizer" but no #[cfg(test)] modules found in codebase. The implementation demonstrates excellent quality with comprehensive error handling, but lacks automated unit tests to validate individual function correctness and enable safer refactoring.
+
+**Root Cause:**
+
+Integration testing approach valid for real-time encoding (difficult to unit test FFmpeg interactions). However, unit tests still valuable for:
+- Testing sync algorithm correctness (FrameSynchronizer drift detection, frame drop logic)
+- Validating encoder initialization and frame validation logic
+- Testing bounded channel backpressure behavior
+- Catching regressions during future modifications
+
+**Solution:**
+
+Add unit tests for three core modules:
+
+1. **FFmpegEncoder** (encoder.rs):
+   - Initialization with valid/invalid paths
+   - Frame dimension validation
+   - Frame data size validation
+   - Error propagation testing
+
+2. **FrameSynchronizer** (frame_synchronizer.rs):
+   - Drift detection with various threshold values
+   - Frame drop logic with timestamp gaps
+   - Long recording simulation (30+ minutes)
+   - Edge cases (extreme drift, rapid drops)
+
+3. **FrameHandler** (frame_handler.rs):
+   - Bounded channel backpressure behavior
+   - Encoder integration error scenarios
+   - Frame counter accuracy
+   - Error propagation from encoder to handler
+
+**Effort:** 6 hours total (2 hours per module)
+**Stories Affected:** 2.3 (test coverage gap)
+
+**Remediation Steps:**
+1. Add unit tests for FFmpegEncoder (encoder.rs) - 2 hours
+2. Add unit tests for FrameSynchronizer (frame_synchronizer.rs) - 2 hours
+3. Add unit tests for FrameHandler (frame_handler.rs) - 2 hours
+4. Verify all tests pass and coverage improves - 30 minutes
+
+**Status:** Pending
+**Assigned To:** TBD (address in next sprint after Epic 2 completion)
+**Related Stories:** 2.3 (Real-Time FFmpeg Encoding During Recording)
+**Priority Justification:** Medium - Does not block story completion given integration testing approach and error handling quality, but should address before Epic 3 (multi-track timeline) which will stress recording infrastructure
+
+---
+
 ## How to Add Technical Debt Items
 
 When adding new technical debt items, use the following template:

@@ -132,9 +132,55 @@ For App Store or public distribution, you'll need:
 
 ## System Requirements
 
-- **macOS:** 12.0 (Monterey) or later
+- **macOS:** 12.3 (Monterey) or later (required for ScreenCaptureKit)
 - **Architecture:** Apple Silicon (M1/M2/M3) primary, Intel secondary
 - **RAM:** 8GB minimum, 16GB recommended
+
+## macOS Permissions Setup
+
+clippy requires specific macOS permissions to function properly. These permissions protect your privacy and are managed by macOS.
+
+### Screen Recording Permission
+
+**Required for:** Recording your screen, capturing displays and windows
+
+**Setup:**
+
+1. When you first attempt to record, clippy will request screen recording permission
+2. macOS will show a system dialog asking for permission
+3. If you deny or miss the dialog:
+   - Open **System Preferences** (or **System Settings** on macOS Ventura+)
+   - Navigate to **Privacy & Security** → **Screen Recording**
+   - Find **clippy** in the list and enable the checkbox
+   - **Restart clippy** for changes to take effect
+
+**Troubleshooting:**
+- If clippy doesn't appear in the list, try requesting permission again from within the app
+- Screen recording permission is required for ScreenCaptureKit (macOS 12.3+)
+- Older macOS versions are not supported for screen capture features
+
+### Microphone Permission (Coming Soon)
+
+**Required for:** Recording audio from your microphone during screen captures
+
+Setup instructions will be similar to screen recording permission.
+
+### Camera Permission (Coming Soon)
+
+**Required for:** Recording webcam footage for picture-in-picture (PiP) overlays
+
+Setup instructions will be similar to screen recording permission.
+
+### File Access
+
+**Required for:** Importing and exporting video files
+
+macOS may prompt you to allow file access when you:
+- Import videos via drag & drop or file picker
+- Export edited videos to disk
+- Access media library locations
+
+These prompts are handled automatically by macOS file dialogs.
 
 ## Troubleshooting
 

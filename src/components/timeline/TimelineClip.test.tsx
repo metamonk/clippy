@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render } from '@testing-library/react';
+import React from 'react';
 import { TimelineClip } from './TimelineClip';
 import { useTimelineStore } from '@/stores/timelineStore';
 import type { Clip } from '@/types/timeline';
 
 // Mock Konva components
 vi.mock('react-konva', () => ({
-  Group: ({ children, ...props }: any) => <div data-testid="konva-group" {...props}>{children}</div>,
-  Rect: (props: any) => <div data-testid="konva-rect" {...props} />,
-  Text: (props: any) => <div data-testid="konva-text" {...props} />,
+  Group: ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => <div data-testid="konva-group" {...props}>{children}</div>,
+  Rect: (props: { [key: string]: unknown }) => <div data-testid="konva-rect" {...props} />,
+  Text: (props: { [key: string]: unknown }) => <div data-testid="konva-text" {...props} />,
 }));
 
 describe('TimelineClip', () => {

@@ -349,3 +349,136 @@ Restart button now pauses playback automatically when video is playing, ensuring
 **Created:**
 - `src/components/ui/slider.tsx` - Radix UI Slider component with Tailwind styling
 
+---
+
+## Senior Developer Review (AI)
+
+**Reviewer:** zeno
+**Date:** 2025-10-28
+**Outcome:** Approve
+
+### Summary
+
+Story 1.11 successfully implements video seek and scrub controls with comprehensive functionality including progress slider, keyboard shortcuts, and restart button. All acceptance criteria are met with high-quality implementation following established architectural patterns. The implementation demonstrates strong code quality, proper testing coverage for new functionality, and excellent architectural alignment.
+
+### Key Findings
+
+**HIGH PRIORITY:**
+None
+
+**MEDIUM PRIORITY:**
+- **Test Suite Status (Med):** While all Story 1.11 tests pass (45/45 tests covering playerStore seek actions and PlayerControls interactions), the overall test suite shows 204/215 passing (94.9%). The 11 failing tests are in unrelated MediaImport component and do not affect Story 1.11 functionality. These should be addressed in a separate cleanup task to maintain test suite health.
+
+**LOW PRIORITY:**
+- **Restart Button UX (Low/Info):** The restart button auto-pauses playback when video is playing. This differs from some video players (e.g., YouTube) but provides better user control. This is an acceptable design choice that enhances UX by ensuring the play button is always available after restart.
+- **Keyboard Shortcut Scope (Low/Enhancement):** Shortcuts are properly scoped to avoid conflicts with input fields. Consider adding visual indication of keyboard shortcut availability in future iterations for improved discoverability.
+
+### Acceptance Criteria Coverage
+
+✅ **AC#1: Progress bar shows playback position**
+Radix UI Slider component displays progress as `(currentTime / duration) * 100`. Updates in real-time via 100ms polling interval. Clean visual presentation with Tailwind styling.
+
+✅ **AC#2: User can click/drag slider to scrub**
+`handleSliderChange` handler converts slider percentage to time seconds and calls `playerStore.seek()`. Smooth interaction with proper value mapping.
+
+✅ **AC#3: Scrubbing works during playback and pause**
+Slider functional in both states. `VideoPlayer.tsx` handles seek via `seekTarget` state without disrupting playback state. Tested with component tests.
+
+✅ **AC#4: Arrow key shortcuts (±5s)**
+Left/Right arrows seek ±5 seconds with proper boundary clamping. Shift+Arrow for frame-by-frame (±1/30s). Proper `preventDefault` to avoid browser conflicts. Skips when input/textarea focused.
+
+✅ **AC#5: Home/End keys**
+Home seeks to 0, End seeks to duration. Tested and working correctly.
+
+✅ **AC#6: Seek accuracy <33ms**
+MPV backend uses `SeekMode::AbsoluteExact` for frame-accurate seeking. Architecture supports <33ms precision requirement per PRD NFR001.
+
+✅ **AC#7: Restart button**
+RotateCcw (lucide-react) button implemented. Seeks to 0 and auto-pauses if playing. Good UX decision providing consistent control state.
+
+✅ **AC#8: All codec support**
+MPV backend verified with H.264, HEVC yuv420p, ProRes, VP9 in Story 1.4. No codec-specific seek logic required—MPV handles uniformly.
+
+✅ **AC#9: Tests added and passing**
+**Story 1.11 Tests: 45/45 passing** (100%)
+- playerStore: 4 new tests for seekTarget/clearSeekTarget
+- PlayerControls: 15 new tests covering slider, keyboard shortcuts, restart button, edge cases
+- Proper mocking of Tauri invoke calls
+- ResizeObserver polyfill added for Radix UI compatibility
+- **Overall suite: 204/215 passing (94.9%)** — 11 failures in unrelated MediaImport.test.tsx
+
+### Test Coverage and Gaps
+
+**Strengths:**
+- Comprehensive unit tests for playerStore seek actions
+- Component tests cover slider interaction, keyboard shortcuts, restart behavior
+- Edge case testing: boundary clamping, preventDefault, input focus exclusion
+- Proper mocking strategy for MPV backend
+
+**Gaps/Recommendations:**
+- **Unrelated Test Failures:** MediaImport.test.tsx has 11 failing tests. While not blocking Story 1.11, these should be addressed to maintain test suite health. Create follow-up task.
+- **Integration Test Suggestion:** Consider adding E2E test with Playwright to verify seek accuracy across different video codecs in real environment (can be deferred to future iteration).
+
+### Architectural Alignment
+
+✅ **Decision Architecture Compliance:**
+- **ADR-006 (MPV Integration):** Correctly uses `mpv_seek` Tauri command with frame-accurate seeking
+- **State Management Pattern:** Zustand with `seekTarget` state provides clean separation between UI and MPV backend
+- **Component Structure:** Follows established PlayerControls pattern with Tailwind styling
+- **UI Components:** Radix UI Slider (shadcn/ui) as recommended in architecture.md
+- **Keyboard Shortcuts:** Proper event handling with input/textarea focus exclusion
+- **Error Handling:** Graceful error handling with toast notifications
+
+**Code Quality:**
+- Clean separation of concerns: PlayerStore → VideoPlayer → MPV backend
+- Immutable state updates in Zustand
+- Proper useEffect cleanup for event listeners
+- ARIA labels for accessibility compliance
+- Consistent naming conventions (camelCase, PascalCase per architecture.md)
+
+### Security Notes
+
+✅ **No security concerns identified.**
+
+**Input Validation:**
+- Time values properly clamped to [0, duration] range
+- No user-controlled data passed to MPV without validation
+- Proper error boundaries with user-friendly messages
+
+**Injection Risks:**
+- No command injection risks—time values are numeric only
+- MPV backend handles file paths securely (validated in Story 1.4)
+
+### Best-Practices and References
+
+**Technology Stack Validation:**
+- **React 19.1.0** ✅ — Latest stable version
+- **Zustand 4.x** ✅ — Follows state management architecture
+- **Radix UI (Slider)** ✅ — Accessible component library per architecture decision
+- **MPV (libmpv2 5.0.1)** ✅ — Frame-accurate seeking verified in Story 1.4
+- **Tailwind CSS** ✅ — Exclusive styling as per architecture constraint
+
+**Code Patterns:**
+- Component structure follows architecture.md Section 8.2 (React Component Structure)
+- Error handling follows architecture.md Section 8.4 (React Error Handling with toast)
+- State management follows architecture.md Section 8.5 (Zustand patterns)
+- Testing follows architecture.md Section 8.9 (Vitest + React Testing Library)
+
+**References:**
+- [MPV Seek Documentation](https://mpv.io/manual/stable/#command-interface-seek) — Frame-accurate seeking modes
+- [Radix UI Slider](https://www.radix-ui.com/primitives/docs/components/slider) — Accessible slider component
+- [Web Content Accessibility Guidelines (WCAG 2.1)](https://www.w3.org/WAI/WCAG21/quickref/) — ARIA labels compliance
+
+### Action Items
+
+1. **[Medium][TechDebt] Fix MediaImport.test.tsx failing tests** — 11 tests failing in MediaImport component. While not blocking Story 1.11, these affect overall test suite health (94.9% vs target 100%). Investigate and resolve to maintain code quality standards. *Owner: TBD | Related: Story 1.3*
+
+2. **[Low][Enhancement] Add visual keyboard shortcut hint** — Consider adding subtle UI indicator (e.g., tooltip or help icon) showing available keyboard shortcuts (Space, Arrows, Home/End). Improves discoverability for users unfamiliar with video editor conventions. *Owner: TBD | Related: Future UX polish epic*
+
+3. **[Low][Testing] Add E2E seek accuracy test** — Create Playwright E2E test verifying seek accuracy <33ms across H.264, HEVC, ProRes, VP9 codecs. While MPV guarantees frame accuracy, E2E test provides regression protection. Can be deferred to test infrastructure epic. *Owner: TBD | Related: Future E2E test suite*
+
+---
+
+**Review Decision: APPROVE ✅**
+
+All acceptance criteria met. High-quality implementation with strong architectural alignment. Minor recommendations for test suite health and future enhancements do not block approval. Ready to mark as done.

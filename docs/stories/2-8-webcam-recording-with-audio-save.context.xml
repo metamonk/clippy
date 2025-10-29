@@ -1,0 +1,274 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>8</storyId>
+    <title>Webcam Recording with Audio & Save</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-8-webcam-recording-with-audio-save.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>to record webcam video with microphone audio and save it</iWant>
+    <soThat>I can create standalone webcam recordings</soThat>
+    <tasks>
+- Implement webcam + microphone recording (AC: #1)
+  - Integrate webcam video capture from Story 2.7 with audio capture from Story 2.4
+  - Configure nokhwa to capture video frames from selected camera
+  - Configure cpal/CoreAudio to capture microphone audio
+  - Ensure camera and microphone permissions are requested/checked (leveraging Story 2.7 patterns)
+
+- Real-time FFmpeg encoding for webcam stream (AC: #2)
+  - Reuse FFmpeg encoding pattern from Story 2.3 (real-time encoding via stdin)
+  - Configure bounded channel (30 frame buffer) for webcam frames
+  - Create separate bounded channel for microphone audio samples
+  - Set up FFmpeg command for webcam resolution (1080p or native), H.264 codec, AAC audio
+  - Stream video frames and audio samples to FFmpeg stdin pipes
+  - Monitor encoding progress and memory usage (ensure stable <500MB total)
+
+- Implement recording controls for webcam mode (AC: #3)
+  - Add `cmd_start_camera_recording` Tauri command (mirrors `cmd_start_recording` from Story 2.2)
+  - Implement start recording: spawn capture threads, start FFmpeg encoder
+  - Implement stop recording: gracefully stop capture, finalize FFmpeg encoding, return output path
+  - Implement pause/resume: pause capture threads, maintain FFmpeg process, resume on command
+  - Add recording state management in `recordingStore` (reuse patterns from Story 2.5)
+  - Update `RecordingPanel.tsx` to handle webcam mode controls
+
+- Auto-import recorded webcam videos (AC: #4)
+  - Trigger auto-import when `cmd_stop_camera_recording` completes
+  - Reuse auto-import logic from Story 2.6 (thumbnail generation, metadata extraction)
+  - Generate thumbnail from first frame via FFmpeg
+  - Extract metadata (duration, resolution, file size, codec) via ffprobe
+  - Add MediaFile entry to mediaLibraryStore
+  - Emit Tauri event 'recording-imported' to update frontend
+  - Display success toast notification
+
+- Validate playback and recording quality (AC: #5, #6)
+  - Test recorded webcam MP4 plays correctly in Epic 1 MPV player
+  - Verify video framerate is smooth 30 FPS without dropped frames
+  - Verify audio-video synchronization (within 50ms drift tolerance from AC 2.3.7)
+  - Test recording durations: 30 seconds, 5 minutes, 15 minutes
+  - Monitor memory usage during recording (should remain <500MB)
+  - Test pause/resume functionality maintains quality
+
+- Error handling and edge cases
+  - Handle camera disconnection during recording (save partial file, notify user)
+  - Handle microphone failure (continue video-only, notify user)
+  - Handle disk space exhaustion (graceful stop with notification from Story 2.5 patterns)
+  - Handle FFmpeg encoding failure (save partial file if possible, clear error message)
+  - Validate permissions before starting recording (camera + microphone)
+
+- Testing (AC: All)
+  - Unit tests: Verify RecordingConfig serialization for camera mode
+  - Integration tests: Start webcam recording → Stop → Verify MP4 file exists and playable
+  - Integration tests: Record 5 minutes → Verify memory stable, file size reasonable (~25-50MB)
+  - Integration tests: Pause/Resume → Verify continuous playback without artifacts
+  - E2E tests: Record webcam → Auto-import → Verify appears in media library within 2 seconds
+  - E2E tests: Recorded webcam clip → Play in VideoPlayer → Verify smooth playback
+  - Manual test: Record talking head video → Listen for audio quality, verify lip sync
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Webcam recording captures both video and microphone audio
+2. FFmpeg encodes webcam stream to MP4 in real-time (same pattern as Story 2.3)
+3. Recording controls work same as screen recording (start/stop/pause)
+4. Completed webcam recording auto-imports to media library (same as Story 2.6)
+5. Can preview webcam recording in video player (Epic 1 MPV player)
+6. Recording quality acceptable (smooth 30 FPS, synchronized audio)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR003: Webcam Recording</section>
+        <snippet>System shall access and record from system cameras with audio, provide preview before recording, and support camera selection when multiple cameras are available.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Novel Pattern 2: Real-Time Encoding During Capture (lines 501-560)</section>
+        <snippet>Use bounded mpsc::channel(30) to buffer only 1 second of frames. If FFmpeg can't keep up, the channel fills and capture thread blocks (backpressure), preventing memory bloat. Maximum memory usage: 30 × 8MB = 240MB bounded.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>Camera Capture Decision</section>
+        <snippet>nokhwa 0.10.9 (feature: input-avfoundation) for cross-platform webcam with AVFoundation backend. Affects Epic 2, 4.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>Epic 2 Technical Specification</title>
+        <section>Workflow 4: Auto-Import to Media Library (lines 485-504)</section>
+        <snippet>When recording stops, trigger auto-import: extract metadata via FFmpeg, generate thumbnail from first frame, create MediaFile entry, add to mediaLibraryStore, emit 'recording-imported' event, display toast notification. Target: &lt; 2 seconds.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>Epic 2 Technical Specification</title>
+        <section>Workflow 5: Webcam Recording (lines 506-525)</section>
+        <snippet>User selects webcam mode → check camera permission → list cameras → show live preview → start recording → nokhwa captures frames → bounded channel → FFmpegEncoder → encode to MP4 → auto-import.</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>Epic 2 Technical Specification</title>
+        <section>Story 2.8 Acceptance Criteria (lines 927-932)</section>
+        <snippet>AC 2.8.1: Webcam captures video + microphone audio. AC 2.8.2: FFmpeg real-time encoding (Story 2.3 pattern). AC 2.8.3: Same controls as screen recording. AC 2.8.4: Auto-imports via Story 2.6 pattern. AC 2.8.5: Playback in Epic 1 MPV player. AC 2.8.6: 30 FPS, synchronized audio.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+        <kind>service</kind>
+        <symbol>FFmpegEncoder</symbol>
+        <lines>26-48</lines>
+        <reason>Real-time H.264 encoding service with bounded channel pattern from Story 2.3. Will be reused for webcam frame encoding.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/audio_capture.rs</path>
+        <kind>service</kind>
+        <symbol>AudioCapture, AudioSample</symbol>
+        <lines>44-57</lines>
+        <reason>Microphone audio capture from Story 2.4. Provides AudioSample with timestamp for synchronization with webcam video.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_start_screen_recording, cmd_stop_recording</symbol>
+        <lines>86-266</lines>
+        <reason>Existing screen recording commands pattern. Story 2.8 will mirror this with cmd_start_camera_recording for webcam mode.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/recordingStore.ts</path>
+        <kind>store</kind>
+        <symbol>useRecordingStore, RecordingState</symbol>
+        <lines>15-57</lines>
+        <reason>Zustand recording state management. Tracks status, elapsed time, audio sources. Will be extended for webcam mode.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/recording.ts</path>
+        <kind>api-wrapper</kind>
+        <symbol>startScreenRecording, stopRecording</symbol>
+        <lines>24-37</lines>
+        <reason>Tauri IPC wrapper functions. Will add startCameraRecording() wrapper for webcam recording command.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingPanel</symbol>
+        <lines>N/A</lines>
+        <reason>Recording UI panel from Story 2.5. Will be extended to support webcam mode selection and controls.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingControls.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingControls</symbol>
+        <lines>N/A</lines>
+        <reason>Start/stop/pause recording buttons from Story 2.5. Will be reused for webcam recording controls.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <dep name="nokhwa" version="0.10.9" features="input-avfoundation">Webcam/camera capture via AVFoundation backend (from Story 2.7)</dep>
+        <dep name="ffmpeg-sidecar" version="2.1.0">FFmpeg CLI wrapper with auto-download for video encoding (from Story 2.3)</dep>
+        <dep name="cpal" version="0.16">Cross-platform audio capture library for microphone input (from Story 2.4)</dep>
+        <dep name="tokio" version="1.x" features="full">Async runtime for parallel capture threads</dep>
+        <dep name="uuid" version="1.x" features="v4,serde">Generate unique recording IDs</dep>
+        <dep name="tracing" version="0.1">Structured logging for debugging</dep>
+        <dep name="anyhow" version="1">Error handling</dep>
+        <dep name="dirs" version="6">Cross-platform directory paths</dep>
+      </rust>
+      <typescript>
+        <dep name="@tauri-apps/api" version="^2">Tauri IPC for invoking backend commands</dep>
+        <dep name="zustand" version="^4">State management for recording store</dep>
+        <dep name="react" version="^19.1.0">UI framework</dep>
+        <dep name="sonner" version="^2.0.7">Toast notifications for recording status</dep>
+        <dep name="vitest" version="latest">Testing framework for unit/integration tests</dep>
+        <dep name="@testing-library/react" version="^16">React component testing utilities</dep>
+        <dep name="@playwright/test" version="^1.56.1">E2E testing for full recording workflow</dep>
+      </typescript>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Use bounded mpsc::channel(30) for 1-second frame buffer to prevent memory bloat (Novel Pattern 2)</constraint>
+    <constraint>Reuse FFmpegEncoder service from Story 2.3 with same encoding pattern (H.264 MP4, stdin pipe)</constraint>
+    <constraint>Follow recording command patterns from cmd_start_screen_recording (Stories 2.2-2.5)</constraint>
+    <constraint>Auto-import must trigger immediately after recording stops using Story 2.6 workflow</constraint>
+    <constraint>Memory usage must remain &lt; 500MB during recordings up to 15 minutes</constraint>
+    <constraint>Target 30 FPS capture and encoding with &lt; 50ms audio-video sync drift</constraint>
+    <constraint>Integration with Epic 1 MPV player for playback validation</constraint>
+    <constraint>Consistent file organization: ~/Documents/clippy/recordings/{uuid}.mp4</constraint>
+    <constraint>Camera and microphone permissions must be checked before recording starts</constraint>
+    <constraint>Error handling follows patterns from Story 2.5: graceful degradation, user notifications</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>FFmpegEncoder::new</name>
+      <kind>function signature</kind>
+      <signature>pub fn new(output_path: PathBuf, width: u32, height: u32, fps: u32) -&gt; Result&lt;Self&gt;</signature>
+      <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+    </interface>
+    <interface>
+      <name>FFmpegEncoder::write_frame</name>
+      <kind>function signature</kind>
+      <signature>pub async fn write_frame(&amp;self, frame: &amp;TimestampedFrame) -&gt; Result&lt;()&gt;</signature>
+      <path>src-tauri/src/services/ffmpeg/encoder.rs</path>
+    </interface>
+    <interface>
+      <name>AudioSample</name>
+      <kind>data structure</kind>
+      <signature>pub struct AudioSample { pub data: Vec&lt;f32&gt;, pub sample_rate: u32, pub channels: u16, pub timestamp_ns: u64 }</signature>
+      <path>src-tauri/src/services/audio_capture.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_start_camera_recording</name>
+      <kind>Tauri command (NEW)</kind>
+      <signature>#[tauri::command] pub async fn cmd_start_camera_recording() -&gt; Result&lt;String, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_stop_camera_recording</name>
+      <kind>Tauri command (NEW)</kind>
+      <signature>#[tauri::command] pub async fn cmd_stop_camera_recording(recording_id: String) -&gt; Result&lt;String, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>startCameraRecording</name>
+      <kind>TypeScript API wrapper (NEW)</kind>
+      <signature>export async function startCameraRecording(): Promise&lt;string&gt;</signature>
+      <path>src/lib/tauri/recording.ts</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Project uses Vitest for TypeScript unit/integration tests and Rust's built-in testing framework for backend tests.
+Testing patterns: Component tests use @testing-library/react with describe/it/expect structure. Store tests verify state transitions.
+Backend tests use #[tokio::test] for async tests. E2E tests use Playwright for full user workflows.
+Test files colocate with source (*.test.ts, *.test.tsx) for frontend; tests/ module for Rust.
+All tests follow AAA pattern (Arrange, Act, Assert).
+    </standards>
+    <locations>
+      <location>src/stores/*.test.ts - Zustand store tests (recordingStore.test.ts patterns)</location>
+      <location>src/components/recording/*.test.tsx - React component tests</location>
+      <location>src-tauri/src/commands/recording.rs #[cfg(test)] mod tests - Command integration tests</location>
+      <location>src-tauri/src/services/**/tests/ - Service unit tests</location>
+      <location>e2e/ - Playwright E2E tests</location>
+    </locations>
+    <ideas>
+      <test ac="AC#1">Integration test: Start webcam recording → verify nokhwa captures frames and cpal captures microphone audio</test>
+      <test ac="AC#2">Integration test: Record 5 minutes → verify FFmpeg encoding memory stable &lt; 500MB, bounded channel backpressure working</test>
+      <test ac="AC#3">Integration test: Webcam recording pause/resume → verify continuous MP4 playback without artifacts</test>
+      <test ac="AC#4">E2E test: Stop webcam recording → verify auto-import triggers within 2 seconds → MediaFile appears in library</test>
+      <test ac="AC#5">E2E test: Play recorded webcam clip in MPV player → verify smooth playback</test>
+      <test ac="AC#6">Integration test: Record 30 seconds → verify 30 FPS capture rate, audio-video sync within 50ms</test>
+      <test ac="ALL">Unit test: Verify RecordingConfig serialization for RecordingSource::Camera mode</test>
+      <test ac="ALL">E2E test: Webcam recording → camera disconnection mid-recording → verify partial file saved, user notified</test>
+      <test ac="ALL">E2E test: Start webcam recording without camera permission → verify permission error, clear instructions shown</test>
+      <test ac="ALL">Manual test: Record talking head video → verify lip sync quality, listen for audio clarity</test>
+    </ideas>
+  </tests>
+</story-context>

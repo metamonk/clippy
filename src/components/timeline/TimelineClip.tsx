@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Group, Rect, Text } from 'react-konva';
+import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Clip } from '@/types/timeline';
 import { calculateClipPosition, formatTimeSimple } from '@/lib/timeline/timeUtils';
 import { TIMELINE_DEFAULTS } from '@/types/timeline';
@@ -90,7 +91,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   // const trimmedRegionColor = '#2a2a2a'; // TODO: Use for visual trim regions
 
   // Mouse event handlers for trim handles (using window-level tracking)
-  const handleLeftTrimMouseDown = (e: any) => {
+  const handleLeftTrimMouseDown = (e: KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
 
     dragStateRef.current = {
@@ -128,7 +129,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
     window.addEventListener('mouseup', handleMouseUp);
   };
 
-  const handleRightTrimMouseDown = (e: any) => {
+  const handleRightTrimMouseDown = (e: KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
 
     dragStateRef.current = {

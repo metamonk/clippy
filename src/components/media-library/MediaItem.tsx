@@ -52,8 +52,8 @@ export function MediaItem({ mediaFile }: MediaItemProps) {
   const [thumbnailError, setThumbnailError] = useState(false);
 
   const handleClick = () => {
-    // Set to preview mode when selecting from library
-    usePlayerStore.getState().setMode('preview');
+    // Focus Context System (ADR-007): setCurrentVideo automatically sets focusContext='source' → mode='preview'
+    // This enables independent playback when selecting from library (vs timeline composition playback)
     setCurrentVideo(mediaFile);
   };
 

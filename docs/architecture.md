@@ -2078,9 +2078,23 @@ interface PlayerStore {
 - Story 1.4: Preview Mode implementation
 - Story 1.7: Timeline Mode implementation (future)
 
-**Status:** Pending implementation (2025-10-28)
+**Status:** Implemented (2025-10-28)
+
+**Implementation:**
+- `focusContext: 'source' | 'timeline'` field added to playerStore
+- `sourceVideo: MediaFile | null` field added to playerStore
+- Automatic mode derivation: focusContext → mode mapping
+- MediaItem component sets `focusContext='source'` on click
+- Future Timeline component will set `focusContext='timeline'` on play (Epic 3)
+
+**Rules Implemented:**
+- Library interactions → `focusContext='source'` → `mode='preview'`
+- Timeline interactions → `focusContext='timeline'` → `mode='timeline'`
+- Play button respects current focusContext
+- Last interaction wins (implicit, no manual toggle required)
 
 **Date:** 2025-10-28
+**Implementation Date:** 2025-10-28
 
 ---
 

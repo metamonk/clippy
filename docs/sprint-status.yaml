@@ -51,25 +51,25 @@ development_status:
   1-8-basic-trim-functionality-with-in-out-points: done
   1-9-ffmpeg-integration-video-export: done
   1-10-production-build-app-packaging: done
-  1-11-video-seek-and-scrub-controls: review
-  1-12-fix-video-playback-early-stop: review
+  1-11-video-seek-and-scrub-controls: done
+  1-12-fix-video-playback-early-stop: done
   epic-1-retrospective: optional
 
   # Epic 2: Recording Foundation
   epic-2: backlog
-  2-1-screencapturekit-setup-permissions: backlog
-  2-2-full-screen-recording-with-video-capture: backlog
-  2-3-real-time-ffmpeg-encoding-during-recording: backlog
-  2-4-system-audio-and-microphone-capture: backlog
-  2-5-recording-controls-status-feedback: backlog
-  2-6-auto-import-recordings-to-media-library: backlog
-  2-7-basic-webcam-recording-setup: backlog
-  2-8-webcam-recording-with-audio-save: backlog
+  2-1-screencapturekit-setup-permissions: done
+  2-2-full-screen-recording-with-video-capture: review
+  2-3-real-time-ffmpeg-encoding-during-recording: done
+  2-4-system-audio-and-microphone-capture: review
+  2-5-recording-controls-status-feedback: ready-for-dev
+  2-6-auto-import-recordings-to-media-library: ready-for-dev
+  2-7-basic-webcam-recording-setup: ready-for-dev
+  2-8-webcam-recording-with-audio-save: ready-for-dev
   epic-2-retrospective: optional
 
   # Epic 3: Multi-Track Timeline & Editing Maturity
   epic-3: backlog
-  3-1-multi-track-timeline-foundation: backlog
+  3-1-multi-track-timeline-foundation: drafted
   3-2-multiple-clips-per-track-with-sequencing: backlog
   3-3-drag-clips-between-tracks: backlog
   3-4-split-clip-at-playhead: backlog

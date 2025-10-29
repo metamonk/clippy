@@ -13,6 +13,8 @@ describe("playerStore", () => {
       playheadPosition: 0,
       mode: 'preview',
       seekTarget: null,
+      focusContext: 'source',
+      sourceVideo: null,
     });
   });
 
@@ -256,6 +258,57 @@ describe("playerStore", () => {
       setCurrentVideo(mockMediaFile);
 
       expect(usePlayerStore.getState().playheadPosition).toBe(0);
+    });
+  });
+
+  describe("focusContext behavior", () => {
+    it("should default to source focus context", () => {
+      const { focusContext } = usePlayerStore.getState();
+      expect(focusContext).toBe('source');
+    });
+
+    it("should set focusContext to source when video selected", () => {
+      const { setCurrentVideo } = usePlayerStore.getState();
+      setCurrentVideo(mockMediaFile);
+
+      const { focusContext, mode } = usePlayerStore.getState();
+      expect(focusContext).toBe('source');
+      expect(mode).toBe('preview');
+    });
+
+    it("should update mode when focusContext changes", () => {
+      const { setFocusContext } = usePlayerStore.getState();
+
+      setFocusContext('timeline');
+      expect(usePlayerStore.getState().mode).toBe('timeline');
+
+      setFocusContext('source');
+      expect(usePlayerStore.getState().mode).toBe('preview');
+    });
+
+    it("should maintain sourceVideo separately from currentVideo", () => {
+      const { setCurrentVideo } = usePlayerStore.getState();
+      setCurrentVideo(mockMediaFile);
+
+      const { currentVideo, sourceVideo } = usePlayerStore.getState();
+      expect(sourceVideo).toBe(mockMediaFile);
+      expect(currentVideo).toBe(mockMediaFile);
+    });
+
+    it("should set both sourceVideo and focusContext when setCurrentVideo is called", () => {
+      const { setCurrentVideo } = usePlayerStore.getState();
+
+      // Verify initial state
+      expect(usePlayerStore.getState().sourceVideo).toBe(null);
+      expect(usePlayerStore.getState().focusContext).toBe('source');
+
+      // Set video
+      setCurrentVideo(mockMediaFile);
+
+      const state = usePlayerStore.getState();
+      expect(state.sourceVideo).toBe(mockMediaFile);
+      expect(state.focusContext).toBe('source');
+      expect(state.mode).toBe('preview');
     });
   });
 });

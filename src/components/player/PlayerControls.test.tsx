@@ -4,6 +4,8 @@ import { userEvent } from "@testing-library/user-event";
 import { PlayerControls } from "./PlayerControls";
 import { usePlayerStore } from "@/stores/playerStore";
 
+type PlayerState = ReturnType<typeof usePlayerStore.getState>;
+
 describe("PlayerControls", () => {
   beforeEach(() => {
     cleanup();
@@ -60,7 +62,7 @@ describe("PlayerControls", () => {
     usePlayerStore.setState({
       isPlaying: false,
       togglePlayPause,
-    } as any);
+    } as Partial<PlayerState>);
 
     render(<PlayerControls />);
 
@@ -76,7 +78,7 @@ describe("PlayerControls", () => {
     usePlayerStore.setState({
       isPlaying: true,
       togglePlayPause,
-    } as any);
+    } as Partial<PlayerState>);
 
     render(<PlayerControls />);
 
@@ -92,7 +94,7 @@ describe("PlayerControls", () => {
     usePlayerStore.setState({
       isPlaying: false,
       togglePlayPause,
-    } as any);
+    } as Partial<PlayerState>);
 
     render(<PlayerControls />);
 
@@ -108,7 +110,7 @@ describe("PlayerControls", () => {
     usePlayerStore.setState({
       isPlaying: false,
       togglePlayPause,
-    } as any);
+    } as Partial<PlayerState>);
 
     render(
       <div>
@@ -140,7 +142,7 @@ describe("PlayerControls", () => {
     it("should call seek when restart button is clicked", async () => {
       const user = userEvent.setup();
       const seek = vi.fn();
-      usePlayerStore.setState({ seek, isPlaying: false } as any);
+      usePlayerStore.setState({ seek, isPlaying: false } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       const restartButton = screen.getByLabelText("Restart");
@@ -157,7 +159,7 @@ describe("PlayerControls", () => {
         seek,
         togglePlayPause,
         isPlaying: true
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       const restartButton = screen.getByLabelText("Restart");
@@ -175,7 +177,7 @@ describe("PlayerControls", () => {
         seek,
         togglePlayPause,
         isPlaying: false
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       const restartButton = screen.getByLabelText("Restart");
@@ -202,7 +204,7 @@ describe("PlayerControls", () => {
         currentTime: 30,
         duration: 100,
         seek
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       await user.keyboard("{ArrowLeft}");
@@ -217,7 +219,7 @@ describe("PlayerControls", () => {
         currentTime: 30,
         duration: 100,
         seek
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       await user.keyboard("{ArrowRight}");
@@ -232,7 +234,7 @@ describe("PlayerControls", () => {
         currentTime: 50,
         duration: 100,
         seek
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       await user.keyboard("{Home}");
@@ -247,7 +249,7 @@ describe("PlayerControls", () => {
         currentTime: 50,
         duration: 100,
         seek
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       await user.keyboard("{End}");
@@ -262,7 +264,7 @@ describe("PlayerControls", () => {
         currentTime: 2,
         duration: 100,
         seek
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       await user.keyboard("{ArrowLeft}");
@@ -277,7 +279,7 @@ describe("PlayerControls", () => {
         currentTime: 98,
         duration: 100,
         seek
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       await user.keyboard("{ArrowRight}");
@@ -292,7 +294,7 @@ describe("PlayerControls", () => {
         currentTime: 10,
         duration: 100,
         seek
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       await user.keyboard("{Shift>}{ArrowLeft}{/Shift}");
@@ -311,7 +313,7 @@ describe("PlayerControls", () => {
         currentTime: 10,
         duration: 100,
         seek
-      } as any);
+      } as Partial<PlayerState>);
 
       render(<PlayerControls />);
       await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
@@ -330,7 +332,7 @@ describe("PlayerControls", () => {
         currentTime: 50,
         duration: 100,
         seek
-      } as any);
+      } as Partial<PlayerState>);
 
       render(
         <div>

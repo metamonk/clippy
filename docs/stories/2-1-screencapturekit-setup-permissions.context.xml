@@ -1,0 +1,267 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>1</storyId>
+    <title>ScreenCaptureKit Setup & Permissions</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-1-screencapturekit-setup-permissions.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a developer</asA>
+    <iWant>to integrate ScreenCaptureKit bindings and handle macOS permissions</iWant>
+    <soThat>the app can access screen recording capabilities</soThat>
+    <tasks>
+      - Task 1: Add ScreenCaptureKit dependency (AC: #1)
+        - Add `screencapturekit = "0.3"` to `src-tauri/Cargo.toml`
+        - Verify dependency compiles on macOS 12+
+        - Test that basic imports work (`use screencapturekit::*;`)
+
+      - Task 2: Create permission handling service (AC: #2, #3, #4)
+        - Create `src-tauri/src/services/permissions/macos.rs`
+        - Implement `check_screen_recording_permission() -> Result&lt;bool&gt;` using CGPreflightScreenCaptureAccess
+        - Implement `request_screen_recording_permission()` to trigger system dialog
+        - Add Tauri command `cmd_check_screen_recording_permission`
+        - Add Tauri command `cmd_request_screen_recording_permission`
+        - Write unit tests for permission status detection
+
+      - Task 3: Create ScreenCaptureKit wrapper service (AC: #5)
+        - Create `src-tauri/src/services/screen_capture/screencapturekit.rs`
+        - Create `ScreenCapture` struct wrapping ScreenCaptureKit objects
+        - Implement `new()` constructor with error handling
+        - Implement `capture_single_frame() -> Result&lt;Vec&lt;u8&gt;&gt;` proof-of-concept
+        - Add proper error types using `thiserror` for permission/capture failures
+        - Write integration test: permission check → capture frame
+
+      - Task 4: Frontend permission flow UI (AC: #4)
+        - Create `src/components/recording/PermissionPrompt.tsx` component
+        - Show permission request dialog with explanation on first recording attempt
+        - Implement error state: permission denied with link to System Preferences
+        - Add toast notification for permission errors using shadcn/ui
+        - Style permission prompt following macOS design patterns
+
+      - Task 5: Documentation and testing (AC: #6)
+        - Document permission flow in `services/permissions/macos.rs` doc comments
+        - Add README section: "macOS Permissions Setup"
+        - Create manual testing checklist (fresh macOS install, permission revoke, re-grant)
+        - Verify proof-of-concept single frame capture produces valid image data
+        - Add cargo test for permission service
+        - Add Vitest test for permission prompt component
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. ScreenCaptureKit Rust bindings integrated (`screencapturekit` crate v0.3.x added to Cargo.toml)
+    2. App requests screen recording permission from macOS on first use
+    3. Permission status checked before attempting recording
+    4. Clear error message if permission denied with instructions to enable in System Preferences
+    5. Proof-of-concept screen capture works (capture single frame to validate setup)
+    6. Documentation of permission handling approach in code comments
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR002: Screen Recording Capabilities</section>
+        <snippet>System shall capture screen recordings (full screen and window selection modes) with system audio and microphone audio using macOS ScreenCaptureKit API. System shall provide recording controls (start, stop, pause) and save recordings directly to timeline or media library.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR002: Platform Compatibility</section>
+        <snippet>System shall run on macOS 12+ (Monterey and later) with primary support for Apple Silicon (M1/M2/M3) and secondary Intel support. ScreenCaptureKit requires macOS 12.3+.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR012: Native macOS Integration</section>
+        <snippet>System shall implement native menu bar, window chrome, file dialogs, keyboard shortcuts following macOS conventions, notifications, and proper system permissions handling (screen recording, camera, microphone).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Technology Stack - ScreenCaptureKit</section>
+        <snippet>screencapturekit crate 0.3.x provides safe Rust wrapper for macOS screen capture. Used for Epic 2 and 4. Enables high-performance native screen recording via ScreenCaptureKit API.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Backend Services - Permissions</section>
+        <snippet>services/permissions/macos.rs handles macOS permission checks for screen recording, camera, and microphone. Check before capture attempt, provide clear error messages directing users to System Preferences.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Backend Services - Screen Capture</section>
+        <snippet>services/screen_capture/ contains screencapturekit.rs (ScreenCaptureKit wrapper) and frame_handler.rs (frame buffering). Uses SCStreamConfiguration for capture settings, SCContentFilter for source selection, SCStream for frame callbacks.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Definitions</title>
+        <section>Epic 2: Recording Foundation - Story 2.1</section>
+        <snippet>Story 2.1 validates the most technically risky aspect: calling native macOS frameworks from Rust, handling permissions, and establishing foundation for all recording features. Proof-of-concept screen capture (single frame) validates setup before building full recording in Story 2.2.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/Cargo.toml</path>
+        <kind>dependency manifest</kind>
+        <symbol>screencapturekit = "0.3"</symbol>
+        <lines>39</lines>
+        <reason>ScreenCaptureKit dependency already added - AC #1 partially complete. Also shows thiserror (line 32), anyhow (line 31), tracing (line 33-34) for error handling and logging patterns</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/media.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_import_media</symbol>
+        <lines>16-70</lines>
+        <reason>Reference pattern for Tauri commands: async fn with Result&lt;T, String&gt;, tracing for structured logging, user-friendly error messages. New recording commands should follow this pattern</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/mod.rs</path>
+        <kind>module</kind>
+        <symbol>pub mod media; pub use media::*;</symbol>
+        <lines>1-20</lines>
+        <reason>Pattern for registering new command modules. Will need to add: pub mod recording; pub use recording::{cmd_check_screen_recording_permission, cmd_request_screen_recording_permission}</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/</path>
+        <kind>directory</kind>
+        <symbol>services/ffmpeg/, services/mpv_player.rs</symbol>
+        <lines>N/A</lines>
+        <reason>Existing service layer structure. Need to create: services/permissions/macos.rs and services/screen_capture/screencapturekit.rs following similar patterns</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/player/VideoPlayer.tsx</path>
+        <kind>component</kind>
+        <symbol>VideoPlayer</symbol>
+        <lines>N/A</lines>
+        <reason>Reference for React component structure. New PermissionPrompt component should follow similar patterns with TypeScript, hooks, and Vitest tests (.test.tsx)</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/ui/alert-dialog.tsx</path>
+        <kind>component</kind>
+        <symbol>AlertDialog (shadcn/ui)</symbol>
+        <lines>N/A</lines>
+        <reason>Existing shadcn/ui component. Can use AlertDialog for permission prompt modal. May need to add toast component from shadcn/ui for error notifications</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <package name="screencapturekit" version="0.3" />
+        <package name="nokhwa" version="0.10" features="input-avfoundation" />
+        <package name="tauri" version="2" />
+        <package name="tokio" version="1" features="full" />
+        <package name="anyhow" version="1" />
+        <package name="thiserror" version="1" />
+        <package name="tracing" version="0.1" />
+        <package name="tracing-subscriber" version="0.3" features="env-filter" />
+        <package name="serde" version="1" features="derive" />
+        <package name="serde_json" version="1" />
+        <package name="ffmpeg-sidecar" version="2.1" />
+      </rust>
+      <typescript>
+        <package name="react" version="^19.1.0" />
+        <package name="@tauri-apps/api" version="^2" />
+        <package name="@tauri-apps/plugin-dialog" version="^2" />
+        <package name="@tauri-apps/plugin-notification" version="^2" />
+        <package name="@radix-ui/react-alert-dialog" version="^1.1.15" />
+        <package name="sonner" version="^2.0.7" note="toast notifications" />
+        <package name="zustand" version="^4" />
+        <package name="lucide-react" version="^0.548.0" note="icons" />
+        <package name="vitest" version="^2" devDependency="true" />
+        <package name="@testing-library/react" version="^16" devDependency="true" />
+      </typescript>
+      <frameworks>
+        <framework>Tauri 2.x - Native macOS desktop app framework</framework>
+        <framework>React 19 - Frontend UI</framework>
+        <framework>Vite - Build tool and dev server</framework>
+        <framework>TypeScript - Type-safe frontend development</framework>
+        <framework>Tailwind CSS - Styling (via shadcn/ui components)</framework>
+        <framework>Vitest - Frontend testing</framework>
+        <framework>cargo test - Rust testing</framework>
+      </frameworks>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Follow existing Tauri command pattern: async functions returning Result&lt;T, String&gt; with user-friendly error messages
+    - Use tracing crate for structured logging with event names and context fields
+    - Error types: Use thiserror for custom error enums, convert to String for Tauri command returns
+    - Permission handling: Check permission before ANY screen capture attempt, provide clear error with System Preferences guidance
+    - macOS version requirement: ScreenCaptureKit requires macOS 12.3+, add runtime version check
+    - File structure: services/permissions/macos.rs for permission logic, services/screen_capture/screencapturekit.rs for capture logic, commands/recording.rs for Tauri commands
+    - Testing: Rust unit tests in #[cfg(test)] mod tests blocks, frontend Vitest tests in .test.tsx files
+    - Component organization: Create src/components/recording/ directory for all recording-related UI components
+    - Use existing shadcn/ui components (AlertDialog) for permission prompt UI
+    - Follow React hooks patterns from existing player/timeline components
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>Tauri Command Pattern</name>
+      <kind>function signature</kind>
+      <signature>#[tauri::command] pub async fn cmd_name(params: Type) -&gt; Result&lt;ReturnType, String&gt;</signature>
+      <path>src-tauri/src/commands/*.rs</path>
+    </interface>
+    <interface>
+      <name>Permission Check API (to be created)</name>
+      <kind>Rust function</kind>
+      <signature>pub fn check_screen_recording_permission() -&gt; Result&lt;bool, String&gt;</signature>
+      <path>src-tauri/src/services/permissions/macos.rs</path>
+    </interface>
+    <interface>
+      <name>Permission Request API (to be created)</name>
+      <kind>Rust function</kind>
+      <signature>pub fn request_screen_recording_permission() -&gt; Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/services/permissions/macos.rs</path>
+    </interface>
+    <interface>
+      <name>ScreenCapture Service (to be created)</name>
+      <kind>Rust struct</kind>
+      <signature>pub struct ScreenCapture { /* fields */ } impl ScreenCapture { pub fn new() -&gt; Result&lt;Self&gt;; pub fn capture_single_frame() -&gt; Result&lt;Vec&lt;u8&gt;&gt;; }</signature>
+      <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>Rust backend tests use cargo test with #[cfg(test)] mod tests blocks inline in source files. Async functions tested with #[tokio::test]. Test both success and error paths. Frontend tests use Vitest with @testing-library/react, following describe/it/expect pattern. Component tests in .test.tsx files colocated with components. Use cleanup() in beforeEach, userEvent for interactions. Mock Tauri commands with vi.mock().</standards>
+    <locations>
+      - Rust unit tests: Inline #[cfg(test)] mod tests blocks in src-tauri/src/services/permissions/macos.rs and src-tauri/src/services/screen_capture/screencapturekit.rs
+      - Rust integration tests: src-tauri/src/commands/recording.rs (tests for Tauri commands)
+      - Frontend component tests: src/components/recording/PermissionPrompt.test.tsx
+      - Manual testing: Permission flows require manual verification on macOS (grant/deny/revoke scenarios)
+    </locations>
+    <ideas>
+      AC #1 (ScreenCaptureKit dependency):
+      - cargo build verifies screencapturekit 0.3 compiles successfully
+      - test_screencapturekit_import: verify basic imports work (use screencapturekit::*)
+
+      AC #2 (Permission request):
+      - test_request_screen_recording_permission_triggers_system_dialog: call function, verify no panic (manual verification of dialog)
+      - Manual test: Fresh macOS install → first request → system dialog appears
+
+      AC #3 (Permission status check):
+      - test_check_screen_recording_permission_returns_bool: function returns Ok(bool), not panic
+      - test_permission_check_before_capture: verify capture fails with clear error when permission denied
+      - Manual test: Revoke permission in System Preferences → check returns false
+
+      AC #4 (Error messaging):
+      - test_permission_denied_error_message: verify error contains "System Preferences" guidance text
+      - Frontend test: test_permission_prompt_shows_error_state: render denied state, verify link to System Preferences
+      - Frontend test: test_toast_notification_on_permission_error: trigger error, verify toast appears with correct message
+
+      AC #5 (Proof-of-concept capture):
+      - test_capture_single_frame_returns_bytes: with permission granted, capture returns Vec&lt;u8&gt; with length > 0
+      - test_capture_without_permission_fails: verify capture fails with PermissionDenied error when permission not granted
+      - test_screencapture_init_requires_permission: ScreenCapture::new() fails gracefully without permission
+      - Manual test: Grant permission → capture frame → verify non-empty byte array (validate image format)
+
+      AC #6 (Documentation):
+      - Review: Verify doc comments exist on all public functions in macos.rs and screencapturekit.rs
+      - Review: Check README contains "macOS Permissions Setup" section with instructions
+    </ideas>
+  </tests>
+</story-context>

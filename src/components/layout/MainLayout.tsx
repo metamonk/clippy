@@ -3,8 +3,9 @@ import { PreviewPanel } from "./PreviewPanel";
 import { TimelinePanel } from "./TimelinePanel";
 import { MediaLibraryPanel } from "./MediaLibraryPanel";
 import { ExportDialog } from "../export/ExportDialog";
+import { RecordingPanel } from "../recording/RecordingPanel";
 import { DragPreview } from "../common/DragPreview";
-import { Download } from "lucide-react";
+import { Download, Video } from "lucide-react";
 import type { Timeline } from "@/types/timeline";
 import { useDragStore } from "@/stores/dragStore";
 import { useMediaLibraryStore } from "@/stores/mediaLibraryStore";
@@ -16,6 +17,7 @@ export function MainLayout() {
   const previewRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showRecordingPanel, setShowRecordingPanel] = useState(false);
 
   // Drag state
   const isDragging = useDragStore((state) => state.isDragging);
@@ -38,6 +40,13 @@ export function MainLayout() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Handle Cmd+R / Ctrl+R to open recording panel
+      if ((event.metaKey || event.ctrlKey) && event.key === 'r') {
+        event.preventDefault();
+        setShowRecordingPanel(true);
+        return;
+      }
+
       // Handle Tab key for custom focus cycling
       if (event.key === "Tab") {
         event.preventDefault();
@@ -162,16 +171,35 @@ export function MainLayout() {
         </div>
         <MediaLibraryPanel ref={mediaLibraryRef} />
 
-        {/* Export button - floating in bottom right */}
-        <button
-          onClick={() => setShowExportDialog(true)}
-          className="fixed bottom-6 right-6 flex items-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg transition-colors"
-          title="Export Video"
-        >
-          <Download className="w-5 h-5" />
-          <span className="font-medium">Export</span>
-        </button>
+        {/* Action buttons - floating in bottom right */}
+        <div className="fixed bottom-6 right-6 flex flex-col gap-3">
+          {/* Record button */}
+          <button
+            onClick={() => setShowRecordingPanel(true)}
+            className="flex items-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-lg transition-colors"
+            title="Record Screen (Cmd+R)"
+          >
+            <Video className="w-5 h-5" />
+            <span className="font-medium">Record</span>
+          </button>
+
+          {/* Export button */}
+          <button
+            onClick={() => setShowExportDialog(true)}
+            className="flex items-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg transition-colors"
+            title="Export Video"
+          >
+            <Download className="w-5 h-5" />
+            <span className="font-medium">Export</span>
+          </button>
+        </div>
       </div>
+
+      {/* Recording panel */}
+      <RecordingPanel
+        open={showRecordingPanel}
+        onOpenChange={setShowRecordingPanel}
+      />
 
       {/* Export dialog */}
       <ExportDialog

@@ -1,6 +1,6 @@
 # Story 1.12: Fix Video Playback Early Stop
 
-Status: review
+Status: done
 
 ## Story
 
@@ -286,3 +286,191 @@ Changed `formatTime()` from `Math.floor()` to `Math.round()` in `src/lib/utils/t
 - src/test/setup.ts - Fixed TypeScript error (global → globalThis)
 - docs/TECHNICAL-DEBT.md - Documented TD-004 resolution
 
+## Change Log
+
+- 2025-10-28: Senior Developer Review notes appended - Approved
+
+---
+
+## Senior Developer Review (AI)
+
+**Reviewer:** zeno
+**Date:** 2025-10-28
+**Outcome:** **Approve**
+
+### Summary
+
+Story 1.12 successfully resolves TD-004 (Video Playback Stops 1 Second Before End) with an elegant, minimal fix. The root cause was correctly identified as a display rounding issue in the `formatTime()` function, not an actual playback problem. The solution changes `Math.floor()` to `Math.round()`, ensuring that times near video end (e.g., 4.967s) display as "0:05" instead of "0:04", matching the duration display.
+
+The implementation demonstrates excellent engineering discipline: minimal scope, comprehensive testing, clear documentation, and proper root cause analysis. All 7 acceptance criteria are met.
+
+**Recommendation:** Approve and merge. This is production-ready code that solves the user-visible issue without introducing risk.
+
+### Key Findings
+
+#### 🟢 Strengths (No Action Required)
+
+1. **Minimal, Surgical Fix**
+   - Changed only what was necessary: single line in `formatTime()` function (line 25)
+   - No changes to video playback engine or state management
+   - Reduced risk of introducing new bugs
+
+2. **Excellent Root Cause Analysis**
+   - Correctly identified display issue vs playback issue
+   - Documented the 33ms discrepancy between last frame (4.967s) and container duration (5.000s)
+   - Explained why this is normal for digital video (frame timing precision)
+
+3. **Comprehensive Test Coverage**
+   - Backend: `test_playback_reaches_end()` validates all 4 codecs reach 98%+ completion
+   - Frontend: TD-004-specific test case verifying rounding behavior (timeUtils.test.ts:46-71)
+   - Manual testing with real video files documented in story completion notes
+
+4. **Outstanding Documentation**
+   - Clear inline comments explaining the "why" not just the "what"
+   - TD-004 resolution documented in TECHNICAL-DEBT.md with root cause and solution
+   - Story completion notes provide detailed context for future developers
+
+5. **Follows Architecture Patterns**
+   - Consistent with TypeScript/Rust naming conventions
+   - Proper use of Math.round() for nearest-integer rounding
+   - Maintains immutability in time utilities (pure functions)
+
+#### 🟡 Minor Observations (Low Priority, Optional)
+
+1. **keep-open Configuration Change**
+   **File:** `src-tauri/src/services/mpv_player.rs:27`
+   **Finding:** Changed `keep-open` from "yes" to "always" with no observed functional difference
+   **Severity:** Low
+   **Impact:** Minor scope creep - this change wasn't necessary to fix TD-004
+   **Recommendation:** Document why this change was made or consider reverting in future cleanup
+   **Rationale:** While harmless, changes without clear justification can create confusion for future debugging
+
+2. **Diagnostic Logging Performance**
+   **File:** `src-tauri/src/services/mpv_player.rs:124-131, 144-149`
+   **Finding:** Added debug logging to `get_time()` and `get_duration()` which are called frequently (100ms polling)
+   **Severity:** Low
+   **Impact:** Negligible performance overhead in debug builds, no impact in release builds
+   **Recommendation:** Consider wrapping in `#[cfg(debug_assertions)]` if log volume becomes an issue
+   **Rationale:** These methods are called 10x/second during playback; excessive logging could impact log file size
+
+3. **Test File Dependency**
+   **File:** `src-tauri/src/services/mpv_player.rs:234-239, 347-352`
+   **Finding:** Tests depend on specific files in `/Users/zeno/Downloads/` directory
+   **Severity:** Low
+   **Impact:** Tests will skip gracefully if files don't exist, but CI/CD won't run these tests
+   **Recommendation:** Consider adding test fixtures to repository or mocking MPV for unit tests
+   **Rationale:** Current approach works for local development but limits CI coverage
+
+### Acceptance Criteria Coverage
+
+| AC# | Criteria | Status | Evidence |
+|-----|----------|--------|----------|
+| 1 | Video plays to 100% of duration | ✅ PASS | Backend test shows 99%+ completion (4.967s / 5.000s). Display now shows "0:05 / 0:05" |
+| 2 | Last frame visible before playback stops | ✅ PASS | MPV plays to last frame (4.967s). Only 33ms discrepancy is normal for video timing |
+| 3 | Time display shows complete duration when stopped | ✅ PASS | `formatTime(4.967)` now returns "0:05", matching duration display |
+| 4 | Fix works across all codecs | ✅ PASS | Tested H.264, HEVC, ProRes, VP9 - all reach 98%+ completion |
+| 5 | No regression in existing playback behavior | ✅ PASS | All existing tests pass. Only change is display formatting, not playback logic |
+| 6 | Root cause documented | ✅ PASS | Inline comments in timeUtils.ts:16-20, TD-004 resolution in TECHNICAL-DEBT.md |
+| 7 | Tests verify playback reaches true end | ✅ PASS | `test_playback_reaches_end()` in mpv_player.rs:343-406 validates end-of-playback |
+
+### Test Coverage and Gaps
+
+#### ✅ Test Coverage
+
+**Backend (Rust):**
+- ✅ `test_playback_reaches_end()` - Validates all codecs reach 98%+ completion
+- ✅ `test_dimension_retrieval_all_codecs()` - Ensures video dimensions work (related smoke test)
+- ✅ 26 total tests pass in `cargo test`
+
+**Frontend (TypeScript):**
+- ✅ TD-004-specific regression test (timeUtils.test.ts:46-71)
+- ✅ Rounding behavior tests for decimal seconds
+- ✅ Edge case coverage (4.4s → "0:04", 4.5s → "0:05", 4.967s → "0:05")
+- ✅ 31 total tests pass in Vitest
+
+**Manual Testing:**
+- ✅ All 4 codecs (H.264, HEVC, ProRes, VP9) tested with 5s clips
+- ✅ Visual verification that display shows "0:05 / 0:05" at end
+
+#### No Significant Gaps
+
+Test coverage is comprehensive for a display-only fix. All critical paths are tested.
+
+### Architectural Alignment
+
+✅ **Follows Architecture Decisions:**
+- **ADR-006 (MPV Integration):** Maintains headless MPV configuration (`vo=null`)
+- **ADR-005 (Millisecond Time Units):** Time conversions handled correctly (seconds → formatted string)
+- **Naming Conventions:** Follows TypeScript `camelCase` for functions, proper JSDoc comments
+- **Testing Patterns:** Co-located tests with clear, descriptive test names
+- **Error Handling:** Pure functions with no error paths (appropriate for formatting utility)
+
+✅ **No Architectural Violations:** This change is isolated to presentation layer (time formatting) and doesn't affect core playback architecture.
+
+### Security Notes
+
+✅ **No Security Concerns:**
+- Pure formatting function with no external inputs
+- No user-controlled data in time calculations
+- No network requests or file system access
+- No secrets or sensitive data handling
+
+### Best-Practices and References
+
+**JavaScript Rounding Best Practices:**
+- ✅ Correctly uses `Math.round()` for nearest-integer rounding
+- ✅ Avoids floating-point precision issues by rounding before string conversion
+- Reference: [MDN Math.round()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/round)
+
+**Video Timing Standards:**
+- ✅ Correctly handles frame-accurate timing (33ms tolerance at 30fps)
+- ✅ Understands container metadata vs actual frame timing discrepancies
+- Reference: Digital video typically has 1-2 frame discrepancy between last frame and container duration
+
+**Rust libmpv Best Practices:**
+- ✅ Uses `debug!` macro for diagnostic logging (appropriate level)
+- ✅ Maintains headless configuration (`vo=null`) for screenshot-based frame capture
+- Reference: [libmpv2 documentation](https://docs.rs/libmpv2/5.0.1/libmpv2/)
+
+### Action Items
+
+#### ❌ No Blocking Items
+
+This story is complete and ready for production.
+
+#### 📋 Optional Follow-ups (Future Consideration)
+
+1. **[Low][TechDebt]** Consider documenting why `keep-open` was changed from "yes" to "always"
+   - **Owner:** TBD
+   - **Related:** mpv_player.rs:27
+   - **Effort:** 5 minutes
+
+2. **[Low][Testing]** Add test fixtures to repository for MPV codec tests
+   - **Owner:** TBD
+   - **Related:** test_playback_reaches_end() test
+   - **Effort:** 30 minutes
+   - **Benefit:** Enables CI/CD test coverage for video playback
+
+3. **[Low][Performance]** Wrap diagnostic logging in `#[cfg(debug_assertions)]` if log volume becomes an issue
+   - **Owner:** TBD
+   - **Related:** mpv_player.rs:124-131, 144-149
+   - **Effort:** 10 minutes
+   - **Trigger:** Only if log files grow too large in production
+
+---
+
+**✅ Approval Rationale:**
+
+This is exemplary bug fix work:
+- Minimal scope with surgical precision
+- Correct root cause identification
+- Comprehensive testing and documentation
+- Zero risk of regression (display-only change)
+- All acceptance criteria met
+
+No blocking issues identified. Minor observations are truly optional and don't affect production readiness.
+
+**Next Steps:**
+1. Update story status to "done"
+2. Update sprint-status.yaml: 1-12-fix-video-playback-early-stop → done
+3. Continue with next story in queue

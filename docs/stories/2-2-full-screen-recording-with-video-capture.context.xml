@@ -1,0 +1,354 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>2</storyId>
+    <title>Full-Screen Recording with Video Capture</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-2-full-screen-recording-with-video-capture.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to record my entire screen</iWant>
+    <soThat>I can capture demonstrations and tutorials</soThat>
+    <tasks>
+      <task id="T1" acs="AC1,AC3,AC4">
+        <description>Create RecordingPanel component with basic UI</description>
+        <subtasks>
+          <subtask id="T1.1">Create components/recording/RecordingPanel.tsx with modal/panel layout</subtask>
+          <subtask id="T1.2">Add "Record Screen" button that triggers screen capture command</subtask>
+          <subtask id="T1.3">Implement recording indicator (pulsing red dot) shown during active recording</subtask>
+          <subtask id="T1.4">Add "Stop Recording" button enabled only during recording</subtask>
+          <subtask id="T1.5">Write tests for RecordingPanel state transitions (idle → recording → stopped)</subtask>
+        </subtasks>
+      </task>
+      <task id="T2" acs="AC2,AC5,AC6">
+        <description>Implement ScreenCaptureKit integration for full-screen capture</description>
+        <subtasks>
+          <subtask id="T2.1">Create services/screen_capture/screencapturekit.rs wrapper for SCK API</subtask>
+          <subtask id="T2.2">Implement full-screen capture configuration (CGMainDisplayID, 30 FPS)</subtask>
+          <subtask id="T2.3">Implement frame capture loop with ScreenCaptureKit streaming API</subtask>
+          <subtask id="T2.4">Create frame buffer using tokio::sync::mpsc::channel(30) for bounded memory</subtask>
+          <subtask id="T2.5">Write frames to temporary file location in ~/Documents/clippy/recordings</subtask>
+          <subtask id="T2.6">Test screen capture with 5-minute recording to verify stable memory usage</subtask>
+        </subtasks>
+      </task>
+      <task id="T3" acs="AC1,AC7">
+        <description>Create Tauri command for starting screen recording</description>
+        <subtasks>
+          <subtask id="T3.1">Create commands/recording.rs::cmd_start_screen_recording command</subtask>
+          <subtask id="T3.2">Initialize ScreenCaptureKit service and validate permissions before starting</subtask>
+          <subtask id="T3.3">Return recording ID to frontend for tracking</subtask>
+          <subtask id="T3.4">Implement error handling for permission denied, device not available cases</subtask>
+          <subtask id="T3.5">Write Rust tests for command error handling paths</subtask>
+        </subtasks>
+      </task>
+      <task id="T4" acs="AC4,AC6">
+        <description>Create Tauri command for stopping recording</description>
+        <subtasks>
+          <subtask id="T4.1">Create commands/recording.rs::cmd_stop_recording command</subtask>
+          <subtask id="T4.2">Stop frame capture loop and flush remaining buffered frames</subtask>
+          <subtask id="T4.3">Finalize temporary file and return file path to frontend</subtask>
+          <subtask id="T4.4">Clean up ScreenCaptureKit resources properly</subtask>
+          <subtask id="T4.5">Write tests for stop command with graceful shutdown</subtask>
+        </subtasks>
+      </task>
+      <task id="T5" acs="AC1">
+        <description>Integrate RecordingPanel with app layout</description>
+        <subtasks>
+          <subtask id="T5.1">Add "Record" menu item or toolbar button in main App.tsx</subtask>
+          <subtask id="T5.2">Toggle RecordingPanel visibility with modal/drawer pattern</subtask>
+          <subtask id="T5.3">Ensure RecordingPanel accessible via keyboard shortcut (Cmd+R)</subtask>
+          <subtask id="T5.4">Update Zustand recordingStore with basic state (isRecording, recordingId)</subtask>
+        </subtasks>
+      </task>
+      <task id="T6" acs="AC7">
+        <description>Add error handling and user feedback</description>
+        <subtasks>
+          <subtask id="T6.1">Display toast notification on recording start success</subtask>
+          <subtask id="T6.2">Display error toast if recording fails (permissions, device errors)</subtask>
+          <subtask id="T6.3">Add error boundary around RecordingPanel to prevent app crash</subtask>
+          <subtask id="T6.4">Log all recording errors to tracing with full context</subtask>
+        </subtasks>
+      </task>
+      <task id="T7" acs="AC1,AC2,AC3,AC4,AC5,AC6,AC7">
+        <description>Testing and validation</description>
+        <subtasks>
+          <subtask id="T7.1">Test full-screen recording for 30 seconds, verify 30 FPS output</subtask>
+          <subtask id="T7.2">Test recording start/stop multiple times without memory leaks</subtask>
+          <subtask id="T7.3">Test error case: recording without screen permission granted</subtask>
+          <subtask id="T7.4">Verify temporary file created in expected location</subtask>
+          <subtask id="T7.5">Verify recording can be played back in VLC/QuickTime</subtask>
+        </subtasks>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="AC1">"Record Screen" button in UI triggers full-screen capture</criterion>
+    <criterion id="AC2">ScreenCaptureKit captures full screen at 30 FPS</criterion>
+    <criterion id="AC3">Recording indicator shows recording is active (red dot or similar)</criterion>
+    <criterion id="AC4">Stop button ends recording</criterion>
+    <criterion id="AC5">Raw video frames captured and buffered in memory</criterion>
+    <criterion id="AC6">Recording saves to temporary file location</criterion>
+    <criterion id="AC7">Basic error handling if recording fails</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR002: Screen Recording Capabilities</section>
+        <snippet>System shall capture screen recordings (full screen and window selection modes) with system audio and microphone audio using macOS ScreenCaptureKit API. System shall provide recording controls (start, stop, pause) and save recordings directly to timeline or media library.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Screen recording shall capture at 30+ FPS without dropped frames. Application shall launch in under 3 seconds.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Pattern 2: Real-Time Encoding During Capture</section>
+        <snippet>Prevent memory bloat during long recordings by encoding frames in real-time. ScreenCaptureKit → Bounded Channel (30 frames) → FFmpeg stdin → Disk. Bounded mpsc::channel(30) prevents unbounded memory growth. Affects Epic 2 Story 2.3.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Technology Stack - ScreenCaptureKit</section>
+        <snippet>screencapturekit crate 0.3.x provides safe Rust wrapper for macOS screen capture. Used in Epic 2 and 4 for screen recording capabilities.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Epic 2 Mapping: Recording Foundation</section>
+        <snippet>Frontend: components/recording/, stores/recordingStore, lib/tauri/recording.ts. Backend: commands/recording.rs, services/screen_capture/, services/ffmpeg/encoder.rs. Integration: ScreenCaptureKit frame capture, Real-time FFmpeg encoding, macOS permission handling.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epics Document</title>
+        <section>Epic 2: Recording Foundation</section>
+        <snippet>Add native screen recording capabilities using ScreenCaptureKit. Stories 2.1-2.8 cover permissions, full-screen capture, real-time encoding, audio capture, and recording controls.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epics Document</title>
+        <section>Story 2.2: Full-Screen Recording with Video Capture</section>
+        <snippet>User wants to record entire screen to capture demonstrations and tutorials. ScreenCaptureKit captures full screen at 30 FPS, frames buffered in memory, saved to temporary file. Prerequisite: Story 2.1 (permissions).</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/2-1-screencapturekit-setup-permissions.md</path>
+        <title>Story 2.1: ScreenCaptureKit Setup &amp; Permissions</title>
+        <section>Implementation Complete</section>
+        <snippet>ScreenCaptureKit bindings integrated (screencapturekit 0.3.x), permission handling implemented (services/permissions/macos.rs), ScreenCaptureKit wrapper created (services/screen_capture/screencapturekit.rs), Tauri commands for permissions (commands/recording.rs), frontend permission UI (components/recording/PermissionPrompt.tsx).</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/src/services/permissions/macos.rs</path>
+        <kind>service</kind>
+        <symbol>check_screen_recording_permission</symbol>
+        <lines>48-50</lines>
+        <reason>Existing permission check function to validate before recording starts</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/permissions/macos.rs</path>
+        <kind>service</kind>
+        <symbol>PermissionError</symbol>
+        <lines>32-45</lines>
+        <reason>Error types for permission handling reused in recording error handling</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+        <kind>service</kind>
+        <symbol>ScreenCapture</symbol>
+        <lines>49-50</lines>
+        <reason>Base ScreenCaptureKit wrapper to extend with continuous recording capability</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+        <kind>service</kind>
+        <symbol>ScreenCaptureError</symbol>
+        <lines>31-47</lines>
+        <reason>Error types for screen capture operations</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_check_screen_recording_permission</symbol>
+        <lines>18-31</lines>
+        <reason>Existing command for permission checking - pattern to follow for new recording commands</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/PermissionPrompt.tsx</path>
+        <kind>component</kind>
+        <symbol>PermissionPrompt</symbol>
+        <lines>all</lines>
+        <reason>Existing permission UI that may be integrated with RecordingPanel</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>timelineStore</symbol>
+        <lines>all</lines>
+        <reason>Example Zustand store pattern to follow for recordingStore</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/mediaLibraryStore.ts</path>
+        <kind>store</kind>
+        <symbol>mediaLibraryStore</symbol>
+        <lines>all</lines>
+        <reason>Media library store for future integration of recorded videos</reason>
+      </artifact>
+      <artifact>
+        <path>src/App.tsx</path>
+        <kind>component</kind>
+        <symbol>App</symbol>
+        <lines>1-26</lines>
+        <reason>Main app entry point where RecordingPanel trigger will be added</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/layout/MainLayout.tsx</path>
+        <kind>component</kind>
+        <symbol>MainLayout</symbol>
+        <lines>all</lines>
+        <reason>Layout component where recording toolbar button may be added</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package>@tauri-apps/api</package>
+        <version>^2</version>
+        <usage>Tauri frontend API for invoking commands</usage>
+      </node>
+      <node>
+        <package>zustand</package>
+        <version>^4</version>
+        <usage>State management for recordingStore</usage>
+      </node>
+      <node>
+        <package>sonner</package>
+        <version>^2.0.7</version>
+        <usage>Toast notifications for recording feedback</usage>
+      </node>
+      <node>
+        <package>lucide-react</package>
+        <version>^0.548.0</version>
+        <usage>Icons for recording controls (record, stop indicators)</usage>
+      </node>
+      <node>
+        <package>react</package>
+        <version>^19.1.0</version>
+        <usage>Frontend framework</usage>
+      </node>
+      <rust>
+        <crate>screencapturekit</crate>
+        <version>0.3</version>
+        <usage>ScreenCaptureKit bindings for screen capture</usage>
+      </rust>
+      <rust>
+        <crate>tokio</crate>
+        <version>1</version>
+        <features>full</features>
+        <usage>Async runtime and mpsc channels for frame buffering</usage>
+      </rust>
+      <rust>
+        <crate>tracing</crate>
+        <version>0.1</version>
+        <usage>Logging for recording operations</usage>
+      </rust>
+      <rust>
+        <crate>thiserror</crate>
+        <version>1</version>
+        <usage>Error handling for recording commands</usage>
+      </rust>
+      <rust>
+        <crate>uuid</crate>
+        <version>1</version>
+        <features>v4, serde</features>
+        <usage>Recording ID generation</usage>
+      </rust>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Follow existing Tauri command pattern: async functions with Result&lt;T, String&gt; return type</constraint>
+    <constraint>Use tracing crate for logging (debug, info, error macros) - already initialized in project</constraint>
+    <constraint>Error messages must be user-friendly strings suitable for UI display</constraint>
+    <constraint>Use Zustand for state management following existing store patterns (timelineStore, mediaLibraryStore)</constraint>
+    <constraint>Components must use TypeScript with proper type definitions</constraint>
+    <constraint>Follow shadcn/ui component patterns for UI consistency</constraint>
+    <constraint>Toast notifications via sonner library (already configured in App.tsx)</constraint>
+    <constraint>Recording frame buffer: bounded mpsc::channel(30) as per Architecture Pattern 2</constraint>
+    <constraint>Temporary recording location: ~/Documents/clippy/recordings/recording-{uuid}.raw</constraint>
+    <constraint>Raw frame format: BGRA at native resolution (no encoding in this story - Story 2.3 adds FFmpeg)</constraint>
+    <constraint>Permission check required before starting recording using existing check_screen_recording_permission</constraint>
+    <constraint>All new Rust modules must be exported in mod.rs and registered in lib.rs</constraint>
+    <constraint>React components require Vitest tests, Rust services require #[cfg(test)] unit tests</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>cmd_start_screen_recording</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_start_screen_recording() -&gt; Result&lt;String, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+      <notes>Returns recording ID (UUID) on success, user-friendly error message on failure</notes>
+    </interface>
+    <interface>
+      <name>cmd_stop_recording</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_stop_recording(recording_id: String) -&gt; Result&lt;String, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+      <notes>Returns file path to saved recording on success</notes>
+    </interface>
+    <interface>
+      <name>ScreenCapture::start_continuous_capture</name>
+      <kind>Rust Method</kind>
+      <signature>pub fn start_continuous_capture(&amp;mut self) -&gt; Result&lt;mpsc::Receiver&lt;Vec&lt;u8&gt;&gt;, ScreenCaptureError&gt;</signature>
+      <path>src-tauri/src/services/screen_capture/screencapturekit.rs</path>
+      <notes>Initiates frame capture stream, returns receiver for frame data</notes>
+    </interface>
+    <interface>
+      <name>RecordingPanel Component</name>
+      <kind>React Component</kind>
+      <signature>export const RecordingPanel: React.FC&lt;RecordingPanelProps&gt;</signature>
+      <path>src/components/recording/RecordingPanel.tsx</path>
+      <notes>Modal/panel with recording controls, recording indicator, and error handling</notes>
+    </interface>
+    <interface>
+      <name>recordingStore</name>
+      <kind>Zustand Store</kind>
+      <signature>interface RecordingState { isRecording: boolean; recordingId: string | null; ... }</signature>
+      <path>src/stores/recordingStore.ts</path>
+      <notes>Global state for recording status and control</notes>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Frontend: Vitest with React Testing Library for component tests. Tests colocated with components (*.test.tsx).
+Backend: Rust #[cfg(test)] modules with tokio::test for async tests. Integration tests verify command → service → result flow.
+Testing pattern: Arrange-Act-Assert. Mock Tauri commands in frontend tests. Use tracing_subscriber in Rust tests for debug output.
+    </standards>
+    <locations>
+      <location>src/components/recording/*.test.tsx</location>
+      <location>src/stores/recordingStore.test.ts</location>
+      <location>src-tauri/src/services/screen_capture/*.rs (#[cfg(test)] modules)</location>
+      <location>src-tauri/src/commands/recording.rs (#[cfg(test)] module)</location>
+    </locations>
+    <ideas>
+      <test ac="AC1">Frontend: Test RecordingPanel "Record Screen" button triggers cmd_start_screen_recording command</test>
+      <test ac="AC2,AC5">Backend: Test ScreenCapture continuous capture returns frame stream at ~30 FPS</test>
+      <test ac="AC3">Frontend: Test recording indicator becomes visible when isRecording=true</test>
+      <test ac="AC4">Frontend: Test "Stop" button triggers cmd_stop_recording and updates state</test>
+      <test ac="AC5">Backend: Test bounded channel(30) prevents memory overflow during capture</test>
+      <test ac="AC6">Backend: Test recording saves to ~/Documents/clippy/recordings/{uuid}.raw with valid BGRA data</test>
+      <test ac="AC7">Frontend: Test error toast displays when permission denied</test>
+      <test ac="AC7">Backend: Test cmd_start_screen_recording returns Err when permission check fails</test>
+      <test ac="integration">Integration: Test full flow - start recording → wait 5 seconds → stop → verify file exists</test>
+    </ideas>
+  </tests>
+</story-context>

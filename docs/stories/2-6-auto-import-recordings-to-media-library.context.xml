@@ -1,0 +1,239 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>6</storyId>
+    <title>Auto-Import Recordings to Media Library</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-6-auto-import-recordings-to-media-library.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>completed recordings to automatically appear in my media library</iWant>
+    <soThat>I can immediately edit them without manual import</soThat>
+    <tasks>- Task 1: Recording Storage Path Management (AC: #5)
+  - Subtask 1.1: Create Tauri command `cmd_get_recordings_dir` to get/create ~/Documents/clippy/recordings directory
+  - Subtask 1.2: Update recording service to save files to organized directory with timestamp-based naming
+  - Subtask 1.3: Add configuration option for custom recordings directory (optional)
+  - Subtask 1.4: Add unit tests for path management functions
+
+- Task 2: Auto-Import After Recording (AC: #1, #4)
+  - Subtask 2.1: Modify `cmd_stop_recording` to return MediaFile object with full metadata
+  - Subtask 2.2: Create `auto_import_recording` function in media service
+  - Subtask 2.3: Integrate auto-import call in recording stop workflow
+  - Subtask 2.4: Add integration test for recording → auto-import flow
+
+- Task 3: Metadata Extraction for Recordings (AC: #3)
+  - Subtask 3.1: Extend existing `extract_video_metadata` in media.rs to handle recording output format
+  - Subtask 3.2: Extract duration, resolution, file size, codec from recorded MP4
+  - Subtask 3.3: Ensure metadata extraction completes within 500ms for 2-second SLA
+  - Subtask 3.4: Add error handling for corrupted/incomplete recordings
+
+- Task 4: Thumbnail Generation (AC: #2)
+  - Subtask 4.1: Reuse existing thumbnail generation from Story 1.5 (FFmpeg frame extraction)
+  - Subtask 4.2: Extract thumbnail at 1-second mark of recording
+  - Subtask 4.3: Save thumbnail to application cache directory
+  - Subtask 4.4: Add thumbnail path to MediaFile object
+
+- Task 5: Media Library Store Integration (AC: #1, #4)
+  - Subtask 5.1: Call `mediaLibraryStore.addMediaFile()` after recording stops
+  - Subtask 5.2: Update frontend to display new recording within 2 seconds
+  - Subtask 5.3: Ensure recording appears at top of media library (most recent first)
+  - Subtask 5.4: Add integration test for store update
+
+- Task 6: Success Notification (AC: #6)
+  - Subtask 6.1: Display toast notification "Recording saved successfully"
+  - Subtask 6.2: Include recording filename and file size in notification
+  - Subtask 6.3: Add click action to jump to media library and highlight recording
+  - Subtask 6.4: Add unit tests for notification display
+
+- Task 7: Integration Testing
+  - Subtask 7.1: E2E test: Start recording → Stop → Verify in media library within 2 seconds
+  - Subtask 7.2: Test with various recording durations (5s, 30s, 2min)
+  - Subtask 7.3: Test error scenarios (disk full, corrupted output)
+  - Subtask 7.4: Test notification interaction</tasks>
+  </story>
+
+  <acceptanceCriteria>1. When recording stops, file automatically added to media library
+2. Thumbnail generated for recorded clip
+3. Metadata extracted (duration, resolution, file size)
+4. Recording appears in media library within 2 seconds of stopping
+5. Recorded file saved to organized location (user Documents/clippy/recordings or similar)
+6. Success notification confirms recording saved</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <artifact path="docs/PRD.md" section="FR001: Video File Import and Management">
+        <title>PRD - Media Library Requirements</title>
+        <snippet>System shall maintain a media library with thumbnail previews, metadata (duration, resolution, file size, codec), search/filter, and organizational capabilities</snippet>
+      </artifact>
+      <artifact path="docs/PRD.md" section="FR002: Screen Recording Capabilities">
+        <title>PRD - Recording Storage Requirements</title>
+        <snippet>System shall provide recording controls (start, stop, pause) and save recordings directly to timeline or media library</snippet>
+      </artifact>
+      <artifact path="docs/architecture.md" section="Core Data Models" lines="1381-1393">
+        <title>Architecture - MediaFile Interface</title>
+        <snippet>MediaFile interface includes: id (UUID), filePath (absolute), filename, duration (milliseconds), resolution {width, height}, fileSize (bytes), codec, thumbnail (Base64/path), importedAt (ISO 8601 timestamp)</snippet>
+      </artifact>
+      <artifact path="docs/architecture.md" section="Epic to Architecture Mapping" line="256">
+        <title>Architecture - Media Processing Components</title>
+        <snippet>Media library state managed via Zustand mediaLibraryStore. Metadata extraction handled by commands/media.rs. Thumbnail generation using FFmpeg (reuse from Story 1.5)</snippet>
+      </artifact>
+      <artifact path="docs/architecture.md" section="Epic to Architecture Mapping" line="257">
+        <title>Architecture - Recording Components</title>
+        <snippet>Recording state managed via Zustand recordingStore. Recording commands in src-tauri/src/commands/recording.rs. Recording service in src-tauri/src/services/recording/orchestrator.rs. FFmpeg integration via ffmpeg-sidecar for real-time encoding</snippet>
+      </artifact>
+      <artifact path="docs/architecture.md" section="Technology Stack - Media Processing" lines="280-287">
+        <title>Architecture - FFmpeg Integration</title>
+        <snippet>ffmpeg-sidecar 2.1.0 - Rust wrapper for FFmpeg CLI with auto-download. Used for real-time encoding during screen recording, multi-track timeline export, PiP composition, audio extraction, and caption burning</snippet>
+      </artifact>
+      <artifact path="docs/architecture.md" section="Error Handling Patterns" line="817">
+        <title>Architecture - Notification System</title>
+        <snippet>shadcn/ui toast notifications for user feedback. Native macOS notifications via @tauri-apps/plugin-notification. User-friendly error messages (no stack traces)</snippet>
+      </artifact>
+    </docs>
+    <code>
+      <artifact path="src/stores/mediaLibraryStore.ts" kind="store" symbol="useMediaLibraryStore" lines="33-87">
+        <reason>Existing Zustand store for media library management. Has addMediaFile() method needed for auto-import. Handles duplicate detection via hasMediaFile().</reason>
+      </artifact>
+      <artifact path="src/types/media.ts" kind="interface" symbol="MediaFile" lines="14-41">
+        <reason>TypeScript interface for media files. Must match Rust MediaFile struct. Includes id, filePath, filename, duration (ms), resolution, fileSize, codec, thumbnail, importedAt.</reason>
+      </artifact>
+      <artifact path="src-tauri/src/models/media.rs" kind="model" symbol="MediaFile" lines="16-43">
+        <reason>Rust struct for MediaFile with serde camelCase serialization. This is what cmd_stop_recording should return after metadata extraction.</reason>
+      </artifact>
+      <artifact path="src-tauri/src/commands/media.rs" kind="command" symbol="cmd_import_media" lines="16-78">
+        <reason>Existing media import command pattern. Shows how to validate files, call ffmpeg::extract_metadata(), and return MediaFile. Auto-import will follow similar pattern.</reason>
+      </artifact>
+      <artifact path="src-tauri/src/commands/recording.rs" kind="command" symbol="cmd_stop_recording" lines="213-240">
+        <reason>Current stop recording command returns String (file path). Needs modification to return MediaFile with full metadata for auto-import.</reason>
+      </artifact>
+      <artifact path="src-tauri/src/utils/ffmpeg.rs" kind="utility" symbol="extract_metadata" lines="17-120">
+        <reason>Existing metadata extraction function. Handles ffprobe parsing, thumbnail generation, MediaFile struct creation. Will be reused for recordings.</reason>
+      </artifact>
+      <artifact path="src/components/recording/RecordingPanel.tsx" kind="component">
+        <reason>Frontend recording panel component. Will need to call auto-import after stop recording and display success notification.</reason>
+      </artifact>
+      <artifact path="src/lib/tauri/recording.ts" kind="wrapper">
+        <reason>Frontend Tauri command wrappers for recording. Stop recording wrapper will need to return MediaFile instead of string.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package name="zustand" version="^4" usage="State management for mediaLibraryStore" />
+        <package name="@tauri-apps/api" version="^2" usage="Tauri IPC for recording commands" />
+        <package name="sonner" version="^2.0.7" usage="Toast notifications for recording saved feedback" />
+        <package name="uuid" version="^13.0.0" usage="UUID generation (if needed frontend-side)" />
+      </frontend>
+      <backend>
+        <package name="ffmpeg-sidecar" version="2.1" usage="FFmpeg CLI wrapper for metadata extraction and thumbnail generation" />
+        <package name="uuid" version="1" usage="Generate unique IDs for MediaFile" />
+        <package name="serde" version="1" usage="Serialization for MediaFile struct" />
+        <package name="chrono" version="0.4" usage="Timestamp generation for importedAt field" />
+        <package name="base64" version="0.22" usage="Base64 encoding for thumbnails" />
+        <package name="dirs" version="6" usage="Cross-platform paths for ~/Documents/clippy/recordings" />
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Recording output path must be ~/Documents/clippy/recordings/ (macOS standard user directory)
+    - Thumbnail cache location: ~/Library/Caches/com.clippy.app/thumbnails/ (macOS standard cache)
+    - File naming convention: recording-{timestamp}.mp4 (e.g., recording-2025-10-28-143527.mp4)
+    - All time values in milliseconds (consistent with MediaFile.duration)
+    - Metadata extraction must complete within 500ms for 2-second SLA (AC #4)
+    - MediaFile struct uses snake_case in Rust but serializes to camelCase for TypeScript
+    - Naming conventions: Rust uses snake_case for functions/commands, PascalCase for structs; TypeScript uses camelCase for functions, PascalCase for components
+    - Toast notifications use sonner library (shadcn/ui pattern)
+    - Error messages must be user-friendly (no stack traces)
+    - Absolute paths stored in MediaFile.filePath
+    - Recordings appear at top of media library (most recent first - mediaFiles array order)
+  </constraints>
+
+  <interfaces>
+    <interface name="MediaFile (TypeScript)" kind="TypeScript Interface">
+      <signature>interface MediaFile {
+  id: string;
+  filePath: string;
+  filename: string;
+  duration: number; // milliseconds
+  resolution: { width: number; height: number };
+  fileSize: number; // bytes
+  codec: string;
+  thumbnail?: string;
+  importedAt: string; // ISO 8601
+}</signature>
+      <path>src/types/media.ts</path>
+    </interface>
+
+    <interface name="MediaFile (Rust)" kind="Rust Struct">
+      <signature>pub struct MediaFile {
+  pub id: String,
+  pub file_path: String,
+  pub filename: String,
+  pub duration: u64, // milliseconds
+  pub resolution: Resolution,
+  pub file_size: u64, // bytes
+  pub codec: String,
+  pub thumbnail: Option&lt;String&gt;,
+  pub imported_at: String, // ISO 8601
+}</signature>
+      <path>src-tauri/src/models/media.rs</path>
+    </interface>
+
+    <interface name="cmd_stop_recording (Modified)" kind="Tauri Command">
+      <signature>#[tauri::command]
+pub async fn cmd_stop_recording(recording_id: String) -> Result&lt;MediaFile, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+      <note>Currently returns Result&lt;String, String&gt;. Must be modified to return MediaFile after metadata extraction.</note>
+    </interface>
+
+    <interface name="mediaLibraryStore.addMediaFile" kind="Zustand Action">
+      <signature>addMediaFile: (file: MediaFile) => void</signature>
+      <path>src/stores/mediaLibraryStore.ts</path>
+      <note>Handles duplicate detection. If file path already exists, returns unchanged state.</note>
+    </interface>
+
+    <interface name="ffmpeg::extract_metadata" kind="Rust Function">
+      <signature>pub async fn extract_metadata(file_path: &amp;str) -> Result&lt;MediaFile&gt;</signature>
+      <path>src-tauri/src/utils/ffmpeg.rs</path>
+      <note>Reusable function for extracting metadata and generating thumbnails from video files.</note>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Unit tests required for all new Tauri commands using cargo test framework. Unit tests required for store modifications using Vitest. Integration tests for full recording → library workflow using Playwright or Vitest integration patterns. Performance tests to verify 2-second SLA for auto-import. Error scenario tests for disk full, corrupted output, missing FFmpeg. Backend test coverage target &gt;80% for commands and services. Frontend test coverage target &gt;75% for components and stores. E2E critical path testing (record → auto-import → display). Test files colocated with source files using .test.ts/.test.tsx (frontend) and #[cfg(test)] mod tests (Rust). Mock data follows existing patterns (mockMediaFile structure from Story 1.3).
+    </standards>
+    <locations>
+      - Backend: src-tauri/src/commands/recording.rs (inline #[cfg(test)])
+      - Backend: src-tauri/src/utils/ffmpeg.rs (inline #[cfg(test)])
+      - Frontend: src/stores/mediaLibraryStore.test.ts
+      - Frontend: src/components/recording/RecordingPanel.test.tsx
+      - Frontend: src/lib/tauri/recording.test.ts
+      - Integration: tests/ directory or inline integration tests
+    </locations>
+    <ideas>
+      <idea ac="AC1">Test cmd_stop_recording returns MediaFile with valid metadata after stopping</idea>
+      <idea ac="AC1">Test mediaLibraryStore.addMediaFile called with recording MediaFile object</idea>
+      <idea ac="AC1">Verify recording appears in mediaFiles array after auto-import</idea>
+      <idea ac="AC2">Test thumbnail generated for recorded clip (check MediaFile.thumbnail field populated)</idea>
+      <idea ac="AC2">Verify thumbnail saved to cache directory with correct naming</idea>
+      <idea ac="AC3">Test metadata extraction: duration, resolution, fileSize, codec all populated</idea>
+      <idea ac="AC3">Test metadata extraction completes within 500ms for performance SLA</idea>
+      <idea ac="AC3">Test error handling for corrupted/incomplete recording files</idea>
+      <idea ac="AC4">Integration test: Record 5s → Stop → Verify appears in library within 2 seconds</idea>
+      <idea ac="AC4">Test recording appears at top of media library (index 0 in mediaFiles array)</idea>
+      <idea ac="AC5">Test recording saved to ~/Documents/clippy/recordings/ directory</idea>
+      <idea ac="AC5">Test filename follows timestamp pattern: recording-YYYY-MM-DD-HHMMSS.mp4</idea>
+      <idea ac="AC5">Test recordings directory created if doesn't exist</idea>
+      <idea ac="AC6">Test toast notification displayed with "Recording saved successfully" message</idea>
+      <idea ac="AC6">Test notification includes filename and file size</idea>
+      <idea ac="AC6">Test notification click action navigates to media library</idea>
+      <idea ac="Integration">E2E test: Full workflow with different durations (5s, 30s, 2min)</idea>
+      <idea ac="Integration">Test error scenario: Disk full during recording save</idea>
+      <idea ac="Integration">Test duplicate detection: Same recording auto-imported twice (should dedupe)</idea>
+    </ideas>
+  </tests>
+</story-context>

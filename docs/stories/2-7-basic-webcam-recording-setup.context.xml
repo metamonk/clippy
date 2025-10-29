@@ -1,0 +1,343 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>7</storyId>
+    <title>Basic Webcam Recording Setup</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-7-basic-webcam-recording-setup.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to record from my webcam</iWant>
+    <soThat>I can create talking-head videos or commentary</soThat>
+    <tasks>
+- Task 1: AVFoundation Camera Integration (AC: #1, #2)
+  - Subtask 1.1: Integrate nokhwa crate with AVFoundation backend (already in Cargo.toml)
+  - Subtask 1.2: Create camera service wrapper in `src-tauri/src/services/camera/nokhwa_wrapper.rs`
+  - Subtask 1.3: Implement macOS camera permission check in `src-tauri/src/services/permissions/macos.rs`
+  - Subtask 1.4: Create Tauri command `cmd_request_camera_permission` in commands/recording.rs
+  - Subtask 1.5: Add unit tests for camera permission handling
+
+- Task 2: Camera Enumeration and Selection (AC: #3)
+  - Subtask 2.1: Create Tauri command `cmd_list_cameras` to enumerate available cameras
+  - Subtask 2.2: Return camera list with id, name, and capabilities (resolution, fps)
+  - Subtask 2.3: Add camera selection dropdown in RecordingPanel component
+  - Subtask 2.4: Store selected camera in recordingStore
+  - Subtask 2.5: Add unit tests for camera enumeration
+
+- Task 3: Webcam Preview Implementation (AC: #4)
+  - Subtask 3.1: Create Tauri command `cmd_start_camera_preview` to capture frames
+  - Subtask 3.2: Stream camera frames to frontend via event channel or periodic polling
+  - Subtask 3.3: Create WebcamPreview component to display live camera feed
+  - Subtask 3.4: Handle preview stop when switching cameras or closing panel
+  - Subtask 3.5: Add error handling for camera access failures
+
+- Task 4: Webcam Recording Start (AC: #5, #6)
+  - Subtask 4.1: Create Tauri command `cmd_start_webcam_recording` accepting camera index
+  - Subtask 4.2: Initialize camera capture at native resolution (cap at 1080p if higher)
+  - Subtask 4.3: Set up frame capture loop at 30 FPS
+  - Subtask 4.4: Buffer frames in bounded channel (30 frame buffer size)
+  - Subtask 4.5: Add integration test for webcam recording initialization
+
+- Task 5: Recording UI Integration
+  - Subtask 5.1: Add "Record Webcam" button in RecordingPanel
+  - Subtask 5.2: Show camera selection UI before starting webcam recording
+  - Subtask 5.3: Display webcam preview in recording panel
+  - Subtask 5.4: Update recording state to indicate webcam mode
+  - Subtask 5.5: Add loading states and error notifications
+
+- Task 6: Integration Testing
+  - Subtask 6.1: E2E test: Check camera permission → Denied flow
+  - Subtask 6.2: E2E test: List cameras → Select camera → Start preview
+  - Subtask 6.3: E2E test: Start webcam recording → Verify capture starts
+  - Subtask 6.4: Test with multiple cameras (if available)
+  - Subtask 6.5: Test resolution handling (native, 1080p cap)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. AVFoundation bindings integrated for camera access
+2. App requests camera permission from macOS
+3. Camera selection dropdown if multiple cameras available
+4. Webcam preview shows in recording panel before recording starts
+5. "Record Webcam" button triggers webcam recording
+6. Recording captures video at camera's native resolution (or 1080p if higher)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR003: Webcam Recording</section>
+        <snippet>System shall access and record from system cameras with audio, provide preview before recording, and support camera selection when multiple cameras available (lines 38-39)</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR012: Native macOS Integration</section>
+        <snippet>System shall implement proper system permissions handling for screen recording, camera, and microphone (line 72)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Technology Stack - Camera Capture</section>
+        <snippet>nokhwa 0.10.9 with input-avfoundation feature provides cross-platform webcam capture with AVFoundation backend for macOS (line 100)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Project Structure - Camera Services</section>
+        <snippet>services/camera/nokhwa_wrapper.rs provides camera capture abstraction layer (lines 203-204)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Security Architecture - macOS Permissions</section>
+        <snippet>Camera permission handled via AVFoundation AVCaptureDevice.authorizationStatus with user-friendly error flow guiding to System Preferences (lines 1613-1620)</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Technical Architecture</title>
+        <section>Pattern 2: Real-Time Encoding During Capture</section>
+        <snippet>Bounded mpsc::channel(30) buffers frames providing backpressure to prevent memory bloat during capture (lines 502-560)</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>Epic 2 Technical Specification</title>
+        <section>Overview</section>
+        <snippet>Epic 2 establishes native screen and webcam recording with AVFoundation framework integration, leveraging real-time encoding pattern to stream frames via bounded channels (lines 11-13)</snippet>
+      </doc>
+      <doc>
+        <path>docs/tech-spec-epic-2.md</path>
+        <title>Epic 2 Technical Specification</title>
+        <section>System Architecture - Backend</section>
+        <snippet>services/camera/nokhwa_wrapper.rs provides AVFoundation webcam capture abstraction for Stories 2.7-2.8 (line 49)</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Story 2.7: Basic Webcam Recording Setup</section>
+        <snippet>User story for webcam recording to create talking-head videos with AVFoundation camera access, permission request, camera selection, preview, and recording at native resolution (lines 433-447)</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/src/services/permissions/macos.rs</path>
+        <kind>service</kind>
+        <symbol>check_screen_recording_permission</symbol>
+        <lines>59-90</lines>
+        <reason>Permission pattern to replicate for camera permissions. Uses CGPreflightScreenCaptureAccess pattern (lines 75-79)</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/permissions/macos.rs</path>
+        <kind>service</kind>
+        <symbol>PermissionError</symbol>
+        <lines>31-44</lines>
+        <reason>Error enum to extend with camera-specific errors</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_check_screen_recording_permission</symbol>
+        <lines>37-50</lines>
+        <reason>Command pattern to replicate for camera permission check commands</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>cmd_start_screen_recording</symbol>
+        <lines>85-99</lines>
+        <reason>Pattern for webcam recording start command - similar flow with permission check, ID generation, async capture</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/recording.rs</path>
+        <kind>command</kind>
+        <symbol>ACTIVE_RECORDINGS</symbol>
+        <lines>22-25</lines>
+        <reason>Global state pattern for tracking active recording sessions</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/recordingStore.ts</path>
+        <kind>store</kind>
+        <symbol>RecordingState</symbol>
+        <lines>14-56</lines>
+        <reason>Recording state interface to extend with camera selection field</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/tauri/recording.ts</path>
+        <kind>api-wrapper</kind>
+        <symbol>checkScreenRecordingPermission</symbol>
+        <lines>12-14</lines>
+        <reason>API wrapper pattern for new camera commands</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/RecordingPanel.tsx</path>
+        <kind>component</kind>
+        <symbol>RecordingPanel</symbol>
+        <lines>43-224</lines>
+        <reason>UI component to extend with camera selection dropdown and webcam preview</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/recording/PermissionPrompt.tsx</path>
+        <kind>component</kind>
+        <symbol>PermissionPrompt</symbol>
+        <lines>1-50</lines>
+        <reason>Permission UI pattern - reference for camera permission prompts</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <dependency name="nokhwa" version="0.10.9" features="input-avfoundation">Webcam capture with AVFoundation backend for macOS (already in Cargo.toml line 40)</dependency>
+        <dependency name="screencapturekit" version="0.3.x">ScreenCaptureKit bindings (already integrated)</dependency>
+        <dependency name="ffmpeg-sidecar" version="2.1.0">FFmpeg CLI wrapper for encoding (already integrated)</dependency>
+        <dependency name="tokio" version="1.x" features="full">Async runtime for parallel capture (already integrated)</dependency>
+        <dependency name="uuid" version="*">UUID generation for recording IDs (already integrated)</dependency>
+        <dependency name="tracing" version="*">Logging infrastructure (already integrated)</dependency>
+      </rust>
+      <frontend>
+        <dependency name="@tauri-apps/api">Tauri invoke API for backend commands (already integrated)</dependency>
+        <dependency name="zustand">State management for recordingStore (already integrated)</dependency>
+        <dependency name="react">UI framework (already integrated)</dependency>
+      </frontend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Camera capture must use nokhwa crate v0.10.9 with 'input-avfoundation' feature for macOS AVFoundation access
+    - New camera commands must be added to commands/recording.rs (not scattered across multiple command files)
+    - Camera service wrapper must follow existing pattern: services/camera/nokhwa_wrapper.rs
+    - Permission checks must follow existing macos.rs pattern using native macOS APIs
+    - Recording state must be managed via Zustand recordingStore (extend existing state)
+    - All recording-related UI components must be in components/recording/ directory
+    - Frame capture must use bounded channels (30 frame buffer = 1 second @ 30fps) for backpressure
+    - Target 30 FPS recording (60 FPS deferred to Epic 4)
+    - Resolution handling: native resolution capped at 1080p if higher
+    - Error messages must be user-friendly with System Preferences guidance
+    - Camera permission must use AVFoundation AVCaptureDevice.authorizationStatus API
+    - Testing: unit tests for camera service, component tests for UI, integration tests for permission flow
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>cmd_request_camera_permission</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_request_camera_permission() -> Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_check_camera_permission</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_check_camera_permission() -> Result&lt;bool, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_list_cameras</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_list_cameras() -> Result&lt;Vec&lt;CameraInfo&gt;, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_start_camera_preview</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_start_camera_preview(camera_index: u32) -> Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_stop_camera_preview</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_stop_camera_preview() -> Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>cmd_start_webcam_recording</name>
+      <kind>Tauri Command</kind>
+      <signature>async fn cmd_start_webcam_recording(camera_index: u32) -> Result&lt;String, String&gt;</signature>
+      <path>src-tauri/src/commands/recording.rs</path>
+    </interface>
+    <interface>
+      <name>CameraInfo</name>
+      <kind>Data Structure</kind>
+      <signature>struct CameraInfo { id: u32, name: String, resolution: String, fps: u32 }</signature>
+      <path>src-tauri/src/models/recording.rs (or inline in commands)</path>
+    </interface>
+    <interface>
+      <name>RecordingState (extended)</name>
+      <kind>Zustand Store Interface</kind>
+      <signature>Add: selectedCamera: CameraInfo | null, cameras: CameraInfo[]</signature>
+      <path>src/stores/recordingStore.ts</path>
+    </interface>
+    <interface>
+      <name>Camera Frontend Type</name>
+      <kind>TypeScript Interface</kind>
+      <signature>interface Camera { id: number, name: string, resolution: string, fps: number }</signature>
+      <path>src/types/recording.ts (to be created)</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Project uses Vitest + React Testing Library for frontend tests and cargo test for Rust backend tests. Frontend tests mock Tauri API calls using vi.mock('@tauri-apps/api/core') and test component behavior with render/screen/userEvent from @testing-library/react. Rust tests use #[cfg(test)] modules with #[test] annotations, testing service functions and command handlers. Tests run via 'npm run test' (frontend) and 'cargo test' (backend). Integration tests verify full flows (permission → capture → recording). E2E tests use Playwright for UI automation.
+    </standards>
+    <locations>
+      <location>src/**/*.test.{ts,tsx}</location>
+      <location>src-tauri/src/**/*.rs (inline #[cfg(test)] modules)</location>
+      <location>tests/ (integration tests)</location>
+    </locations>
+    <ideas>
+      <test ac="1,2">
+        <title>Camera Permission Handling Unit Tests</title>
+        <description>Test check_camera_permission() and request_camera_permission() in macos.rs. Verify they return proper Result types without panicking. Test permission denied flow.</description>
+      </test>
+      <test ac="1,2">
+        <title>Camera Permission Command Tests</title>
+        <description>Test cmd_check_camera_permission and cmd_request_camera_permission Tauri commands return correct boolean/error responses</description>
+      </test>
+      <test ac="3">
+        <title>Camera Enumeration Unit Tests</title>
+        <description>Test camera service list_cameras() function returns Vec of CameraInfo with valid id, name, resolution, fps fields</description>
+      </test>
+      <test ac="3">
+        <title>Camera Selection Store Tests</title>
+        <description>Test recordingStore camera selection state: setSelectedCamera, clearCamera, cameras list management</description>
+      </test>
+      <test ac="3">
+        <title>Camera Selection UI Component Tests</title>
+        <description>Test camera dropdown component renders camera list, handles selection, updates store state. Mock camera list data.</description>
+      </test>
+      <test ac="4">
+        <title>Camera Preview Command Tests</title>
+        <description>Test cmd_start_camera_preview and cmd_stop_camera_preview commands handle camera index parameter and return proper results</description>
+      </test>
+      <test ac="4">
+        <title>WebcamPreview Component Tests</title>
+        <description>Test WebcamPreview component renders camera feed, handles preview start/stop, shows loading/error states. Mock Tauri invoke for preview commands.</description>
+      </test>
+      <test ac="5,6">
+        <title>Webcam Recording Start Tests</title>
+        <description>Test cmd_start_webcam_recording command with camera index parameter. Verify recording ID generation, frame capture initialization at correct FPS and resolution.</description>
+      </test>
+      <test ac="5,6">
+        <title>Recording UI Integration Tests</title>
+        <description>Test RecordingPanel "Record Webcam" button triggers correct command with selected camera. Verify recording state updates correctly.</description>
+      </test>
+      <test ac="1,2,3">
+        <title>E2E: Camera Permission Denied Flow</title>
+        <description>Full flow test: Open panel → Check permission → Permission denied → Show prompt → User cancels. Verify error handling and UI state.</description>
+      </test>
+      <test ac="3,4">
+        <title>E2E: Camera Selection and Preview</title>
+        <description>Full flow test: List cameras → Select camera from dropdown → Start preview → Preview displays. Test with mock camera data.</description>
+      </test>
+      <test ac="5,6">
+        <title>E2E: Start Webcam Recording</title>
+        <description>Full flow test: Select camera → Click "Record Webcam" → Recording starts → Duration counter updates → Stop recording → File saved. Mock frame capture.</description>
+      </test>
+      <test ac="6">
+        <title>Resolution Handling Tests</title>
+        <description>Unit tests for resolution capping logic: verify native resolution used if ≤1080p, capped at 1080p if higher (e.g., 4K camera)</description>
+      </test>
+    </ideas>
+  </tests>
+</story-context>
