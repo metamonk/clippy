@@ -2,6 +2,7 @@ pub mod media;
 pub mod export;
 pub mod mpv;
 pub mod recording;
+pub mod performance;
 
 pub use media::cmd_import_media;
 pub use export::{ExportState, cmd_start_export, cmd_get_export_progress, cmd_cancel_export};
@@ -43,4 +44,12 @@ pub use recording::{
     cmd_send_recording_notification,
     cmd_get_home_dir,
     cmd_get_available_windows,
+};
+pub use performance::{
+    FpsCounterState,
+    SegmentPreloaderState,
+    get_playback_fps,
+    record_playback_frame,
+    reset_fps_counter,
+    get_buffer_status,
 };

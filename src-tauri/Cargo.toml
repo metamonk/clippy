@@ -47,10 +47,17 @@ core-media-rs = "0.3.5"
 core-video-rs = "0.3.5"
 core-foundation = "0.10"
 libc = "0.2"
+image = "0.25"
+hound = "3.5"
+sha2 = "0.10"
+sysinfo = "0.30"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.24"
 objc = "0.2"
 objc-foundation = "0.1"
 libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
 

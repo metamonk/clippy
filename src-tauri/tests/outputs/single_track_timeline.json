@@ -1,0 +1,36 @@
+{
+  "tracks": [
+    {
+      "id": "9c20cb12-c846-42c1-afa2-802b3a07b70b",
+      "trackNumber": 1,
+      "clips": [
+        {
+          "id": "e42cdfa1-19ec-488a-8326-b1636c281506",
+          "filePath": "/Users/zeno/Projects/clippy/project/src-tauri/tests/fixtures/test_video_1.mp4",
+          "startTime": 0,
+          "duration": 5000,
+          "trimIn": 0,
+          "trimOut": 5000
+        },
+        {
+          "id": "53fe5434-1f96-46f0-a6a4-ee22f6860607",
+          "filePath": "/Users/zeno/Projects/clippy/project/src-tauri/tests/fixtures/test_video_2.mp4",
+          "startTime": 5000,
+          "duration": 5000,
+          "trimIn": 0,
+          "trimOut": 5000
+        },
+        {
+          "id": "1b253348-e768-4a48-8a25-b188ece5bab3",
+          "filePath": "/Users/zeno/Projects/clippy/project/src-tauri/tests/fixtures/test_video_3.mp4",
+          "startTime": 10000,
+          "duration": 5000,
+          "trimIn": 0,
+          "trimOut": 5000
+        }
+      ],
+      "trackType": "video"
+    }
+  ],
+  "totalDuration": 15000
+}

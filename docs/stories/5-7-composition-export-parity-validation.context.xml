@@ -1,0 +1,344 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>5</epicId>
+    <storyId>7</storyId>
+    <title>Composition Export Parity Validation</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/5-7-composition-export-parity-validation.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a developer</asA>
+    <iWant>automated tests comparing playback to export</iWant>
+    <soThat>users see accurate previews</soThat>
+    <tasks>
+- Task 1: Create Test Framework Infrastructure (AC: #1, #2)
+  - Subtask 1.1: Create test timeline fixtures (single-track, multi-track, gaps)
+  - Subtask 1.2: Implement timeline export to MP4 via VideoExporter
+  - Subtask 1.3: Implement playback frame capture at specific timestamps
+  - Subtask 1.4: Add test data management (fixture videos, expected outputs)
+
+- Task 2: Implement Frame Comparison Logic (AC: #3, #6)
+  - Subtask 2.1: Research frame comparison libraries (image crate, opencv)
+  - Subtask 2.2: Implement pixel-by-pixel diff calculation
+  - Subtask 2.3: Calculate variance percentage (target: <5%)
+  - Subtask 2.4: Generate visual diff reports for debugging
+
+- Task 3: Implement Audio Waveform Comparison (AC: #4)
+  - Subtask 3.1: Extract audio waveforms from export MP4
+  - Subtask 3.2: Extract audio waveforms from playback
+  - Subtask 3.3: Compare waveform amplitudes at sample intervals
+  - Subtask 3.4: Validate audio mixing accuracy
+
+- Task 4: Create Test Timelines (AC: #5)
+  - Subtask 4.1: Single-track timeline (3 consecutive clips)
+  - Subtask 4.2: Multi-track timeline (2 video + 2 audio tracks)
+  - Subtask 4.3: Timeline with gaps (clips with spacing)
+
+- Task 5: Implement Timing Validation (AC: #7)
+  - Subtask 5.1: Capture timestamps from export
+  - Subtask 5.2: Capture timestamps from playback
+  - Subtask 5.3: Compare timing accuracy (target: within 33ms)
+  - Subtask 5.4: Log timing discrepancies
+
+- Task 6: Documentation and Known Issues (AC: #8)
+  - Subtask 6.1: Document test suite in README
+  - Subtask 6.2: Document known parity gaps (compression artifacts, codec differences)
+  - Subtask 6.3: Document acceptable variance thresholds
+  - Subtask 6.4: Create troubleshooting guide for test failures
+
+- Task 7: Write Integration Tests
+  - Subtask 7.1: Write Rust test for single-track parity
+  - Subtask 7.2: Write Rust test for multi-track parity
+  - Subtask 7.3: Write Rust test for gap handling parity
+  - Subtask 7.4: Add CI/CD integration (cargo test)
+</tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Test suite exports timeline composition to MP4
+2. Test suite captures playback frames at same timestamps
+3. Frame comparison detects visual differences (pixel diff)
+4. Audio waveform comparison validates audio mixing
+5. Test runs on 3 test timelines: single-track, multi-track, gaps
+6. Differences < 5% pixel variance (accounts for compression)
+7. Timing accuracy: playback within 33ms of export timestamps
+8. Documentation: known parity gaps and reasons
+</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>clippy Product Requirements Document</title>
+        <section>FR006: Real-Time Video Preview and Playback</section>
+        <snippet>System shall provide Timeline Composition Mode for rendering multi-track composition with continuous playback across clips, automatic transitions, real-time audio mixing, and PiP overlays. System shall use hybrid architecture: MPV for single-clip preview, composition renderer for multi-track timeline playback.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>clippy Product Requirements Document</title>
+        <section>FR011: Video Export</section>
+        <snippet>System shall export timeline to MP4 (H.264 codec) with configurable resolution (720p, 1080p, source), quality/bitrate settings, audio track inclusion/exclusion, and caption options. System shall provide progress indicator with percentage/ETA and cancel option.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>clippy Product Requirements Document</title>
+        <section>NFR001: Performance</section>
+        <snippet>Video playback shall maintain 60 FPS for 1080p composition rendering with smooth timeline playback. Composition renderer state updates shall complete in &lt;16ms to maintain 60 FPS responsiveness. Video export shall complete near real-time (1 minute video exports in 60-90 seconds).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-008: Timeline Composition Playback Architecture (Hybrid Smart Segment Pre-Rendering)</section>
+        <snippet>Timeline is analyzed and divided into segments classified as Simple (single clip, direct MPV playback) or Complex (multi-track, gaps, overlapping clips - pre-render via FFmpeg to cache). This story validates that composition playback (via CompositionRenderer) produces output matching export (via VideoExporter). Target: &lt;5% pixel variance, timing accuracy within 33ms.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-008: Implementation Roadmap</section>
+        <snippet>Story 5.7: Export parity validation (automated frame comparison tests). Story 5.8: Performance optimization (background rendering, profiling).</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Story 5.1: Composition Playback Architecture &amp; ADR</section>
+        <snippet>Research document compares 3 approaches. ADR-008 documents chosen approach (Hybrid Smart Segments) with pros/cons. Architecture diagram shows composition renderer components. Performance benchmarks documented.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/5-1-composition-playback-architecture-adr.md</path>
+        <title>Story 5.1: Composition Playback Architecture ADR</title>
+        <section>Architecture Details &amp; ADR-008</section>
+        <snippet>Hybrid Smart Segment Pre-Rendering approach chosen. CompositionAnalyzer classifies segments, SegmentRenderer pre-renders complex segments via FFmpeg, PlaybackOrchestrator manages seamless switching. Reuses existing VideoExporter service from Story 1.9.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/5-2-composition-state-management.md</path>
+        <title>Story 5.2: Composition State Management</title>
+        <section>Composition Store Implementation</section>
+        <snippet>New compositionStore.ts created for composition state tracking: currentCompositionTime, activeClips, activeTracks, renderState. VideoPlayer checks mode === 'timeline' and uses composition state. Performance target: state updates &lt;16ms.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/5-3-sequential-clip-playback-single-track.md</path>
+        <title>Story 5.3: Sequential Clip Playback (Single Track)</title>
+        <section>Composition Renderer Pattern</section>
+        <snippet>Following ADR-008 (Hybrid Smart Segments), implements foundation for sequential playback that will be extended with smart segment pre-rendering in Stories 5.4-5.6. Foundation for continuous multi-clip playback.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/5-5-multi-track-audio-mixing.md</path>
+        <title>Story 5.5: Multi-Track Audio Mixing</title>
+        <section>Audio Mixing Implementation</section>
+        <snippet>Implements multi-track audio mixing using FFmpeg amix filter in composition renderer. Part of Hybrid Smart Segment Pre-Rendering architecture (ADR-008).</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/5-6-multi-track-video-compositing.md</path>
+        <title>Story 5.6: Multi-Track Video Compositing</title>
+        <section>Video Compositing Implementation</section>
+        <snippet>Multi-track video compositing as part of Hybrid Smart Segment Pre-Rendering architecture (ADR-008). Completes composition renderer by adding video track layering to complement audio mixing from Story 5.5. Uses FFmpeg overlay filter.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+        <kind>service</kind>
+        <symbol>VideoExporter</symbol>
+        <lines>1-604</lines>
+        <reason>Timeline export service that produces MP4 files. This story validates that playback matches export output. Contains export_timeline() method and FFmpeg command generation logic.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+        <kind>test</kind>
+        <symbol>tests</symbol>
+        <lines>605+</lines>
+        <reason>Existing test patterns for FFmpeg integration. Reference for writing new parity validation tests.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/models/timeline.rs</path>
+        <kind>model</kind>
+        <symbol>Timeline, Track, Clip, TrackType, AudioTrack</symbol>
+        <lines>1-200</lines>
+        <reason>Core timeline data structures. Timeline fixtures must be created using these models for parity tests.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/models/export.rs</path>
+        <kind>model</kind>
+        <symbol>ExportConfig, ExportProgress, ExportStatus</symbol>
+        <lines>1-100</lines>
+        <reason>Export configuration and progress tracking. Tests will use ExportConfig to trigger timeline exports.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/mpv_player.rs</path>
+        <kind>service</kind>
+        <symbol>MpvPlayer</symbol>
+        <lines>1-400</lines>
+        <reason>MPV player service for playback. Will be used (or replaced by CompositionRenderer in Stories 5.2-5.6) to capture playback frames at specific timestamps.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/compositionStore.ts</path>
+        <kind>store</kind>
+        <symbol>CompositionState, RenderState, ActiveClip</symbol>
+        <lines>1-200</lines>
+        <reason>Composition state management from Story 5.2. Manages timeline playback state that will be validated against export.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/compositor.rs</path>
+        <kind>service</kind>
+        <symbol>TBD</symbol>
+        <lines>TBD</lines>
+        <reason>FFmpeg compositor service (may be implemented in Stories 5.3-5.6). Will handle multi-track composition that must match export output.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/tests/test_4_7_integration.rs</path>
+        <kind>test</kind>
+        <symbol>integration tests</symbol>
+        <lines>1-100</lines>
+        <reason>Existing integration test pattern. Reference for structure of new composition parity tests.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <rust>
+        <package name="ffmpeg-sidecar" version="2.1" purpose="FFmpeg integration for export and segment rendering"/>
+        <package name="libmpv2" version="5.0" purpose="MPV player bindings for playback"/>
+        <package name="image" version="TBD" purpose="Frame comparison - pixel-by-pixel diff calculation (to be added)"/>
+        <package name="hound" version="TBD" purpose="WAV audio waveform reading for audio comparison (to be added)"/>
+        <package name="tokio" version="1.x" purpose="Async runtime for test execution"/>
+        <package name="anyhow" version="1.x" purpose="Error handling"/>
+        <package name="serde" version="1.x" purpose="JSON serialization for timeline fixtures"/>
+        <package name="serde_json" version="1.x" purpose="Timeline fixture file I/O"/>
+      </rust>
+      <frontend>
+        <package name="vitest" version="2.x" purpose="Frontend test framework"/>
+        <package name="@testing-library/react" version="16.x" purpose="React component testing"/>
+      </frontend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>All tests must be written in Rust using cargo test framework</constraint>
+    <constraint>Test fixtures must use short duration clips (10-30 seconds) for fast execution</constraint>
+    <constraint>Test videos should be 720p to minimize file size (not 4K)</constraint>
+    <constraint>Frame comparison must account for compression artifacts - target &lt;5% pixel variance</constraint>
+    <constraint>Timing accuracy target: playback within 33ms (2 frames at 30fps) of export timestamps</constraint>
+    <constraint>Audio waveform variance must be &lt;1% to account for floating-point precision differences</constraint>
+    <constraint>Test fixtures stored in src-tauri/tests/fixtures/ directory</constraint>
+    <constraint>Generated test outputs (exports, frames, diffs) go to src-tauri/tests/outputs/ directory</constraint>
+    <constraint>Tests must be deterministic and repeatable - no reliance on external resources</constraint>
+    <constraint>Color space normalization required: export may use different yuv format than cache</constraint>
+    <constraint>MPV seeks to nearest keyframe, not exact timestamp - account for seek precision</constraint>
+    <constraint>Use FFmpeg CRF 23 for exports to match VideoExporter settings</constraint>
+    <constraint>Story depends on Stories 5.1-5.6 being implemented (CompositionRenderer, SegmentRenderer)</constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>VideoExporter::export_timeline</name>
+      <kind>async method</kind>
+      <signature>pub async fn export_timeline(&amp;mut self, timeline: &amp;Timeline, config: &amp;ExportConfig) -&gt; Result&lt;()&gt;</signature>
+      <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+      <purpose>Export timeline to MP4 file. Tests will call this to generate reference export output.</purpose>
+    </interface>
+    <interface>
+      <name>Timeline</name>
+      <kind>struct</kind>
+      <signature>pub struct Timeline { pub tracks: Vec&lt;Track&gt;, pub total_duration: u64 }</signature>
+      <path>src-tauri/src/models/timeline.rs</path>
+      <purpose>Timeline data structure. Tests will create Timeline fixtures with various track configurations.</purpose>
+    </interface>
+    <interface>
+      <name>ExportConfig</name>
+      <kind>struct</kind>
+      <signature>pub struct ExportConfig { pub output_path: String, pub resolution: Option&lt;(u32, u32)&gt;, pub codec: Option&lt;String&gt;, ... }</signature>
+      <path>src-tauri/src/models/export.rs</path>
+      <purpose>Export configuration. Tests will use default config (H.264, AAC) to match expected output.</purpose>
+    </interface>
+    <interface>
+      <name>CompositionRenderer</name>
+      <kind>service (to be implemented in Stories 5.2-5.6)</kind>
+      <signature>TBD - will provide methods for composition playback and frame capture</signature>
+      <path>src-tauri/src/services/composition_renderer.rs (planned)</path>
+      <purpose>Composition playback renderer. Tests will capture frames from this to compare with export.</purpose>
+    </interface>
+    <interface>
+      <name>SegmentRenderer</name>
+      <kind>service (to be implemented in Stories 5.2-5.6)</kind>
+      <signature>TBD - FFmpeg segment pre-rendering for complex segments</signature>
+      <path>src-tauri/src/services/segment_renderer.rs (planned)</path>
+      <purpose>Segment pre-rendering service. Uses same FFmpeg filters as export for consistency.</purpose>
+    </interface>
+    <interface>
+      <name>FFmpeg frame extraction</name>
+      <kind>CLI command</kind>
+      <signature>ffmpeg -i export.mp4 -vf "select='eq(n,FRAME_NUM)'" -vsync vfr frame_%03d.png</signature>
+      <path>External FFmpeg CLI</path>
+      <purpose>Extract specific frames from export MP4 for comparison with playback frames.</purpose>
+    </interface>
+    <interface>
+      <name>FFmpeg audio extraction</name>
+      <kind>CLI command</kind>
+      <signature>ffmpeg -i video.mp4 -vn -acodec pcm_s16le audio.wav</signature>
+      <path>External FFmpeg CLI</path>
+      <purpose>Extract audio from MP4 to WAV for waveform comparison.</purpose>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      **Testing Framework:** Rust cargo test for backend integration tests. Use #[tokio::test] for async test functions.
+
+      **Test Organization:** Integration tests in src-tauri/tests/ directory (separate from unit tests). Each test file focuses on specific feature area.
+
+      **Fixture Management:** Test fixtures (video files, timeline JSON) stored in src-tauri/tests/fixtures/. Fixtures should be committed to repo for deterministic tests. Use small, compressed test videos (720p, 5-10 seconds, H.264).
+
+      **Assertion Patterns:** Use assert! for boolean checks, assert_eq! for exact equality, and custom assertion helpers for approximate comparisons (e.g., assert_pixel_variance_within!, assert_audio_waveform_similar!).
+
+      **Test Isolation:** Each test should create unique output files to avoid conflicts when running in parallel. Use test-specific subdirectories under tests/outputs/.
+
+      **Performance:** Tests should complete within 30 seconds each. Use small fixtures and optimize frame extraction/comparison algorithms.
+
+      **CI Integration:** Tests run via cargo test in CI pipeline. No external dependencies or network access required.
+    </standards>
+    <locations>
+      <location>src-tauri/tests/ - Integration tests directory</location>
+      <location>src-tauri/tests/composition_parity_tests.rs - Main parity test suite (to be created)</location>
+      <location>src-tauri/tests/fixtures/ - Test video files and timeline JSON fixtures</location>
+      <location>src-tauri/tests/fixtures/timelines/ - Timeline JSON configurations</location>
+      <location>src-tauri/tests/outputs/ - Generated test outputs (exports, frames, diffs)</location>
+      <location>src-tauri/src/test_utils/ - Test utility modules (to be created)</location>
+      <location>src-tauri/src/test_utils/frame_comparison.rs - Frame diff logic</location>
+      <location>src-tauri/src/test_utils/audio_comparison.rs - Waveform diff logic</location>
+      <location>src-tauri/src/test_utils/timeline_fixtures.rs - Timeline builder helpers</location>
+      <location>src-tauri/src/services/ffmpeg/exporter.rs - Existing unit tests (lines 605+)</location>
+      <location>src/stores/*.test.ts - Frontend store tests (Vitest)</location>
+      <location>src/components/**/*.test.tsx - React component tests (Vitest + Testing Library)</location>
+    </locations>
+    <ideas>
+      <idea ac="1,2">
+        <description>Test: export_and_capture_single_track_timeline</description>
+        <approach>Create single-track timeline with 3 clips. Export to MP4 via VideoExporter. Extract frames at t=0s, t=2.5s, t=5s from export. Capture playback frames at same timestamps. Compare pixel-by-pixel.</approach>
+      </idea>
+      <idea ac="3,6">
+        <description>Test: frame_comparison_pixel_diff_calculation</description>
+        <approach>Test frame comparison utility with known-good and known-different frames. Verify pixel variance calculation. Test with &lt;5% variance threshold. Generate visual diff output for debugging.</approach>
+      </idea>
+      <idea ac="4">
+        <description>Test: audio_waveform_comparison_multi_track</description>
+        <approach>Create multi-track audio timeline. Export and extract audio WAV. Capture playback audio. Compare waveform amplitudes at 1000 sample points. Assert &lt;1% variance.</approach>
+      </idea>
+      <idea ac="5">
+        <description>Test: three_timeline_configurations_parity</description>
+        <approach>Run full parity suite on: (1) single-track 3 clips, (2) multi-track 2 video + 2 audio, (3) clips with gaps. Assert all pass pixel and audio variance thresholds.</approach>
+      </idea>
+      <idea ac="7">
+        <description>Test: timing_accuracy_validation</description>
+        <approach>Capture timestamps during playback. Compare with export frame timestamps. Assert all timestamps within 33ms (2 frames at 30fps). Log timing discrepancies for analysis.</approach>
+      </idea>
+      <idea ac="8">
+        <description>Test: document_known_parity_gaps</description>
+        <approach>Create test that intentionally hits known edge cases (high-motion compression, color space conversion). Document expected variance. Ensure tests pass with documented thresholds.</approach>
+      </idea>
+      <idea ac="1,2,3,4,5,6,7">
+        <description>Integration Test: full_parity_validation_end_to_end</description>
+        <approach>Complete end-to-end test: Create timeline → Export → Extract frames/audio → Playback → Capture frames/audio → Compare → Assert all ACs pass. Single comprehensive test validating entire flow.</approach>
+      </idea>
+    </ideas>
+  </tests>
+</story-context>

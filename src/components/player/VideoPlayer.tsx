@@ -2,8 +2,12 @@ import { useRef, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "@/stores/playerStore";
 import { useTimelineStore } from "@/stores/timelineStore";
+import { useCompositionStore } from "@/stores/compositionStore";
+import { useDevSettingsStore } from "@/stores/devSettingsStore";
 import { toast } from "sonner";
 import { setMpvVolume, applyMpvFadeFilters, clearMpvAudioFilters } from "@/lib/tauri/mpv";
+import { analyzeTimelineGaps, isTimeInGap } from "@/lib/timeline/gapAnalyzer";
+import { getPlaybackFps, recordPlaybackFrame, resetFpsCounter, type PerformanceMetrics } from "@/lib/tauri/performance";
 
 /**
  * VideoPlayer props
@@ -50,10 +54,13 @@ export function VideoPlayer({
   const [mpvInitialized, setMpvInitialized] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [isInGap, setIsInGap] = useState(false);
+  const [fpsMetrics, setFpsMetrics] = useState<PerformanceMetrics | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const frameUpdateIntervalRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastSrcRef = useRef<string>("");
+  const lastFrameTimeRef = useRef<number>(0); // For gap playhead tracking (Story 5.4 AC#5)
 
   const {
     setDuration,
@@ -69,6 +76,15 @@ export function VideoPlayer({
   // Get selected clip from timeline for trim boundary enforcement
   const { selectedClipId, getClip } = useTimelineStore();
   const selectedClip = selectedClipId ? getClip(selectedClipId) : undefined;
+
+  // Composition state for timeline mode (Story 5.2 AC#3)
+  const {
+    setCompositionTime,
+    activeClips,
+  } = useCompositionStore();
+
+  // Developer settings for FPS overlay (Story 5.8 AC#1)
+  const { showFpsOverlay } = useDevSettingsStore();
 
   // Initialize MPV player on mount
   useEffect(() => {
@@ -93,6 +109,9 @@ export function VideoPlayer({
     };
 
     initMpv();
+
+    // Reset FPS counter on mount (Story 5.8 AC#1)
+    resetFpsCounter().catch(console.error);
 
     // Cleanup on unmount
     return () => {
@@ -277,14 +296,34 @@ export function VideoPlayer({
           // Start requestAnimationFrame loop to sync playhead with MPV during playback
           const updatePlayhead = async () => {
             try {
-              const timeResponse = await invoke<MpvResponse>('mpv_get_time');
-              if (timeResponse.success && timeResponse.data?.time !== undefined) {
+              const now = performance.now();
+              const deltaTime = lastFrameTimeRef.current > 0 ? now - lastFrameTimeRef.current : 0;
+              lastFrameTimeRef.current = now;
+
+              let currentTimeMs: number;
+
+              // Story 5.4 AC#5: During gaps, advance playhead based on system time (not MPV time)
+              if (isInGap) {
+                // Get current playhead position and advance by delta time
+                const currentPlayhead = usePlayerStore.getState().playheadPosition;
+                currentTimeMs = currentPlayhead + deltaTime;
+              } else {
+                // Not in gap: get time from MPV
+                const timeResponse = await invoke<MpvResponse>('mpv_get_time');
+                if (!timeResponse.success || timeResponse.data?.time === undefined) {
+                  return; // Skip this frame if MPV time unavailable
+                }
                 const currentVideoTime = timeResponse.data.time;
-                const currentTimeMs = currentVideoTime * 1000;
+                currentTimeMs = currentVideoTime * 1000;
+              }
 
                 // Only update playhead in timeline mode
                 const currentMode = usePlayerStore.getState().mode;
                 if (currentMode === 'timeline') {
+                  // Story 5.2 AC#3: Use composition state when in timeline mode
+                  // Update composition time (this triggers clip query updates)
+                  setCompositionTime(currentTimeMs);
+
                   // Check if we have a selected clip with trim boundaries
                   if (selectedClip) {
                     const clipStartTime = selectedClip.startTime;
@@ -306,9 +345,136 @@ export function VideoPlayer({
                     // No trim boundaries, update normally
                     setPlayheadPosition(currentTimeMs);
                   }
+
+                  // Story 5.4 AC#1, AC#2: Handle gaps with black frame rendering
+                  const timelineState = useTimelineStore.getState();
+                  const timeline = {
+                    tracks: timelineState.tracks,
+                    totalDuration: timelineState.totalDuration,
+                  };
+
+                  // Analyze timeline for gaps
+                  const gapAnalysis = analyzeTimelineGaps(timeline);
+                  const currentGap = isTimeInGap(currentTimeMs, gapAnalysis.gaps);
+
+                  if (currentGap) {
+                    // In gap - pause MPV and render black frame (Story 5.4 AC#2)
+                    if (!isInGap) {
+                      console.log(`[VideoPlayer] Entering gap at ${currentTimeMs}ms (${currentGap.startTime}-${currentGap.endTime})`);
+                      setIsInGap(true);
+
+                      // Pause MPV during gap to prevent audio/video from continuing
+                      await invoke<MpvResponse>('mpv_pause');
+                    }
+                  } else {
+                    // Not in gap - ensure MPV is playing if player is playing
+                    if (isInGap) {
+                      console.log(`[VideoPlayer] Exiting gap at ${currentTimeMs}ms`);
+                      setIsInGap(false);
+
+                      // Resume MPV playback
+                      if (usePlayerStore.getState().isPlaying) {
+                        await invoke<MpvResponse>('mpv_play');
+                      }
+                    }
+                  }
+
+                  // Story 5.3 AC#1, AC#2, AC#3: Automatic clip switching
+                  // Detect when current clip ends and load next clip
+                  const handleClipEnd = async () => {
+                    try {
+                      const transitionStartTime = performance.now();
+
+                      // Get currently active video clips
+                      const videoClips = activeClips.filter(ac => ac.trackType === 'video');
+                      if (videoClips.length === 0) return;
+
+                      // For now, focus on single-track playback (first video track)
+                      const currentActiveClip = videoClips[0];
+                      const clipEnd = currentActiveClip.clip.startTime +
+                        (currentActiveClip.clip.trimOut - currentActiveClip.clip.trimIn);
+
+                      // Check if we're within 100ms of clip end (threshold for preemptive switching)
+                      const timeToClipEnd = clipEnd - currentTimeMs;
+                      if (timeToClipEnd <= 100 && timeToClipEnd > -100) {
+                        // Get next clip on same track
+                        const nextClip = useCompositionStore.getState().getNextClip(
+                          currentActiveClip.clip,
+                          currentActiveClip.trackId
+                        );
+
+                        if (nextClip) {
+                          console.log(
+                            `[VideoPlayer] Clip ending at ${clipEnd}ms, loading next clip: ${nextClip.id}`
+                          );
+
+                          // Load next clip
+                          const loadResponse = await invoke<MpvResponse>('mpv_load_file', {
+                            filePath: nextClip.filePath,
+                          });
+
+                          if (!loadResponse.success) {
+                            throw new Error(loadResponse.message);
+                          }
+
+                          // Story 5.3 AC#4, AC#5: Seek to clip's trimIn position
+                          // MPV loads the full file, but we want to start at the trimIn point
+                          const clipStartSeconds = nextClip.trimIn / 1000; // Convert ms to seconds
+
+                          // Seek to start position (respecting trim)
+                          await invoke<MpvResponse>('mpv_seek', {
+                            timeSeconds: clipStartSeconds,
+                          });
+
+                          // Start playback immediately
+                          await invoke<MpvResponse>('mpv_play');
+
+                          const transitionEndTime = performance.now();
+                          const transitionLatency = transitionEndTime - transitionStartTime;
+
+                          // Log transition latency for AC#3 (<100ms requirement)
+                          console.log(
+                            `[VideoPlayer] Clip transition completed in ${transitionLatency.toFixed(2)}ms`
+                          );
+
+                          if (transitionLatency > 100) {
+                            console.warn(
+                              `⚠️ Clip transition exceeded 100ms target: ${transitionLatency.toFixed(2)}ms`
+                            );
+                          }
+                        } else {
+                          // No next clip - check if timeline has ended (Story 5.3 AC#7)
+                          const timelineEnded = useCompositionStore.getState().isEndOfTimeline(currentTimeMs);
+                          if (timelineEnded) {
+                            console.log('[VideoPlayer] End of timeline reached, stopping playback');
+
+                            // Stop playback
+                            usePlayerStore.getState().pause();
+                            await invoke<MpvResponse>('mpv_pause');
+
+                            // Reset playhead to timeline start
+                            setPlayheadPosition(0);
+                            setCompositionTime(0);
+
+                            // Show completion toast
+                            toast.success('Playback complete', {
+                              description: 'Timeline playback finished',
+                            });
+                          }
+                        }
+                      }
+                    } catch (error) {
+                      console.error('[VideoPlayer] Error in clip transition:', error);
+                      toast.error('Clip transition failed', {
+                        description: String(error),
+                      });
+                    }
+                  };
+
+                  // Check for clip transitions
+                  await handleClipEnd();
                 }
                 // In preview mode, playhead stays at 0 and doesn't move
-              }
             } catch (error) {
               console.error('[VideoPlayer] Error in playhead update:', error);
             }
@@ -329,6 +495,9 @@ export function VideoPlayer({
             cancelAnimationFrame(animationFrameRef.current);
             animationFrameRef.current = null;
           }
+
+          // Reset frame time tracking (Story 5.4 AC#5)
+          lastFrameTimeRef.current = 0;
         }
       } catch (error) {
         console.error('[VideoPlayer] Playback control error:', error);
@@ -387,29 +556,77 @@ export function VideoPlayer({
     applyAudioFilters();
   }, [videoLoaded, isPlaying, mode, selectedClip]);
 
-  // Frame capture and rendering loop
+  // FPS monitoring: Poll metrics when overlay is enabled (Story 5.8 AC#1)
   useEffect(() => {
-    if (!videoLoaded || !canvasRef.current || !videoDimensions) return;
+    if (!showFpsOverlay || !videoLoaded) return;
+
+    const pollFps = async () => {
+      try {
+        const metrics = await getPlaybackFps();
+        setFpsMetrics(metrics);
+      } catch (error) {
+        console.error('[VideoPlayer] Failed to get FPS metrics:', error);
+      }
+    };
+
+    // Poll FPS every 500ms when overlay is enabled
+    const fpsIntervalId = setInterval(pollFps, 500);
+
+    // Initial poll
+    pollFps();
+
+    return () => clearInterval(fpsIntervalId);
+  }, [showFpsOverlay, videoLoaded]);
+
+  // Frame capture and rendering loop (Story 5.4 AC#2: Black frame rendering)
+  useEffect(() => {
+    if (!canvasRef.current) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas dimensions to match video
-    canvas.width = videoDimensions.width;
-    canvas.height = videoDimensions.height;
+    // Set canvas dimensions (use video dimensions if available, or default)
+    if (videoDimensions) {
+      canvas.width = videoDimensions.width;
+      canvas.height = videoDimensions.height;
+    } else {
+      // Default canvas size when no video loaded
+      canvas.width = 1920;
+      canvas.height = 1080;
+    }
+
+    // Render black frame when in gap (Story 5.4 AC#2)
+    const renderBlackFrame = () => {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    };
 
     // Capture and draw frames at ~15 FPS
     const captureFrame = async () => {
       try {
-        const response = await invoke<MpvResponse>('mpv_capture_frame');
-        if (response.success && response.data?.frame) {
-          // Convert base64 to image and draw to canvas
-          const img = new Image();
-          img.onload = () => {
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          };
-          img.src = `data:image/jpeg;base64,${response.data.frame}`;
+        // Record frame for FPS tracking (Story 5.8 AC#1)
+        if (videoLoaded && isPlaying) {
+          recordPlaybackFrame().catch(console.error);
+        }
+
+        // If in gap, render black frame instead of capturing from MPV (Story 5.4 AC#2)
+        if (isInGap) {
+          renderBlackFrame();
+          return;
+        }
+
+        // If not in gap and video loaded, capture frame from MPV
+        if (videoLoaded) {
+          const response = await invoke<MpvResponse>('mpv_capture_frame');
+          if (response.success && response.data?.frame) {
+            // Convert base64 to image and draw to canvas
+            const img = new Image();
+            img.onload = () => {
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            };
+            img.src = `data:image/jpeg;base64,${response.data.frame}`;
+          }
         }
       } catch (error) {
         console.error('[VideoPlayer] Failed to capture frame:', error);
@@ -429,10 +646,10 @@ export function VideoPlayer({
         frameUpdateIntervalRef.current = null;
       }
     };
-  }, [videoLoaded, videoDimensions]);
+  }, [videoLoaded, videoDimensions, isInGap, isPlaying]);
 
   return (
-    <div className="w-full h-full flex items-center justify-center bg-black">
+    <div className="w-full h-full flex items-center justify-center bg-black relative">
       {!mpvInitialized && (
         <div className="text-white text-center">
           <div className="text-xl mb-2">🎬 Initializing MPV Player...</div>
@@ -440,14 +657,15 @@ export function VideoPlayer({
         </div>
       )}
 
-      {mpvInitialized && !videoLoaded && (
+      {mpvInitialized && !videoLoaded && !isInGap && (
         <div className="text-white text-center">
           <div className="text-xl mb-2">📂 Loading Video...</div>
           <div className="text-sm text-gray-400">Processing with libmpv</div>
         </div>
       )}
 
-      {mpvInitialized && videoLoaded && videoDimensions && (
+      {/* Canvas always rendered when MPV initialized (for gap black frames or video) - Story 5.4 AC#2 */}
+      {mpvInitialized && (videoLoaded || isInGap) && (
         <canvas
           ref={canvasRef}
           className="max-w-full max-h-full object-contain"
@@ -460,10 +678,36 @@ export function VideoPlayer({
         />
       )}
 
-      {mpvInitialized && videoLoaded && !videoDimensions && (
+      {mpvInitialized && videoLoaded && !videoDimensions && !isInGap && (
         <div className="text-white text-center">
           <div className="text-xl mb-2">⚙️ Preparing Video...</div>
           <div className="text-sm text-gray-400">Getting video dimensions</div>
+        </div>
+      )}
+
+      {/* FPS Overlay - Story 5.8 AC#1 */}
+      {showFpsOverlay && fpsMetrics && (
+        <div className="absolute top-4 right-4 bg-black/80 text-white px-3 py-2 rounded-lg font-mono text-sm border border-green-500/50">
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">FPS:</span>
+              <span className={fpsMetrics.current_fps >= 60 ? "text-green-400" : fpsMetrics.current_fps >= 30 ? "text-yellow-400" : "text-red-400"}>
+                {fpsMetrics.current_fps.toFixed(1)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">Avg:</span>
+              <span className="text-gray-300">{fpsMetrics.average_fps.toFixed(1)}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">Frames:</span>
+              <span className="text-gray-300">{fpsMetrics.total_frames}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">Uptime:</span>
+              <span className="text-gray-300">{fpsMetrics.uptime_seconds.toFixed(1)}s</span>
+            </div>
+          </div>
         </div>
       )}
     </div>

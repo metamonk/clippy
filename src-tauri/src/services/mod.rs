@@ -5,6 +5,10 @@ pub mod mpv_player;
 pub mod permissions;
 pub mod screen_capture;
 pub mod recording;
+pub mod segment_renderer;
+pub mod composition_analyzer;
+pub mod performance_monitor;
+pub mod segment_preloader;
 
 pub use audio_capture::{AudioCapture, AudioDevice, AudioSample};
 pub use camera::{CameraCapture, CameraError, CameraInfo, CameraService};
@@ -13,3 +17,7 @@ pub use mpv_player::MpvPlayer;
 pub use permissions::{check_screen_recording_permission, request_screen_recording_permission};
 pub use screen_capture::ScreenCapture;
 pub use recording::{FrameSynchronizer, SyncMetrics};
+pub use segment_renderer::{SegmentRenderer, Segment, VideoLayer, SegmentType, CanvasSize};
+pub use composition_analyzer::CompositionAnalyzer;
+pub use performance_monitor::{FpsCounter, PerformanceMetrics};
+pub use segment_preloader::{SegmentPreloader, BufferStatus, SegmentPriority};

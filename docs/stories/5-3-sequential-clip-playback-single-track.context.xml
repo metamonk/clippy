@@ -1,0 +1,289 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>5</epicId>
+    <storyId>3</storyId>
+    <title>Sequential Clip Playback (Single Track)</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/5-3-sequential-clip-playback-single-track.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>playback to continue automatically when one clip ends</iWant>
+    <soThat>I can preview multi-clip sequences without manual intervention</soThat>
+    <tasks>
+- Task 1: Implement clip boundary detection and next-clip lookup (AC: #1, #6)
+  - Subtask 1.1: Add `getClipAtTime(time: number, trackId: string)` to compositionStore
+  - Subtask 1.2: Add `getNextClip(currentClip: Clip, trackId: string)` to compositionStore
+  - Subtask 1.3: Add unit tests for clip boundary detection
+
+- Task 2: Implement automatic clip switching on playback end (AC: #1, #2, #3)
+  - Subtask 2.1: Add event listener for MPV end-file event in mpv_player.rs
+  - Subtask 2.2: Implement `handleClipEnd()` in VideoPlayer component
+  - Subtask 2.3: Load next clip and resume playback within 100ms
+  - Subtask 2.4: Add transition latency measurement in dev mode
+
+- Task 3: Implement continuous playhead movement across clips (AC: #4, #5)
+  - Subtask 3.1: Refactor `currentTime` state to track global timeline position
+  - Subtask 3.2: Convert global time to clip-relative time for MPV
+  - Subtask 3.3: Update playhead UI during clip transitions
+  - Subtask 3.4: Add tests for time conversion at clip boundaries
+
+- Task 4: Implement end-of-timeline detection (AC: #7)
+  - Subtask 4.1: Add `isEndOfTimeline(time: number)` helper to compositionStore
+  - Subtask 4.2: Stop playback gracefully when last clip ends
+  - Subtask 4.3: Reset playhead to timeline start on end
+  - Subtask 4.4: Add toast notification: "Playback complete"
+
+- Task 5: Ensure keyboard shortcuts work during transitions (AC: #8)
+  - Subtask 5.1: Test Space (play/pause) during clip switching
+  - Subtask 5.2: Test arrow keys (seek) during clip switching
+  - Subtask 5.3: Add integration tests for keyboard shortcuts
+
+- Task 6: Integration testing with 2+ clips (AC: #6)
+  - Subtask 6.1: Create test timeline with 3 consecutive clips
+  - Subtask 6.2: Verify seamless playback through all clips
+  - Subtask 6.3: Verify currentTime accuracy at each boundary
+  - Subtask 6.4: Verify playhead visual synchronization
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. When clip ends, composition renderer finds next clip
+2. Next clip loads and starts playing seamlessly
+3. Transition latency < 100ms (imperceptible to user)
+4. Playhead continues moving through transition
+5. CurrentTime updates correctly across clip boundaries
+6. Works for 2+ consecutive clips on same track
+7. End of timeline stops playback (no error)
+8. Keyboard shortcuts (Space, Arrow keys) work during transitions
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/epic-5-composition-playback-plan.md</path>
+        <title>Epic 5: Timeline Composition Playback (PROPOSED)</title>
+        <section>Story 5.3: Sequential Clip Playback (Single Track)</section>
+        <snippet>Auto-advance through clips on a single track. When clip ends, composition renderer finds next clip and loads it seamlessly with transition latency < 100ms. Prerequisite: Story 5.2 (Composition State Management). Note: Single-track only, multi-track compositing in Story 5.5.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epic-5-composition-playback-plan.md</path>
+        <title>Epic 5: Timeline Composition Playback (PROPOSED)</title>
+        <section>Approach C: Hybrid - Smart Segment Pre-Rendering (RECOMMENDED)</section>
+        <snippet>Detect "simple" timeline segments (single clip, no compositing) and play directly via MPV. Pre-render "complex" segments (multi-track, gaps) to temp cache. Best of both worlds: instant start for simple clips, perfect sync for complex compositing, minimal disk usage.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-006: Use MPV (libmpv2) for Video Playback</section>
+        <snippet>MPV provides universal codec support (H.264, HEVC, ProRes, VP9, AV1), frame-accurate seeking (<33ms precision), and event-based architecture with FileLoaded/EndFile events. Audio enabled with auto driver selection (CoreAudio on macOS). Fade filters and volume control implemented.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-007: Playback Mode Architecture (Preview vs Timeline)</section>
+        <snippet>Two distinct playback modes: Preview Mode (play selected media files independently) and Timeline Mode (play assembled timeline composition). Single MPV backend with mode-aware architecture tracked by playerStore.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Epic 1: Foundation & TRUE MVP</section>
+        <snippet>Story 1.7 (Timeline Playback Synchronization) established foundation for playhead sync. Story 1.3.5 (MPV Integration) provides MPV player backend with event-based architecture.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/stores/compositionStore.ts</path>
+        <kind>state-store</kind>
+        <symbol>useCompositionStore</symbol>
+        <lines>85-215</lines>
+        <reason>Story 5.2 prerequisite - provides composition state management. Will need to add getClipAtTime(), getNextClip(), and isEndOfTimeline() helper methods.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/player/VideoPlayer.tsx</path>
+        <kind>component</kind>
+        <symbol>VideoPlayer</symbol>
+        <lines>44-440</lines>
+        <reason>Main video player component. Will add handleClipEnd() event handler to detect clip completion and trigger automatic switching to next clip.</reason>
+      </artifact>
+      <artifact>
+        <path>src/lib/timeline/clipOperations.ts</path>
+        <kind>utility</kind>
+        <symbol>findClipAtTime</symbol>
+        <lines>151-163</lines>
+        <reason>Existing helper for finding clip at specific time. Can be used as reference for implementing getClipAtTime() and getNextClip() in compositionStore.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/mpv_player.rs</path>
+        <kind>service</kind>
+        <symbol>MpvPlayer</symbol>
+        <lines>1-450</lines>
+        <reason>MPV player wrapper with event-based architecture. Need to add end-file event handling (Task 2.1) to detect when clip playback completes.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/commands/mpv.rs</path>
+        <kind>tauri-commands</kind>
+        <symbol>14 Tauri commands</symbol>
+        <lines>1-400</lines>
+        <reason>Exposes MPV functionality to frontend via Tauri commands (load_file, play, pause, seek, get_time, get_duration, etc). May need to add command for event subscription.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>state-store</kind>
+        <symbol>usePlayerStore</symbol>
+        <lines>1-200</lines>
+        <reason>Manages playback state including current time and playback mode. Will coordinate with compositionStore for timeline mode playback.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>state-store</kind>
+        <symbol>useTimelineStore</symbol>
+        <lines>1-500</lines>
+        <reason>Manages timeline structure with multi-track clips. Source of clip data for composition playback.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package name="react" version="^19.1.0" />
+        <package name="zustand" version="^4" note="State management for compositionStore" />
+        <package name="@tauri-apps/api" version="^2" note="Tauri invoke commands for MPV control" />
+        <package name="sonner" version="^2.0.7" note="Toast notifications for playback errors" />
+        <package name="vitest" version="^2" note="Frontend unit testing framework" />
+      </frontend>
+      <backend>
+        <package name="libmpv2" version="5.0" note="Video playback engine with event-based architecture" />
+        <package name="tauri" version="2" note="Desktop framework for Rust backend" />
+        <package name="tokio" version="1" note="Async runtime for event handling" />
+        <package name="anyhow" version="1" note="Error handling with context" />
+        <package name="tracing" version="0.1" note="Structured logging for debugging" />
+      </backend>
+      <system>
+        <dependency name="MPV" version="0.40.0" note="System MPV installation via Homebrew (brew install mpv)" />
+      </system>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Single-track playback only - multi-track compositing deferred to Story 5.6</constraint>
+    <constraint>No gap handling in this story - gaps (black frames) handled in Story 5.4. Assume consecutive clips only.</constraint>
+    <constraint>No multi-track audio mixing - single-track audio plays as-is. Audio mixing in Story 5.5.</constraint>
+    <constraint>Transition latency must be &lt; 100ms per AC #3 to meet imperceptible transition requirement</constraint>
+    <constraint>Target 30 FPS playback (Epic 5 success metric)</constraint>
+    <constraint>Timeline time format: milliseconds per ADR-005 - all time calculations use integer milliseconds</constraint>
+    <constraint>Playback mode must be 'timeline' (focusContext='timeline') per ADR-007. Preview mode unchanged.</constraint>
+    <constraint>Event-driven architecture: use MPV end-file events, not polling, per ADR-006 update</constraint>
+    <constraint>Error boundaries required: wrap clip switching in try-catch with toast notifications (shadcn/ui pattern)</constraint>
+    <constraint>Zustand state management patterns from Story 3.1 - composition state separate from timeline editing state</constraint>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>compositionStore.getClipAtTime</name>
+      <kind>function</kind>
+      <signature>getClipAtTime(time: number, trackId: string): Clip | null</signature>
+      <path>src/stores/compositionStore.ts</path>
+    </interface>
+    <interface>
+      <name>compositionStore.getNextClip</name>
+      <kind>function</kind>
+      <signature>getNextClip(currentClip: Clip, trackId: string): Clip | null</signature>
+      <path>src/stores/compositionStore.ts</path>
+    </interface>
+    <interface>
+      <name>compositionStore.isEndOfTimeline</name>
+      <kind>function</kind>
+      <signature>isEndOfTimeline(time: number): boolean</signature>
+      <path>src/stores/compositionStore.ts</path>
+    </interface>
+    <interface>
+      <name>MPV end-file event</name>
+      <kind>event</kind>
+      <signature>EndFile event fired by libmpv when playback reaches end of file</signature>
+      <path>src-tauri/src/services/mpv_player.rs</path>
+    </interface>
+    <interface>
+      <name>mpv_load_file</name>
+      <kind>tauri-command</kind>
+      <signature>mpv_load_file(file_path: String) -&gt; Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/mpv.rs</path>
+    </interface>
+    <interface>
+      <name>mpv_play</name>
+      <kind>tauri-command</kind>
+      <signature>mpv_play() -&gt; Result&lt;(), String&gt;</signature>
+      <path>src-tauri/src/commands/mpv.rs</path>
+    </interface>
+    <interface>
+      <name>mpv_get_time</name>
+      <kind>tauri-command</kind>
+      <signature>mpv_get_time() -&gt; Result&lt;f64, String&gt;</signature>
+      <path>src-tauri/src/commands/mpv.rs</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+Frontend tests use Vitest with React Testing Library. Tests follow describe/it pattern with descriptive test names. Zustand stores have comprehensive unit tests covering initial state, state mutations, and edge cases. Tests reference AC numbers in names (e.g., "AC#1"). Backend tests use Rust's built-in testing framework with #[cfg(test)] and #[test] attributes. MPV integration tests verify playback control, event handling, and audio features. Test coverage target: 75%+ for new code.
+    </standards>
+    <locations>
+      <location>src/stores/compositionStore.test.ts</location>
+      <location>src/lib/timeline/clipOperations.test.ts</location>
+      <location>src/components/player/VideoPlayer.test.tsx</location>
+      <location>src-tauri/src/services/mpv_player.rs (mod tests)</location>
+    </locations>
+    <ideas>
+      <test ac="1,6" desc="compositionStore: getClipAtTime returns correct clip for single track">
+        - Create track with 3 consecutive clips
+        - Query time within each clip's range
+        - Verify correct clip returned
+        - Test boundary conditions (exact start/end times)
+      </test>
+      <test ac="1,6" desc="compositionStore: getNextClip returns clip following current clip">
+        - Create track with 3 clips (Clip A, B, C)
+        - Call getNextClip(A) → expect B
+        - Call getNextClip(B) → expect C
+        - Call getNextClip(C) → expect null (end of timeline)
+      </test>
+      <test ac="7" desc="compositionStore: isEndOfTimeline detects last clip correctly">
+        - Create timeline with 2 clips ending at 5000ms
+        - isEndOfTimeline(4999) → false
+        - isEndOfTimeline(5000) → true
+        - isEndOfTimeline(6000) → true
+      </test>
+      <test ac="2,3" desc="mpv_player.rs: end-file event triggers callback">
+        - Load test video file
+        - Register end-file event handler
+        - Seek to 1 second before end
+        - Play and verify event fires within 100ms of clip end
+      </test>
+      <test ac="2,3" desc="VideoPlayer: handleClipEnd loads next clip within 100ms">
+        - Mock timeline with 2 clips
+        - Start playback on first clip
+        - Fast-forward to clip end
+        - Measure time from end-file event to load_file call
+        - Assert latency < 100ms
+      </test>
+      <test ac="4,5" desc="VideoPlayer: currentTime updates across clip boundary">
+        - Clip A: 0-3000ms (global timeline)
+        - Clip B: 3000-6000ms (global timeline)
+        - Play through boundary at 3000ms
+        - Verify currentTime increments 2999→3000→3001 without jumps
+      </test>
+      <test ac="8" desc="VideoPlayer: keyboard shortcuts work during clip transition">
+        - Play through 2-clip sequence
+        - Trigger Space key at boundary (3000ms ± 50ms)
+        - Verify playback pauses immediately
+        - Resume and trigger Arrow Right
+        - Verify seek completes without errors
+      </test>
+      <test ac="6" desc="Integration: 3-clip playback completes successfully">
+        - Create timeline: Clip A (0-2s), B (2-4s), C (4-6s)
+        - Start playback from 0ms
+        - Verify automatic transitions A→B→C
+        - Verify playback stops at 6000ms
+        - Check no MPV errors logged
+      </test>
+    </ideas>
+  </tests>
+</story-context>

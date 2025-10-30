@@ -637,6 +637,7 @@ mod tests {
         let timeline = Timeline {
             tracks: vec![Track {
                 id: "track-1".to_string(),
+                track_number: 1,
                 clips: vec![],
                 track_type: TrackType::Video,
             }],

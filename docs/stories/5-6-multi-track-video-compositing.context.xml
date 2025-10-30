@@ -1,0 +1,348 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>5</epicId>
+    <storyId>6</storyId>
+    <title>Multi-Track Video Compositing</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/5-6-multi-track-video-compositing.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>video tracks to layer on top of each other</iWant>
+    <soThat>I can create picture-in-picture effects and overlays</soThat>
+    <tasks>
+- [ ] Implement multi-track video compositing in SegmentRenderer (AC: #1, #2, #3)
+  - [ ] Extend FFmpeg filter graph generation to support overlay filter chain
+  - [ ] Implement z-index based layer ordering (Track 1 bottom, Track N top)
+  - [ ] Add opacity/alpha channel support for semi-transparent overlays
+  - [ ] Add black background canvas generation when no bottom track clips
+  - [ ] Write unit tests for filter graph generation with multiple video tracks
+
+- [ ] Implement video scaling and aspect ratio preservation (AC: #6, #7)
+  - [ ] Add FFmpeg scale filter for different input resolutions
+  - [ ] Implement aspect ratio calculation and preservation logic
+  - [ ] Add letterboxing/pillarboxing when aspect ratios don't match
+  - [ ] Write unit tests for scaling logic with various resolution combinations
+
+- [ ] Implement position/scale transforms for PiP effects (AC: #8)
+  - [ ] Read clip position and scale properties from timeline state
+  - [ ] Apply overlay filter with x/y coordinates and dimensions
+  - [ ] Support percentage-based positioning (for responsive layouts)
+  - [ ] Write unit tests for transform calculations
+
+- [ ] Optimize compositing performance for 60 FPS target (AC: #5)
+  - [ ] Profile FFmpeg encoding with 3+ simultaneous video tracks
+  - [ ] Enable hardware acceleration (VideoToolbox on macOS)
+  - [ ] Tune FFmpeg preset and CRF for real-time performance
+  - [ ] Implement frame rate monitoring and adaptive quality reduction
+  - [ ] Add performance metrics logging
+
+- [ ] Integrate with PlaybackOrchestrator (AC: #1, #2, #3, #4)
+  - [ ] Update segment classification to detect multi-track video segments
+  - [ ] Ensure multi-track segments are classified as "complex"
+  - [ ] Test seamless playback with multi-track composition
+  - [ ] Verify cache invalidation when track structure changes
+
+- [ ] Add comprehensive integration tests (AC: #1-#8)
+  - [ ] Test 2-track PiP composition (bottom + overlay)
+  - [ ] Test 3-track composition with different resolutions
+  - [ ] Test opacity blending and alpha channel compositing
+  - [ ] Test aspect ratio preservation with various input formats
+  - [ ] Test performance with 3+ simultaneous tracks
+  - [ ] Test black background rendering for gaps
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Track z-index determines layer order (Track 1 = bottom, Track N = top)
+2. Clips on higher tracks render over lower tracks
+3. Opacity/alpha channel support for semi-transparent overlays
+4. Black background if no clips at bottom track level
+5. Compositing performance: 60 FPS with 3 simultaneous video tracks
+6. Works with different video resolutions (scales to canvas)
+7. Maintains aspect ratio for each clip
+8. Position/scale transforms applied (for PiP effects)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <!-- ADR-008: Core architecture decision -->
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>ADR-008: Timeline Composition Playback Architecture (Hybrid Smart Segment Pre-Rendering)</title>
+        <section>ADR-008 (lines 2155-2328)</section>
+        <snippet>Decision: Hybrid Smart Segment Pre-Rendering. Timeline divided into simple segments (direct MPV) and complex segments (FFmpeg pre-render). Complex segments include multi-track video requiring FFmpeg overlay filter. Story 5.6 implements multi-track video compositing as complex segment type.</snippet>
+      </doc>
+
+      <!-- PRD Requirements -->
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR006: Real-Time Video Preview and Playback (lines 47-52)</section>
+        <snippet>System shall provide Timeline Composition Mode for rendering multi-track composition with continuous playback across clips, automatic transitions, real-time audio mixing, and PiP overlays. System shall use hybrid architecture: MPV for single-clip preview, composition renderer for multi-track timeline playback.</snippet>
+      </doc>
+
+      <!-- Epic 5 Planning -->
+      <doc>
+        <path>docs/epic-5-composition-playback-plan.md</path>
+        <title>Epic 5: Timeline Composition Playback - Implementation Plan</title>
+        <section>Technical Challenges - Real-time video compositing (lines 210-211, 344-351)</section>
+        <snippet>Real-time video compositing requires FFmpeg overlay filter with pre-processing. Approach C (Hybrid Smart Segments) uses FFmpeg overlay filter for complex multi-track segments. Pre-render complex segments to temp cache with acceptable latency using smart caching.</snippet>
+      </doc>
+
+      <!-- Related Story: Audio Mixing -->
+      <doc>
+        <path>docs/stories/5-5-multi-track-audio-mixing.md</path>
+        <title>Story 5.5: Multi-Track Audio Mixing</title>
+        <section>Architecture Context (lines 104-136)</section>
+        <snippet>Companion story implementing multi-track audio mixing using FFmpeg amix filter. Story 5.6 complements this by adding video track layering. Both use complex segment classification in ADR-008 architecture.</snippet>
+      </doc>
+
+      <!-- Architecture Context: FFmpeg Pattern -->
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Decision Architecture</title>
+        <section>Pattern 1: Multi-stream recording with FFmpeg composition (line 259)</section>
+        <snippet>Epic 4 PiP composition establishes precedent: Multi-stream recording orchestration, frame synchronization, FFmpeg PiP overlay filter. Story 5.6 extends this pattern to timeline composition.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <!-- Composition Store: State management for composition playback -->
+      <artifact>
+        <path>src/stores/compositionStore.ts</path>
+        <kind>store</kind>
+        <symbol>CompositionState interface, ActiveClip interface, getActiveClipsAtTime()</symbol>
+        <lines>0-80</lines>
+        <reason>Provides composition state management with multi-track clip detection. Story 5.6 will extend this to detect multi-track video segments and integrate with SegmentRenderer.</reason>
+      </artifact>
+
+      <!-- Timeline Type Definitions -->
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>Clip interface</symbol>
+        <lines>15-30</lines>
+        <reason>Core Clip interface that needs position/scale/opacity properties for PiP effects (AC #8). Currently has volume, mute, fade properties but missing transform properties.</reason>
+      </artifact>
+
+      <!-- FFmpeg Compositor: Precedent for overlay filter -->
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/compositor.rs</path>
+        <kind>service</kind>
+        <symbol>FFmpegCompositor struct, overlay filter generation (line 262)</symbol>
+        <lines>1-580</lines>
+        <reason>Epic 4 PiP composition implementation. Demonstrates FFmpeg overlay filter pattern: [1:v]scale=WxH[pip];[0:v][pip]overlay=x:y. Story 5.6 extends this to multi-track timeline composition with z-index layering.</reason>
+      </artifact>
+
+      <!-- FFmpeg Exporter: Timeline export with multi-track -->
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+        <kind>service</kind>
+        <symbol>VideoExporter (export logic)</symbol>
+        <lines>1-100</lines>
+        <reason>Current export implementation that handles multi-track timeline. Story 5.6 SegmentRenderer should reuse similar FFmpeg filter graph generation logic for complex segments.</reason>
+      </artifact>
+
+      <!-- Timeline Models (Rust) -->
+      <artifact>
+        <path>src-tauri/src/models/timeline.rs</path>
+        <kind>model</kind>
+        <symbol>Timeline, Track, Clip structs</symbol>
+        <lines>1-100</lines>
+        <reason>Rust data models for timeline. May need ClipTransform struct for position/scale properties (AC #8).</reason>
+      </artifact>
+
+      <!-- MPV Player Service -->
+      <artifact>
+        <path>src-tauri/src/services/mpv_player.rs</path>
+        <kind>service</kind>
+        <symbol>MpvPlayer</symbol>
+        <lines>1-100</lines>
+        <reason>MPV player integration. PlaybackOrchestrator will load pre-rendered complex segments via MPV after SegmentRenderer creates cache files.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <!-- Node.js Dependencies -->
+      <node>
+        <package name="zustand" version="^4">State management for compositionStore - tracks active clips and render state</package>
+        <package name="konva" version="^9.3.22">Timeline canvas rendering - displays multi-track timeline with visual z-layering</package>
+        <package name="react-konva" version="^19.2.0">React bindings for Konva canvas</package>
+      </node>
+
+      <!-- Rust Dependencies -->
+      <rust>
+        <package name="ffmpeg-sidecar" version="2.1.0">FFmpeg CLI wrapper for segment pre-rendering. Generates overlay filter chains, scales video, handles alpha channels.</package>
+        <package name="libmpv2" version="5.0.1">MPV video player for cached segment playback. Plays pre-rendered complex segments.</package>
+        <package name="tokio" version="1">Async runtime for background segment rendering and cache management</package>
+        <package name="serde" version="1">Serialization for segment cache keys and timeline state</package>
+        <package name="sha2" version="^0.10">SHA-256 hashing for segment cache keys (track structure hash)</package>
+      </rust>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <!-- Architecture Constraints from ADR-008 -->
+    <constraint type="architecture">Follow ADR-008 Hybrid Smart Segment Pre-Rendering: Multi-track video segments are COMPLEX segments requiring FFmpeg pre-render to cache. Cannot play multiple videos directly in MPV.</constraint>
+
+    <constraint type="performance">Target: 60 FPS with 3 simultaneous video tracks on MacBook Pro 2020+. Use hardware acceleration (VideoToolbox encoder on macOS) to meet performance target.</constraint>
+
+    <constraint type="cache">Segment cache invalidation: Cache key MUST include track structure hash. When track structure changes (clips added/removed/moved), cache invalidates and segment re-renders.</constraint>
+
+    <constraint type="encoding">Use FFmpeg ultrafast preset, CRF 23, H.264 for real-time encoding. Prioritize speed over compression ratio for cache segments.</constraint>
+
+    <constraint type="compatibility">Backward compatible with simple segments. Single-track playback (Story 5.3) continues to work. Multi-track detection adds complex segment classification.</constraint>
+
+    <constraint type="pattern">Reuse FFmpeg overlay filter pattern from Story 4.6 (FFmpegCompositor). Layer order: overlay filters applied bottom-to-top (Track 1 base, Track 2 overlay, Track 3 overlay on top).</constraint>
+  </constraints>
+
+  <interfaces>
+    <!-- New Rust Service Interfaces (to be created) -->
+    <interface>
+      <name>SegmentRenderer</name>
+      <kind>Rust service (src-tauri/src/services/segment_renderer.rs)</kind>
+      <signature>
+        struct SegmentRenderer {
+          cache_dir: PathBuf,
+        }
+
+        impl SegmentRenderer {
+          pub fn render_segment(segment: Segment) -> Result&lt;PathBuf&gt;;
+          fn generate_filter_graph(segment: Segment) -> String;
+          fn apply_scaling(clip: Clip, canvas_size: (u32, u32)) -> String;
+          fn apply_overlay(clips: Vec&lt;Clip&gt;, z_order: Vec&lt;usize&gt;) -> String;
+        }
+      </signature>
+      <path>src-tauri/src/services/segment_renderer.rs (new file)</path>
+    </interface>
+
+    <interface>
+      <name>CompositionAnalyzer</name>
+      <kind>Rust service (src-tauri/src/services/composition_analyzer.rs)</kind>
+      <signature>
+        struct CompositionAnalyzer;
+
+        impl CompositionAnalyzer {
+          pub fn classify_segment(segment: &amp;Segment) -> SegmentType;
+          pub fn detect_multi_track_video(segment: &amp;Segment) -> bool;
+        }
+
+        enum SegmentType {
+          Simple, // Single clip, direct MPV
+          Complex, // Multi-track, requires FFmpeg
+        }
+      </signature>
+      <path>src-tauri/src/services/composition_analyzer.rs (new file)</path>
+    </interface>
+
+    <interface>
+      <name>ClipTransform</name>
+      <kind>TypeScript interface (src/types/timeline.ts)</kind>
+      <signature>
+        export interface ClipTransform {
+          x: number; // Pixels from left
+          y: number; // Pixels from top
+          width: number; // Scaled width in pixels
+          height: number; // Scaled height in pixels
+          opacity: number; // 0-1 (for alpha channel)
+        }
+
+        export interface Clip {
+          // ... existing properties
+          transform?: ClipTransform; // Optional transform for PiP
+        }
+      </signature>
+      <path>src/types/timeline.ts (extend existing Clip interface)</path>
+    </interface>
+
+    <!-- FFmpeg Overlay Filter Chain (from Story 5.6 Dev Notes) -->
+    <interface>
+      <name>FFmpeg Overlay Filter Graph</name>
+      <kind>FFmpeg filter_complex</kind>
+      <signature>
+        # 3 video tracks example:
+        ffmpeg -i track1.mp4 -i track2.mp4 -i track3.mp4 \
+          -filter_complex "\
+            [0:v]scale=1920:1080:force_original_aspect_ratio=decrease,\
+                 pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black[v0]; \
+            [1:v]scale=640:360[v1]; \
+            [2:v]scale=640:360[v2]; \
+            [v0][v1]overlay=x=100:y=100:format=auto:alpha=auto[tmp1]; \
+            [tmp1][v2]overlay=x=W-w-100:y=100:format=auto:alpha=auto[vout] \
+          " -map "[vout]" output.mp4
+      </signature>
+      <path>Generated by SegmentRenderer.generate_filter_graph()</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Project uses a three-tier testing strategy:
+
+      1. **Rust Unit Tests** (Cargo test):
+         - Located in src-tauri/tests/ or colocated with source files
+         - Test core logic: filter graph generation, scaling calculations, aspect ratio preservation
+         - Use #[cfg(test)] modules or separate .rs files
+         - Example: test_segment_renderer_filter_graph(), test_multi_track_classification()
+
+      2. **Frontend Unit Tests** (Vitest):
+         - Located colocated with source files (.test.ts/.test.tsx)
+         - Test stores, utilities, components
+         - Example: compositionStore.test.ts (30 tests), timelineStore.test.ts (54 tests)
+         - Use vi.mock() for Tauri API calls
+
+      3. **E2E Tests** (Playwright):
+         - Located in tests/e2e/
+         - Test full user workflows
+         - Pattern: {epic}.{story}-{feature}.spec.ts
+         - Example: 4.3-multi-track-recording.spec.ts, 4.8-pause-resume-multi-cycle.spec.ts
+
+      4. **Manual Testing**:
+         - Visual verification of compositing output
+         - Performance monitoring (60 FPS target)
+         - Real video file validation
+
+      **Testing Standards:**
+      - Comprehensive coverage required for complex logic (filter graph generation)
+      - Edge case coverage: different resolutions, aspect ratios, 2-4+ tracks
+      - Integration tests validate FFmpeg commands with real files
+      - Performance benchmarks track FPS and CPU usage
+    </standards>
+
+    <locations>
+      <location>src-tauri/tests/ - Rust integration tests for segment rendering and composition analysis</location>
+      <location>src-tauri/src/services/segment_renderer.rs - #[cfg(test)] module for unit tests</location>
+      <location>src/stores/compositionStore.test.ts - Frontend unit tests for composition state</location>
+      <location>tests/e2e/5.6-multi-track-video-compositing.spec.ts - E2E test (new file)</location>
+    </locations>
+
+    <ideas>
+      <!-- Unit Test Ideas (Rust) -->
+      <test ac="1,2" type="unit">Test SegmentRenderer.generate_filter_graph() with 2, 3, 4 video tracks. Verify overlay filter chain has correct order (Track 1 base, Track 2 overlay, Track 3 overlay).</test>
+      <test ac="6,7" type="unit">Test scaling logic with various resolutions: (1) 1080p base + 720p overlay, (2) 4K base + 1080p overlay, (3) portrait + landscape, (4) same resolution. Verify scale filter preserves aspect ratio.</test>
+      <test ac="3" type="unit">Test alpha channel support: Generate filter graph with opacity=0.5. Verify format=auto:alpha=auto in overlay filter.</test>
+      <test ac="4" type="unit">Test black background generation: Empty timeline segment should generate black canvas with pad filter.</test>
+      <test ac="8" type="unit">Test transform calculations: Clip with position (100, 200), scale (640x360) generates overlay=x=100:y=200 with scaled dimensions.</test>
+
+      <!-- Integration Test Ideas (Rust) -->
+      <test ac="1,2,3,4" type="integration">Integration test: Create 2-track timeline (1080p base + 720p overlay). Call SegmentRenderer.render_segment(). Verify output MP4 exists, plays correctly, shows overlay on top of base.</test>
+      <test ac="5" type="integration">Performance benchmark: 3-track composition (1080p + 720p + 720p). Measure encoding time, verify < 2x realtime (10s video renders in < 20s).</test>
+      <test ac="6,7" type="integration">Multi-resolution test: Mix 4K, 1080p, 720p clips. Verify all scaled to canvas size (1920x1080) with aspect ratio preserved.</test>
+
+      <!-- Frontend Unit Test Ideas -->
+      <test ac="1" type="unit">Test CompositionAnalyzer.detect_multi_track_video(): Timeline with 2 video clips at same time returns true. Single track returns false.</test>
+      <test ac="1,2" type="unit">Test segment classification: Multi-track video segment classified as Complex. Single-track segment classified as Simple.</test>
+
+      <!-- E2E Test Ideas -->
+      <test ac="1-8" type="e2e">E2E workflow: Import 3 video files. Add to Track 1, Track 2, Track 3 at overlapping times. Play composition. Verify all 3 videos visible with correct layering (Track 3 on top).</test>
+      <test ac="5" type="e2e">Performance test: 3-track composition playback. Monitor FPS during playback. Verify >= 30 FPS (60 FPS aspirational).</test>
+      <test ac="8" type="e2e">PiP positioning test: Add clip with transform (x=100, y=100, size=640x360). Verify overlay appears at correct position.</test>
+
+      <!-- Manual Test Ideas -->
+      <test ac="3" type="manual">Visual test: Import PNG sequence with alpha channel. Verify transparency preserved in composition (see-through overlay).</test>
+      <test ac="5" type="manual">Hardware acceleration test: Enable VideoToolbox encoder. Compare CPU usage with/without hw accel. Verify 60 FPS achievable with hw accel on supported Macs.</test>
+      <test ac="6,7" type="manual">Aspect ratio test: Mix portrait (9:16) and landscape (16:9) videos. Verify letterboxing/pillarboxing applied, no distortion.</test>
+    </ideas>
+  </tests>
+</story-context>

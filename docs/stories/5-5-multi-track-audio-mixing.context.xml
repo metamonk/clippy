@@ -1,0 +1,334 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>5</epicId>
+    <storyId>5.5</storyId>
+    <title>Multi-Track Audio Mixing</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/5-5-multi-track-audio-mixing.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a user</asA>
+    <iWant>to hear audio from all tracks during playback</iWant>
+    <soThat>I can preview voice-over, music, and sound effects together</soThat>
+    <tasks>
+      <task id="1" acs="1,2,6">
+        <title>Design Audio Mixing Architecture</title>
+        <subtasks>
+          <subtask id="1.1">Research audio mixing approaches (FFmpeg amix, real-time mixing library, MPV multi-track)</subtask>
+          <subtask id="1.2">Document chosen approach in ADR or Dev Notes</subtask>
+          <subtask id="1.3">Design data flow: compositionStore activeClips → AudioMixer → MPV output</subtask>
+          <subtask id="1.4">Define audio mixer interface (Rust service API)</subtask>
+        </subtasks>
+      </task>
+      <task id="2" acs="1">
+        <title>Implement Audio Clip Query Logic</title>
+        <subtasks>
+          <subtask id="2.1">Create getActiveAudioClips(time: number) in compositionStore</subtask>
+          <subtask id="2.2">Filter activeClips for audio tracks only</subtask>
+          <subtask id="2.3">Return clips with audio metadata (volume, mute, fade settings)</subtask>
+          <subtask id="2.4">Unit tests for audio clip queries</subtask>
+        </subtasks>
+      </task>
+      <task id="3" acs="2,5,6,8">
+        <title>Implement Audio Mixer Service</title>
+        <subtasks>
+          <subtask id="3.1">Create src-tauri/src/services/audio_mixer.rs (if real-time approach)</subtask>
+          <subtask id="3.2">Implement multi-stream mixing logic with timestamp synchronization</subtask>
+          <subtask id="3.3">Add clipping prevention (normalization, limiter/compressor)</subtask>
+          <subtask id="3.4">Support 2-8 simultaneous audio tracks</subtask>
+          <subtask id="3.5">Unit tests for mixing algorithm</subtask>
+        </subtasks>
+      </task>
+      <task id="4" acs="3,4,9">
+        <title>Apply Per-Clip Audio Effects</title>
+        <subtasks>
+          <subtask id="4.1">Integrate per-clip volume settings from timelineStore</subtask>
+          <subtask id="4.2">Implement mute logic (exclude muted clips from mix)</subtask>
+          <subtask id="4.3">Apply fade-in/fade-out effects using existing fade logic</subtask>
+          <subtask id="4.4">Apply effects before mixing (per-clip processing)</subtask>
+          <subtask id="4.5">Unit tests for volume, mute, and fade effects</subtask>
+        </subtasks>
+      </task>
+      <task id="5" acs="7">
+        <title>Integrate with MPV Audio Output</title>
+        <subtasks>
+          <subtask id="5.1">Route mixed audio to MPV player</subtask>
+          <subtask id="5.2">Ensure single MPV audio stream output</subtask>
+          <subtask id="5.3">Synchronize audio with video playback timeline</subtask>
+          <subtask id="5.4">Test audio/video sync accuracy (< 50ms variance)</subtask>
+        </subtasks>
+      </task>
+      <task id="6" acs="1,2">
+        <title>Composition Renderer Integration</title>
+        <subtasks>
+          <subtask id="6.1">Update CompositionRenderer to query active audio clips</subtask>
+          <subtask id="6.2">Trigger audio mixer updates when activeClips change</subtask>
+          <subtask id="6.3">Handle clip boundary transitions</subtask>
+          <subtask id="6.4">Integration tests with composition playback</subtask>
+        </subtasks>
+      </task>
+      <task id="7" acs="all">
+        <title>Handle Edge Cases</title>
+        <subtasks>
+          <subtask id="7.1">Empty timeline (no audio) - silence output</subtask>
+          <subtask id="7.2">Single audio track - pass through without mixing overhead</subtask>
+          <subtask id="7.3">Audio-only tracks (no video) - mix audio, render black frames</subtask>
+          <subtask id="7.4">Clips with no audio stream - skip in mixer</subtask>
+          <subtask id="7.5">Very short clips (< 100ms) - handle edge case in synchronization</subtask>
+          <subtask id="7.6">Unit tests for all edge cases</subtask>
+        </subtasks>
+      </task>
+      <task id="8" acs="5,8">
+        <title>Performance Testing and Optimization</title>
+        <subtasks>
+          <subtask id="8.1">Test mixing latency with 2, 4, 6, 8 simultaneous tracks</subtask>
+          <subtask id="8.2">Measure CPU usage during mixing</subtask>
+          <subtask id="8.3">Verify audio synchronization (< 10ms variance) across tracks</subtask>
+          <subtask id="8.4">Test clipping prevention with multiple loud tracks</subtask>
+          <subtask id="8.5">Optimize mixing algorithm if performance issues found</subtask>
+          <subtask id="8.6">Document performance characteristics</subtask>
+        </subtasks>
+      </task>
+      <task id="9" acs="all">
+        <title>Integration Testing</title>
+        <subtasks>
+          <subtask id="9.1">Test composition playback with multi-track audio</subtask>
+          <subtask id="9.2">Verify volume settings applied correctly</subtask>
+          <subtask id="9.3">Verify muted clips excluded from mix</subtask>
+          <subtask id="9.4">Verify fade effects audible in mixed output</subtask>
+          <subtask id="9.5">Test audio synchronization during playback</subtask>
+          <subtask id="9.6">Test no distortion/clipping with loud tracks</subtask>
+          <subtask id="9.7">Create test timeline with 4+ audio tracks</subtask>
+          <subtask id="9.8">Manual testing with real audio clips</subtask>
+        </subtasks>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="1">Composition renderer identifies all clips at current playhead position</criterion>
+    <criterion id="2">Audio streams from overlapping clips mixed in real-time</criterion>
+    <criterion id="3">Per-clip volume settings applied during mixing</criterion>
+    <criterion id="4">Muted clips excluded from mix</criterion>
+    <criterion id="5">Audio synchronization maintained across tracks (< 10ms variance)</criterion>
+    <criterion id="6">Supports 2-8 simultaneous audio tracks</criterion>
+    <criterion id="7">Mix output sent to single MPV audio stream</criterion>
+    <criterion id="8">No audio distortion or clipping with multiple loud tracks</criterion>
+    <criterion id="9">Fade-in/fade-out effects applied correctly in mix</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR006: Real-Time Video Preview and Playback</section>
+        <snippet>System shall provide Timeline Composition Mode for rendering multi-track composition with continuous playback across clips, automatic transitions, real-time audio mixing, and PiP overlays</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-008: Timeline Composition Playback Architecture</section>
+        <snippet>Hybrid Smart Segment Pre-Rendering approach. Complex segments (multi-track audio) require FFmpeg pre-render using amix filter. Simple segments play directly via MPV.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>FFmpeg Integration</section>
+        <snippet>FFmpeg via ffmpeg-sidecar for audio mixing via amix filter, proven in export and PiP recording workflows</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/5-1-composition-playback-architecture-adr.md</path>
+        <title>Story 5.1: Composition Playback Architecture & ADR</title>
+        <section>Approach C: Hybrid Smart Segment Pre-Rendering</section>
+        <snippet>Multi-track audio = Complex segment requiring FFmpeg pre-render. FFmpeg amix filter handles multi-stream mixing, normalization, and clipping prevention.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/5-2-composition-state-management.md</path>
+        <title>Story 5.2: Composition State Management</title>
+        <section>Active Clips Query</section>
+        <snippet>compositionStore.activeClips provides list of clips at playhead. Each ActiveClip includes track context and relative time for multi-track detection.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-9-per-clip-volume-control.md</path>
+        <title>Story 3.9: Per-Clip Volume Control</title>
+        <section>Volume Settings</section>
+        <snippet>timelineStore.clips includes volume field (0-200%, default 100%). FFmpeg volume filter applies per-clip volume during export.</snippet>
+      </doc>
+      <doc>
+        <path>docs/stories/3-10-audio-fade-in-out.md</path>
+        <title>Story 3.10: Audio Fade In/Out</title>
+        <section>Fade Settings</section>
+        <snippet>timelineStore.clips includes fadeIn/fadeOut fields (milliseconds). FFmpeg afade filter applies fades during export.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epics Document</title>
+        <section>Epic 5: Composition Playback Engine</section>
+        <snippet>Enable continuous timeline playback with real-time audio mixing, video compositing, and professional editing experience matching export output quality.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/stores/compositionStore.ts</path>
+        <kind>state-management</kind>
+        <symbol>ActiveClip interface, getActiveClipsAtTime()</symbol>
+        <lines>21-30, 85-239</lines>
+        <reason>Provides activeClips array query logic at playhead position - foundation for identifying overlapping audio clips for mixing</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>state-management</kind>
+        <symbol>TimelineState interface, clip volume/mute/fade fields</symbol>
+        <lines>10-106</lines>
+        <reason>Contains clip audio settings (volume, muted, fadeIn, fadeOut) that must be applied during audio mixing</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/player/VideoPlayer.tsx</path>
+        <kind>component</kind>
+        <symbol>VideoPlayer component, composition mode logic</symbol>
+        <lines>45-459</lines>
+        <reason>Entry point for composition playback - will integrate audio mixer updates when activeClips change</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+        <kind>service</kind>
+        <symbol>FFmpeg filter graph generation, audio filters</symbol>
+        <lines>1-500</lines>
+        <reason>Existing FFmpeg filter graph patterns for audio volume/fade - reference for implementing amix filter generation</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/compositor.rs</path>
+        <kind>service</kind>
+        <symbol>FFmpeg PiP compositor</symbol>
+        <lines>1-300</lines>
+        <reason>Existing FFmpeg multi-stream composition example (video overlay) - similar pattern for audio amix</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/mpv_player.rs</path>
+        <kind>service</kind>
+        <symbol>MPV player service</symbol>
+        <lines>1-500</lines>
+        <reason>MPV playback service - will receive mixed audio stream from pre-rendered segments</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package name="react" version="19.1.0">UI framework</package>
+        <package name="zustand" version="4.x">State management for composition and timeline stores</package>
+        <package name="konva" version="9.3.22">Canvas-based timeline rendering</package>
+        <package name="@tauri-apps/api" version="2.x">Tauri frontend API</package>
+      </frontend>
+      <backend>
+        <package name="ffmpeg-sidecar" version="2.1">FFmpeg integration for audio mixing via amix filter</package>
+        <package name="libmpv2" version="5.0">MPV player for playback of mixed audio streams</package>
+        <package name="tokio" version="1.x">Async runtime for audio processing</package>
+        <package name="serde" version="1.x">Serialization for clip metadata</package>
+        <package name="cpal" version="0.16">Audio I/O library (alternative real-time mixing approach)</package>
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <architectural>
+      <constraint>FFmpeg Approach Recommended: Use FFmpeg amix filter for multi-track audio mixing (aligns with Story 5.1 Approach C hybrid model)</constraint>
+      <constraint>Complex Segment Pre-Rendering: Multi-track audio = Complex segment requiring FFmpeg pre-render to cache before MPV playback</constraint>
+      <constraint>MPV Single Audio Stream: MPV can only play one audio source at a time - mixed audio must be pre-rendered to single stream</constraint>
+      <constraint>Zustand State Management: Use compositionStore.activeClips for multi-track clip detection at playhead</constraint>
+    </architectural>
+    <performance>
+      <constraint>CPU Usage Target: &lt;80% CPU during playback on MacBook Pro 2020+</constraint>
+      <constraint>Audio Sync Accuracy: &lt;10ms variance across tracks (AC #5)</constraint>
+      <constraint>Render Time: 10s segment with 4 audio tracks should render in ~2-5 seconds</constraint>
+      <constraint>60 FPS Playback: State updates must complete in &lt;16ms</constraint>
+    </performance>
+    <technical>
+      <constraint>FFmpeg Filter Graph: Apply per-clip volume/fade filters BEFORE amix filter for correct audio processing</constraint>
+      <constraint>Clipping Prevention: Use FFmpeg amix auto-normalization or manual loudnorm filter to prevent audio distortion</constraint>
+      <constraint>Per-Clip Audio Settings: Integrate volume (0-200%), mute (boolean), fadeIn/fadeOut (milliseconds) from timelineStore</constraint>
+      <constraint>Audio Synchronization: Use FFmpeg adelay filter to align clips by timeline position relative to segment start</constraint>
+      <constraint>Muted Clips: Exclude entirely from amix inputs rather than applying volume=0 (more efficient)</constraint>
+    </technical>
+    <integration>
+      <constraint>Story 5.2 Prerequisite: Requires compositionStore.getActiveClipsAtTime() for multi-track clip queries</constraint>
+      <constraint>Story 3.9 Integration: Reuse existing volume field from timelineStore.clips</constraint>
+      <constraint>Story 3.10 Integration: Reuse existing fadeIn/fadeOut fields from timelineStore.clips</constraint>
+      <constraint>Story 5.3 Foundation: Sequential clip playback (simple segments) must work before adding multi-track mixing</constraint>
+      <constraint>Export Parity: Mixed audio preview must match export output (Story 5.7 validation)</constraint>
+    </integration>
+  </constraints>
+  <interfaces>
+    <interface>
+      <name>getActiveAudioClips</name>
+      <kind>TypeScript method</kind>
+      <signature>getActiveAudioClips(time: number): ActiveClip[]</signature>
+      <path>src/stores/compositionStore.ts</path>
+      <description>Query compositionStore for audio clips at given timeline position, filtering activeClips for audio tracks only</description>
+    </interface>
+    <interface>
+      <name>FFmpeg amix Filter</name>
+      <kind>FFmpeg filter</kind>
+      <signature>amix=inputs=N:duration=longest:dropout_transition=0</signature>
+      <path>FFmpeg command-line</path>
+      <description>Multi-track audio mixing filter. Inputs=2-8 audio streams, duration=longest for segment length, dropout_transition=0 for hard cuts</description>
+    </interface>
+    <interface>
+      <name>FFmpeg volume Filter</name>
+      <kind>FFmpeg filter</kind>
+      <signature>volume=V</signature>
+      <path>FFmpeg command-line</path>
+      <description>Per-clip volume adjustment. Apply BEFORE amix. Clippy volume (0-200%) → FFmpeg volume (0-2.0)</description>
+    </interface>
+    <interface>
+      <name>FFmpeg afade Filter</name>
+      <kind>FFmpeg filter</kind>
+      <signature>afade=t=in:st=S:d=D or afade=t=out:st=S:d=D</signature>
+      <path>FFmpeg command-line</path>
+      <description>Audio fade-in/fade-out. Apply BEFORE amix. t=type (in/out), st=start time (seconds), d=duration (seconds)</description>
+    </interface>
+    <interface>
+      <name>FFmpeg adelay Filter</name>
+      <kind>FFmpeg filter</kind>
+      <signature>adelay=MS|MS</signature>
+      <path>FFmpeg command-line</path>
+      <description>Audio delay for timestamp synchronization. Delay each clip by (clip.startTime - segment.startTime) milliseconds</description>
+    </interface>
+    <interface>
+      <name>Clip Audio Metadata</name>
+      <kind>TypeScript interface</kind>
+      <signature>{ volume: number, muted: boolean, fadeIn?: number, fadeOut?: number }</signature>
+      <path>src/types/timeline.ts</path>
+      <description>Per-clip audio settings from timelineStore. volume: 0-200%, muted: boolean, fadeIn/fadeOut: milliseconds</description>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>
+      Frontend testing uses Vitest with React Testing Library (@testing-library/react). Unit tests verify store logic, component behavior, and utility functions. Integration tests use Tauri mock APIs. Test files follow pattern: *.test.ts for logic, *.test.tsx for components. Tests use describe/it/expect structure with beforeEach for setup.
+    </standards>
+    <locations>
+      <location>src/stores/compositionStore.test.ts - Composition state unit tests</location>
+      <location>src/components/player/VideoPlayer.test.tsx - Player component integration tests</location>
+      <location>src-tauri/src/services/ffmpeg/ - Rust unit tests (inline #[cfg(test)] modules)</location>
+      <location>src/lib/timeline/ - Timeline utility unit tests</location>
+    </locations>
+    <ideas>
+      <idea ac="1">Unit test: getActiveAudioClips() returns correct clips at playhead position for multi-track timeline</idea>
+      <idea ac="1">Unit test: getActiveAudioClips() filters audio tracks only (excludes video-only tracks)</idea>
+      <idea ac="2,6">Integration test: FFmpeg amix filter generation with 2, 4, 6, 8 audio inputs</idea>
+      <idea ac="3">Unit test: Volume settings (0%, 50%, 100%, 200%) correctly converted to FFmpeg volume filter (0.0, 0.5, 1.0, 2.0)</idea>
+      <idea ac="4">Unit test: Muted clips excluded from amix inputs (not present in filter graph)</idea>
+      <idea ac="5">Integration test: Audio synchronization - play test tone on 4 tracks, measure phase alignment (&lt;10ms variance)</idea>
+      <idea ac="7">Integration test: Mixed audio routed to MPV single stream output (verify MPV receives single audio source)</idea>
+      <idea ac="8">Integration test: Clipping prevention - 4 tracks at 100% volume each, verify no distortion in mixed output</idea>
+      <idea ac="9">Integration test: Fade-in/fade-out applied correctly - verify fade curves in mixed audio waveform</idea>
+      <idea ac="all">Manual test: Create timeline with narration (100%), music (50%), sound effects (75%), ambient (25%) - verify correct mix balance</idea>
+      <idea ac="all">Edge case test: Empty timeline (no audio) produces silence</idea>
+      <idea ac="all">Edge case test: Single audio track skips mixing overhead (pass-through optimization)</idea>
+      <idea ac="all">Performance test: Measure CPU usage during 8-track playback (&lt;80% target)</idea>
+      <idea ac="all">Performance test: Measure render time for 10s segment with 4 audio tracks (2-5s target)</idea>
+    </ideas>
+  </tests>
+</story-context>

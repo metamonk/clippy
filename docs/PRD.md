@@ -47,10 +47,10 @@ clippy bridges both gaps as a macOS-native video editor built with Tauri that co
 
 **FR006: Real-Time Video Preview and Playback**
 - System shall provide **Preview Mode** for playing selected media files independently with basic controls (play/pause, seek, scrub)
-- System shall provide **Timeline Mode** for rendering multi-track composition with PiP overlays in real-time preview window
-- System shall automatically switch between modes based on user's last interaction context: library interactions activate Preview Mode, timeline interactions activate Timeline Mode
-- System shall use single MPV (libmpv) playback engine with automatic mode switching for resource efficiency
-- System shall maintain 30+ FPS playback and frame-accurate seeking (<33ms precision) in both modes
+- System shall provide **Timeline Composition Mode** for rendering multi-track composition with continuous playback across clips, automatic transitions, real-time audio mixing, and PiP overlays
+- System shall automatically switch between modes based on user's last interaction context: library interactions activate Preview Mode, timeline interactions activate Timeline Composition Mode
+- System shall use hybrid architecture: MPV for single-clip preview, composition renderer for multi-track timeline playback
+- System shall maintain 60 FPS playback in composition mode and frame-accurate seeking (<16ms precision) in both modes
 
 **FR007: Audio Track Management**
 - System shall provide separate audio visualization, per-clip volume control, mute/unmute tracks, and audio fade in/out capabilities
@@ -74,10 +74,11 @@ clippy bridges both gaps as a macOS-native video editor built with Tauri that co
 ### Non-Functional Requirements
 
 **NFR001: Performance**
-- Video playback shall maintain 30+ FPS for 1080p content with smooth timeline rendering
+- Video playback shall maintain 60 FPS for 1080p composition rendering with smooth timeline playback
 - Screen recording shall capture at 30+ FPS without dropped frames
 - Video export shall complete near real-time (1 minute video exports in 60-90 seconds)
 - Application shall launch in under 3 seconds
+- Composition renderer state updates shall complete in <16ms to maintain 60 FPS responsiveness
 
 **NFR002: Platform Compatibility**
 - System shall run on macOS 12+ (Monterey and later) with primary support for Apple Silicon (M1/M2/M3) and secondary Intel support
@@ -161,7 +162,12 @@ _User journeys skipped for this Level 2 project. Primary workflows are captured 
 - Estimated stories: 5-7
 - Delivers: Complete recording suite with picture-in-picture, configurable layouts, independent audio tracks
 
-**Epic 5: AI-Powered Workflow Automation**
+**Epic 5: Timeline Composition Playback**
+- Goal: Implement professional composition renderer for seamless multi-track timeline playback with real-time audio mixing, transitions, and 60 FPS performance
+- Estimated stories: 6-8
+- Delivers: Continuous timeline playback across multiple clips and tracks, automatic clip transitions, real-time audio mixing, gap handling, and playback experience matching export output quality
+
+**Epic 6: AI-Powered Workflow Automation**
 - Goal: Integrate OpenAI Whisper for transcription, caption generation and editing, content analysis, and caption export (SRT/VTT)
 - Estimated stories: 6-8
 - Delivers: Full AI automation features - automatic transcription, AI-generated captions, content tagging, caption export

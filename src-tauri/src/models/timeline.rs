@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Audio track metadata for multi-audio clips (Story 4.7)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioTrack {
     /// Track index (0-based: 0 = first audio track, 1 = second, etc.)
@@ -17,9 +17,29 @@ pub struct AudioTrack {
     pub muted: bool,
 }
 
+/// Clip transform for PiP positioning and sizing (Story 5.6)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipTransform {
+    /// X position in pixels from left
+    pub x: f64,
+
+    /// Y position in pixels from top
+    pub y: f64,
+
+    /// Scaled width in pixels
+    pub width: f64,
+
+    /// Scaled height in pixels
+    pub height: f64,
+
+    /// Opacity (0.0 to 1.0) for alpha channel support
+    pub opacity: f64,
+}
+
 /// Timeline clip representation
 /// All timestamps are in MILLISECONDS (ADR-005)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Clip {
     /// Unique identifier (UUID)
@@ -60,6 +80,11 @@ pub struct Clip {
     /// Each track can be independently muted/volume controlled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_tracks: Option<Vec<AudioTrack>>,
+
+    /// Transform for PiP effects (Story 5.6)
+    /// Optional - only used for video clips with position/scale overrides
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transform: Option<ClipTransform>,
 }
 
 /// Track containing ordered clips
@@ -68,6 +93,10 @@ pub struct Clip {
 pub struct Track {
     /// Unique identifier (UUID)
     pub id: String,
+
+    /// Track number (1-based: Track 1, Track 2, etc.)
+    /// Used for z-index ordering in multi-track composition (Story 5.6)
+    pub track_number: u32,
 
     /// Ordered clips on track
     pub clips: Vec<Clip>,
@@ -136,16 +165,19 @@ mod tests {
             tracks: vec![
                 Track {
                     id: "1".to_string(),
+                    track_number: 1,
                     clips: vec![],
                     track_type: TrackType::Video,
                 },
                 Track {
                     id: "2".to_string(),
+                    track_number: 1,
                     clips: vec![],
                     track_type: TrackType::Audio,
                 },
                 Track {
                     id: "3".to_string(),
+                    track_number: 2,
                     clips: vec![],
                     track_type: TrackType::Video,
                 },
@@ -193,6 +225,7 @@ mod tests {
             volume: Some(1.0),
             muted: Some(false),
             audio_tracks: Some(audio_tracks),
+            transform: None,
         };
 
         // Serialize to JSON

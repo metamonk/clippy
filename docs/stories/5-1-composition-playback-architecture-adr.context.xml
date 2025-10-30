@@ -1,0 +1,326 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>5</epicId>
+    <storyId>1</storyId>
+    <title>Composition Playback Architecture & ADR</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/5-1-composition-playback-architecture-adr.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a developer</asA>
+    <iWant>to define the composition playback architecture</iWant>
+    <soThat>implementation has clear technical direction for timeline composition rendering</soThat>
+    <tasks>
+- Task 1: Research Phase - Approach Analysis (AC: #1, #4, #5)
+  - 1.1: Analyze Approach A (Real-time MPV Switching)
+  - 1.2: Analyze Approach B (FFmpeg Pre-render)
+  - 1.3: Analyze Approach C (Hybrid Smart Segments)
+  - 1.4: Create comparison matrix with benchmarks
+- Task 2: Create ADR-008 (AC: #2)
+  - 2.1: Document decision context and requirements
+  - 2.2: Detail each approach with pros/cons
+  - 2.3: Include performance benchmark data from Task 1
+  - 2.4: Make and justify recommendation
+  - 2.5: Append ADR-008 to docs/architecture.md
+- Task 3: Design CompositionRenderer Architecture (AC: #3, #6)
+  - 3.1: Create architecture diagram
+  - 3.2: Define Rust service API
+  - 3.3: Define Tauri command interface
+  - 3.4: Document TypeScript integration layer
+- Task 4: Document Data Flow & Edge Cases (AC: #7, #8)
+  - 4.1: Create Timeline → Renderer flow diagram
+  - 4.2: Document edge case handling
+  - 4.3: Create error recovery strategies
+- Task 5: Testing Strategy Definition (AC: all)
+  - 5.1: Define test cases for chosen approach
+  - 5.2: Document performance test methodology
+  - 5.3: Create edge case test scenarios
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Research document compares 3 approaches with detailed analysis (Approach A: Real-time MPV switching, Approach B: FFmpeg pre-render, Approach C: Hybrid smart segment pre-rendering)
+2. ADR-008 created in docs/architecture.md documenting chosen approach with pros/cons, performance implications, complexity assessment, and final recommendation
+3. Architecture diagram shows CompositionRenderer components (service layer, state management, MPV integration, FFmpeg pipeline)
+4. Performance benchmarks documented for each approach (startup latency, memory usage, CPU utilization, disk I/O)
+5. Memory and CPU requirements estimated for simple, complex, and maximum supported timelines
+6. API interface defined for CompositionRenderer service (Rust API, Tauri commands, TypeScript layer)
+7. Timeline → Renderer data flow documented (state analysis, segment detection, clip loading, playback sync)
+8. Edge cases documented with handling strategies (gaps, overlapping clips, audio-only tracks, multi-resolution)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - Decision Architecture</title>
+        <section>ADR-006: MPV Video Playback</section>
+        <snippet>MPV provides universal codec support (H.264, HEVC, ProRes, VP9, AV1), frame-accurate seeking, event-based architecture (FileLoaded, EndFile), audio filtering support (afade), and headless mode with screenshot-based frame capture.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - Decision Architecture</title>
+        <section>ADR-007: Playback Mode Architecture</section>
+        <snippet>Defines 'preview' vs 'timeline' playback modes. Single MPV instance shared between modes. Mode switching must be explicit and clean. playerStore.mode determines which component controls MPV.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - Decision Architecture</title>
+        <section>ADR-001: FFmpeg Integration</section>
+        <snippet>ffmpeg-sidecar 2.1.0 for CLI-based processing, auto-download binary, real-time encoding during recording, multi-track timeline export, PiP composition via overlay filter, audio extraction.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epic-5-composition-playback-plan.md</path>
+        <title>Epic 5 - Timeline Composition Playback Plan</title>
+        <section>Approach Comparison</section>
+        <snippet>Three approaches analyzed: (A) Real-time MPV switching + audio mixing, (B) FFmpeg pre-render to temp file, (C) Hybrid smart segment pre-rendering (RECOMMENDED). Approach C balances instant start for simple clips with perfect sync for complex compositing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epic-5-composition-playback-plan.md</path>
+        <title>Epic 5 - Timeline Composition Playback Plan</title>
+        <section>Performance Targets</section>
+        <snippet>30 FPS minimum (60 FPS aspirational), &lt;100ms clip-to-clip transition latency, &lt;2s startup latency, &lt;1GB memory for typical 5-minute timeline, &lt;80% CPU on MacBook Pro 2020+.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR006: Real-Time Video Preview and Playback</section>
+        <snippet>Dual modes: Preview Mode (independent file playback via MPV) and Timeline Composition Mode (multi-track rendering with continuous playback, real-time audio mixing, PiP overlays). 60 FPS playback in composition mode, frame-accurate seeking (&lt;16ms).</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src-tauri/src/services/mpv_player.rs</path>
+        <kind>service</kind>
+        <symbol>MpvPlayer</symbol>
+        <lines>1-200</lines>
+        <reason>Core MPV playback service - defines existing API (load_file, play, pause, seek, get_time, get_duration, set_volume, apply_fade_filters). Foundation for composition renderer integration.</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/exporter.rs</path>
+        <kind>service</kind>
+        <symbol>VideoExporter</symbol>
+        <lines>1-100</lines>
+        <reason>Timeline export implementation using FFmpeg - demonstrates how composition DOES work in export pipeline. Reference for understanding composition filters (overlay, audio mixing).</reason>
+      </artifact>
+      <artifact>
+        <path>src-tauri/src/services/ffmpeg/compositor.rs</path>
+        <kind>service</kind>
+        <symbol>FFmpegCompositor</symbol>
+        <lines>N/A</lines>
+        <reason>PiP composition service from Epic 4 - real-time overlay filter implementation. Pattern for multi-stream FFmpeg processing.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>PlayerStore</symbol>
+        <lines>1-100</lines>
+        <reason>Playback state management with mode switching (preview/timeline). Defines focusContext ('source'/'timeline') and mode derivation. Foundation for composition state integration.</reason>
+      </artifact>
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>TimelineState</symbol>
+        <lines>1-100</lines>
+        <reason>Multi-track timeline data structure with clips, tracks, audio settings. Source of composition data (which clips at which times). Must query this for composition analysis.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/player/VideoPlayer.tsx</path>
+        <kind>component</kind>
+        <symbol>VideoPlayer</symbol>
+        <lines>N/A</lines>
+        <reason>Current MPV integration component - handles preview mode playback. Will need composition mode branch for timeline playback rendering.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <frontend>
+        <package>react</package>
+        <version>19.1.0</version>
+      </frontend>
+      <frontend>
+        <package>zustand</package>
+        <version>4.x</version>
+        <note>State management - composition state will use Zustand pattern</note>
+      </frontend>
+      <frontend>
+        <package>konva</package>
+        <version>9.3.22</version>
+        <note>Timeline canvas rendering - 60 FPS target for UI updates</note>
+      </frontend>
+      <backend>
+        <package>libmpv2</package>
+        <version>5.0.1</version>
+        <note>Video playback engine - universal codec support, event-based architecture</note>
+      </backend>
+      <backend>
+        <package>ffmpeg-sidecar</package>
+        <version>2.1.0</version>
+        <note>FFmpeg CLI wrapper - composition rendering, audio mixing, overlay filters</note>
+      </backend>
+      <backend>
+        <package>tokio</package>
+        <version>1.x</version>
+        <note>Async runtime - parallel processing for composition analysis</note>
+      </backend>
+      <backend>
+        <package>cpal</package>
+        <version>0.16</version>
+        <note>Audio library - potential for real-time audio mixing if Approach A chosen</note>
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint category="architecture">
+      <rule>Single MPV instance shared between preview and timeline modes (ADR-007)</rule>
+      <rationale>MPV heavyweight (~200MB RAM), resource efficient to share instance</rationale>
+    </constraint>
+    <constraint category="architecture">
+      <rule>Mode switching must be explicit via playerStore.mode ('preview' | 'timeline')</rule>
+      <rationale>Prevents state conflicts and accidental timeline interference during preview</rationale>
+    </constraint>
+    <constraint category="performance">
+      <rule>Timeline composition must achieve 30 FPS minimum (60 FPS aspirational)</rule>
+      <rationale>Professional editing UX requirement, matches export frame rate</rationale>
+    </constraint>
+    <constraint category="performance">
+      <rule>Clip-to-clip transition latency must be &lt;100ms (imperceptible to user)</rule>
+      <rationale>Smooth playback experience, avoid noticeable gaps or stuttering</rationale>
+    </constraint>
+    <constraint category="performance">
+      <rule>State updates must complete in &lt;16ms for 60 FPS UI responsiveness</rule>
+      <rationale>Canvas timeline rendering at 60 FPS requires fast state propagation</rationale>
+    </constraint>
+    <constraint category="audio">
+      <rule>MPV can only play one audio source at a time - requires external mixing or FFmpeg pre-processing</rule>
+      <rationale>Multi-track audio fundamental requirement, must solve mixing architecture</rationale>
+    </constraint>
+    <constraint category="patterns">
+      <rule>Use event-based architecture for MPV integration (FileLoaded, EndFile events)</rule>
+      <rationale>Established pattern from Stories 1.3.5, 1.4 - non-polling, robust</rationale>
+    </constraint>
+    <constraint category="patterns">
+      <rule>Follow Zustand immutable state update patterns with selectors for performance</rule>
+      <rationale>Established architecture pattern, optimized re-renders</rationale>
+    </constraint>
+    <constraint category="testing">
+      <rule>Document must not implement code - only research and design</rule>
+      <rationale>Story 5.1 is architecture/ADR story, implementation starts in Story 5.2+</rationale>
+    </constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>MpvPlayer Service API</name>
+      <kind>Rust service interface</kind>
+      <signature>
+        - new() -> Result&lt;Self>
+        - load_file(&amp;self, file_path: &amp;str) -> Result&lt;()>
+        - play(&amp;self) -> Result&lt;()>
+        - pause(&amp;self) -> Result&lt;()>
+        - seek(&amp;self, time: f64) -> Result&lt;()>
+        - get_time(&amp;self) -> Result&lt;f64>
+        - get_duration(&amp;self) -> Result&lt;f64>
+        - set_volume(&amp;self, volume: f32, muted: bool) -> Result&lt;()>
+        - apply_fade_filters(&amp;self, fade_in_ms, fade_out_ms, duration_ms) -> Result&lt;()>
+      </signature>
+      <path>src-tauri/src/services/mpv_player.rs</path>
+      <note>Story 5.1 must define how composition renderer integrates with/extends this API</note>
+    </interface>
+    <interface>
+      <name>FFmpegCompositor Service API (Epic 4 PiP)</name>
+      <kind>Rust service interface</kind>
+      <signature>
+        - Real-time overlay filter for PiP composition
+        - Multi-stream stdin pipes for parallel video inputs
+        - Audio track mapping to separate outputs
+      </signature>
+      <path>src-tauri/src/services/ffmpeg/compositor.rs</path>
+      <note>Pattern for multi-stream FFmpeg processing, applicable to Approach A or C</note>
+    </interface>
+    <interface>
+      <name>playerStore (Zustand)</name>
+      <kind>TypeScript state store</kind>
+      <signature>
+        mode: 'preview' | 'timeline'
+        focusContext: 'source' | 'timeline'
+        currentVideo: MediaFile | null
+        isPlaying: boolean
+        currentTime: number
+        duration: number
+        playheadPosition: number
+        setMode(mode) / setFocusContext(context)
+      </signature>
+      <path>src/stores/playerStore.ts</path>
+      <note>Story 5.1 must define composition state integration pattern</note>
+    </interface>
+    <interface>
+      <name>Timeline State API</name>
+      <kind>TypeScript state store</kind>
+      <signature>
+        tracks: Track[]
+        getClip(clipId: string) -> Clip | undefined
+        recalculateDuration() -> void
+        audioTrackSettings: Record&lt;clipId, Record&lt;trackIndex, {volume, muted}>>
+      </signature>
+      <path>src/stores/timelineStore.ts</path>
+      <note>Source of composition data - must query which clips active at given playhead time</note>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Frontend testing uses Vitest + React Testing Library for component and integration tests. Backend uses cargo test for Rust unit/integration tests. Test files colocated with source code (*.test.ts, *.test.tsx) or in __tests__ folders. Testing philosophy: functional tests for user-facing behavior, unit tests for complex algorithms. Target: 70%+ coverage for critical paths.
+    </standards>
+    <locations>
+      - Frontend: src/**/*.test.ts, src/**/*.test.tsx, src/**/__tests__/**
+      - Backend: src-tauri/src/**/*.rs (inline #[cfg(test)] modules)
+      - Integration: src-tauri/tests/**/*.rs
+    </locations>
+    <ideas>
+      <test ac="1">
+        <id>AC1-comparison-matrix</id>
+        <description>Validate research document includes all 3 approaches with detailed pros/cons</description>
+        <type>manual-review</type>
+      </test>
+      <test ac="2">
+        <id>AC2-adr-completeness</id>
+        <description>Verify ADR-008 appended to docs/architecture.md with all required sections</description>
+        <type>manual-review</type>
+      </test>
+      <test ac="3">
+        <id>AC3-architecture-diagram</id>
+        <description>Confirm architecture diagram shows all components (service layer, state management, MPV integration, FFmpeg pipeline)</description>
+        <type>manual-review</type>
+      </test>
+      <test ac="4">
+        <id>AC4-performance-benchmarks</id>
+        <description>Validate benchmarks documented for startup latency, memory, CPU, disk I/O per approach</description>
+        <type>manual-review</type>
+      </test>
+      <test ac="5">
+        <id>AC5-resource-estimates</id>
+        <description>Check memory/CPU requirements estimated for simple, complex, max timelines</description>
+        <type>manual-review</type>
+      </test>
+      <test ac="6">
+        <id>AC6-api-interface</id>
+        <description>Verify CompositionRenderer API defined with Rust service methods, Tauri commands, TypeScript integration layer</description>
+        <type>manual-review</type>
+      </test>
+      <test ac="7">
+        <id>AC7-data-flow</id>
+        <description>Confirm timeline → renderer data flow documented (state analysis, segment detection, clip loading, sync)</description>
+        <type>manual-review</type>
+      </test>
+      <test ac="8">
+        <id>AC8-edge-cases</id>
+        <description>Validate edge case handling strategies documented (gaps, overlapping clips, audio-only, multi-resolution)</description>
+        <type>manual-review</type>
+      </test>
+    </ideas>
+  </tests>
+</story-context>

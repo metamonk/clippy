@@ -3,6 +3,10 @@ pub mod models;
 pub mod services;
 pub mod utils;
 
+// Test utilities for parity validation (Story 5.7)
+// Available in both test and production builds for use in integration tests
+pub mod test_utils;
+
 use std::fs;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use commands::{
@@ -44,6 +48,10 @@ use commands::{
     cmd_send_recording_notification,
     cmd_get_home_dir,
     cmd_get_available_windows,
+    get_playback_fps,
+    record_playback_frame,
+    reset_fps_counter,
+    get_buffer_status,
 };
 
 /// Initialize logging system with file output to ~/Library/Logs/clippy/app.log
@@ -125,11 +133,27 @@ pub fn run() {
         "Application starting"
     );
 
+    // Initialize segment cache directory (Story 5.8 Task 2)
+    let cache_dir = dirs::home_dir()
+        .expect("Could not determine home directory")
+        .join("Library")
+        .join("Caches")
+        .join("com.clippy.app")
+        .join("segments");
+
+    if let Err(e) = fs::create_dir_all(&cache_dir) {
+        tracing::warn!(error = %e, "Failed to create segment cache directory");
+    } else {
+        tracing::info!(cache_dir = ?cache_dir, "Segment cache directory initialized");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::ExportState::new())
         .manage(commands::MpvPlayerState(std::sync::Arc::new(std::sync::Mutex::new(None))))
+        .manage(commands::FpsCounterState(std::sync::Arc::new(std::sync::Mutex::new(services::FpsCounter::new()))))
+        .manage(commands::SegmentPreloaderState(std::sync::Arc::new(tokio::sync::Mutex::new(services::SegmentPreloader::new(cache_dir)))))
         .invoke_handler(tauri::generate_handler![
             greet,
             cmd_import_media,
@@ -169,7 +193,11 @@ pub fn run() {
             cmd_check_disk_space,
             cmd_send_recording_notification,
             cmd_get_home_dir,
-            cmd_get_available_windows
+            cmd_get_available_windows,
+            get_playback_fps,
+            record_playback_frame,
+            reset_fps_counter,
+            get_buffer_status
         ])
         .setup(|app| {
             use tauri::menu::*;

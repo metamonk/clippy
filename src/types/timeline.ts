@@ -13,6 +13,17 @@ export interface AudioTrack {
   muted: boolean; // Whether this track is muted
 }
 
+/**
+ * Clip transform for PiP positioning and sizing (Story 5.6)
+ */
+export interface ClipTransform {
+  x: number; // X position in pixels from left
+  y: number; // Y position in pixels from top
+  width: number; // Scaled width in pixels
+  height: number; // Scaled height in pixels
+  opacity: number; // Opacity (0.0 to 1.0) for alpha channel support
+}
+
 export interface Clip {
   id: string; // UUID
   filePath: string; // Absolute path to media file
@@ -28,6 +39,9 @@ export interface Clip {
   // Multiple audio tracks for PiP recordings (Story 4.7)
   // Each track can be independently muted/volume controlled
   audioTracks?: AudioTrack[];
+  // Transform for PiP effects (Story 5.6)
+  // Optional - only used for video clips with position/scale overrides
+  transform?: ClipTransform;
 }
 
 export interface Track {

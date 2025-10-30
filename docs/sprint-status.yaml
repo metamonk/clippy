@@ -95,16 +95,28 @@ development_status:
   4-8-advanced-recording-controls-pause-resume: done  # Review #2 (2025-10-29): APPROVED - All 7 ACs satisfied, frame discard approach, comprehensive tests, production-ready
   epic-4-retrospective: optional
 
-  # Epic 5: AI-Powered Workflow Automation
+  # Epic 5: Timeline Composition Playback
   epic-5: backlog
-  5-1-openai-api-integration-configuration: backlog
-  5-2-audio-extraction-from-video-clips: backlog
-  5-3-whisper-api-transcription: backlog
-  5-4-transcript-display-and-editing-panel: backlog
-  5-5-auto-generate-captions-from-transcript: backlog
-  5-6-caption-editor-with-timing-adjustments: backlog
-  5-7-caption-styling-and-preview: backlog
-  5-8-gpt-4-content-analysis: backlog
-  5-9-caption-export-srt-vtt-files: backlog
-  5-10-burn-captions-into-video-export: backlog
+  5-1-composition-playback-architecture-adr: done  # Review outcome: APPROVED (2025-10-29) - All 8 ACs satisfied, comprehensive architecture, 3 medium + 3 low findings to address in Stories 5.2-5.8
+  5-2-composition-state-management: review  # (2025-10-29): All 8 ACs satisfied - Composition store created, 30/30 tests passing, VideoPlayer integrated
+  5-3-sequential-clip-playback-single-track: done  # Review outcome: APPROVED (2025-10-29) - All 8 ACs satisfied, 48/48 tests passing, <100ms transitions, polling-based architecture accepted
+  5-4-gap-handling-black-frames: done  # Review outcome: APPROVED (2025-10-29) - All 8 ACs satisfied, 33/33 tests passing, zero-overhead rendering, <10ms transitions, production-ready
+  5-5-multi-track-audio-mixing: done  # Review #2 (2025-10-30): APPROVED - All critical issues resolved (compilation fixed, ADR-010 created, integration deferred to 5.5.1), 11/11 tests passing, production-ready infrastructure
+  5-6-multi-track-video-compositing: done  # Review outcome: APPROVED (2025-10-29) - All 8 ACs satisfied, 18/18 tests passing, comprehensive architecture, 4 low-priority polish items for Story 5.8
+  5-7-composition-export-parity-validation: done  # Review outcome: APPROVED (2025-10-30) - All 8 ACs satisfied, CompositionPlaybackHelper integrated, 8/11 tests passing (6 infrastructure + 2 integration), synthetic video limitation documented
+  5-8-real-time-performance-optimization: review  # (2025-10-30): Core implementation complete - Tasks 1-6, 8 done (7/8 ACs satisfied), 28 tests passing, Tasks 7 & 9 deferred pending test fixtures
   epic-5-retrospective: optional
+
+  # Epic 6: AI-Powered Workflow Automation
+  epic-6: backlog
+  6-1-openai-api-integration-configuration: backlog
+  6-2-audio-extraction-from-video-clips: backlog
+  6-3-whisper-api-transcription: backlog
+  6-4-transcript-display-and-editing-panel: backlog
+  6-5-auto-generate-captions-from-transcript: backlog
+  6-6-caption-editor-with-timing-adjustments: backlog
+  6-7-caption-styling-and-preview: backlog
+  6-8-gpt-4-content-analysis: backlog
+  6-9-caption-export-srt-vtt-files: backlog
+  6-10-burn-captions-into-video-export: backlog
+  epic-6-retrospective: optional

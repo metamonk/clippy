@@ -1,0 +1,324 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>5</epicId>
+    <storyId>4</storyId>
+    <title>Gap Handling with Black Frames</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-29</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/5-4-gap-handling-black-frames.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>gaps in my timeline to show black frames instead of errors</iWant>
+    <soThat>my composition plays smoothly even with intentional spacing</soThat>
+    <tasks>
+- **Task 1: Implement Gap Detection Logic** (AC: #1, #4)
+  - 1.1: Create `GapAnalyzer` utility in `compositionStore` or `lib/timeline/`
+  - 1.2: Detect gaps per track (time ranges between clips)
+  - 1.3: Calculate gap durations with millisecond precision
+  - 1.4: Unit tests for gap detection (middle, consecutive, start/end, multi-track)
+
+- **Task 2: Render Black Frames During Gaps** (AC: #2, #8)
+  - 2.1: Modify CompositionRenderer to detect when playhead is in gap
+  - 2.2: Generate black frame for video preview (static image, canvas, or MPV)
+  - 2.3: Ensure seamless transition from clip to black frame
+  - 2.4: Performance profiling (< 1% CPU overhead)
+
+- **Task 3: Generate Silent Audio During Gaps** (AC: #3)
+  - 3.1: Implement silence buffer for audio output (PCM, 48kHz stereo)
+  - 3.2: Handle multi-track silence
+  - 3.3: Prevent audio artifacts at gap boundaries (optional fade)
+  - 3.4: Test silence generation (record and analyze waveform)
+
+- **Task 4: Continuous Playhead Advancement** (AC: #5)
+  - 4.1: Ensure playhead timer continues during gaps
+  - 4.2: Verify timeline canvas playhead indicator remains visible
+  - 4.3: Test scrubbing through gaps
+
+- **Task 5: Seamless Clip-Gap-Clip Transitions** (AC: #6, #7)
+  - 5.1: Implement transition state machine (< 100ms latency)
+  - 5.2: Test all gap positions (start, middle, end)
+  - 5.3: Test multiple consecutive gaps
+  - 5.4: Measure and log transition latency
+
+- **Task 6: Integration Testing & Edge Cases** (AC: all)
+  - 6.1: Create test timelines (simple, complex, edge cases)
+  - 6.2: Manual testing protocol (visual, audio, scrub, playhead)
+  - 6.3: Regression testing
+  - 6.4: Document known limitations
+
+- **Task 7: Update Documentation** (AC: all)
+  - 7.1: Update architecture.md with gap handling approach
+  - 7.2: Add code comments explaining gap detection algorithm
+  - 7.3: Update story file with completion notes
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. **AC #1:** Gap detection identifies timeline regions without clips (start/middle/end, per-track)
+2. **AC #2:** Black frame (#000000) rendered in video preview during gaps (no flicker, zero overhead)
+3. **AC #3:** Silent audio (0 amplitude) played during gaps (no artifacts, pops, clicks)
+4. **AC #4:** Gap duration calculated from timeline structure (variable-length, millisecond precision)
+5. **AC #5:** Playhead continues advancing through gaps at normal speed
+6. **AC #6:** Transition from clip → gap → clip is seamless (< 100ms latency, synchronized)
+7. **AC #7:** Works for gaps at start, middle, and end of timeline
+8. **AC #8:** Performance: black frame rendering has zero overhead (< 1% CPU)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <!-- PRD - Timeline Composition Mode Requirements -->
+      <artifact>
+        <path>docs/PRD.md</path>
+        <title>clippy Product Requirements Document</title>
+        <section>FR006: Real-Time Video Preview and Playback</section>
+        <snippet>System shall provide Timeline Composition Mode for rendering multi-track composition with continuous playback across clips, automatic transitions, real-time audio mixing, and PiP overlays. System shall use hybrid architecture: MPV for single-clip preview, composition renderer for multi-track timeline playback.</snippet>
+      </artifact>
+
+      <!-- Architecture - ADR-006: MPV Integration -->
+      <artifact>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-006: Use MPV (libmpv2) for Video Playback</section>
+        <snippet>MPV provides universal codec support (H.264, HEVC, ProRes, VP9, AV1), frame-accurate seeking, event-based architecture (FileLoaded/EndFile events), and hardware-accelerated decoding. Headless MPV configuration with vo=null for screenshot-based frame capture.</snippet>
+      </artifact>
+
+      <!-- Architecture - ADR-007: Playback Mode Architecture -->
+      <artifact>
+        <path>docs/architecture.md</path>
+        <title>Decision Architecture</title>
+        <section>ADR-007: Playback Mode Architecture (Preview vs Timeline)</section>
+        <snippet>playerStore tracks active mode: 'preview' | 'timeline'. Single MPV instance shared between modes. VideoPlayer checks mode before timeline synchronization - only syncs if mode === 'timeline'.</snippet>
+      </artifact>
+
+      <!-- Epic 5 Plan - Approach C Hybrid Smart Segments -->
+      <artifact>
+        <path>docs/epic-5-composition-playback-plan.md</path>
+        <title>Epic 5: Timeline Composition Playback Plan</title>
+        <section>Approach C: Hybrid Smart Segment Pre-Rendering (RECOMMENDED)</section>
+        <snippet>Detect "simple" timeline segments (single clip, no compositing) and play directly via MPV. Pre-render "complex" segments (multi-track, gaps) to temp cache. Seamlessly switch between direct play and cached segments. Best UX/complexity balance.</snippet>
+      </artifact>
+
+      <!-- Story 5.1 - Composition Playback Architecture ADR -->
+      <artifact>
+        <path>docs/stories/5-1-composition-playback-architecture-adr.md</path>
+        <title>Story 5.1: Composition Playback Architecture &amp; ADR</title>
+        <section>Approach C: Hybrid Smart Segment Pre-Rendering</section>
+        <snippet>Segment classification: Simple (single clip) → direct MPV playback. Complex (multi-track, gaps, overlays) → FFmpeg pre-render. Cache management with LRU eviction. Performance targets: &lt;200ms simple, &lt;8s complex (cache miss).</snippet>
+      </artifact>
+
+      <!-- Story 5.2 - Composition State Management -->
+      <artifact>
+        <path>docs/stories/5-2-composition-state-management.md</path>
+        <title>Story 5.2: Composition State Management</title>
+        <section>State Management and Clip Queries</section>
+        <snippet>compositionStore.ts tracks currentCompositionTime, activeClips, activeTracks, renderState. Gap detection: getActiveClipsAtTime(time).length === 0. Performance target: state updates &lt; 16ms (60 FPS).</snippet>
+      </artifact>
+
+      <!-- Story 5.3 - Sequential Clip Playback -->
+      <artifact>
+        <path>docs/stories/5-3-sequential-clip-playback-single-track.md</path>
+        <title>Story 5.3: Sequential Clip Playback (Single Track)</title>
+        <section>Architecture Context</section>
+        <snippet>Single-track only foundation. No gap handling (Story 5.4). Uses MPV end-file event to trigger clip switching. Target transition latency &lt; 100ms. Story 5.4 extends this with gap support.</snippet>
+      </artifact>
+    </docs>
+
+    <code>
+      <!-- Timeline Types and Interfaces -->
+      <artifact>
+        <path>src/types/timeline.ts</path>
+        <kind>type-definitions</kind>
+        <symbol>Clip, Track, Timeline, Gap</symbol>
+        <lines>1-75</lines>
+        <reason>Core timeline data structures. Gap detection will analyze these interfaces to identify time ranges without clips. All timestamps in milliseconds per ADR-005.</reason>
+      </artifact>
+
+      <!-- Clip Operations - Gap Detection -->
+      <artifact>
+        <path>src/lib/timeline/clipOperations.ts</path>
+        <kind>utilities</kind>
+        <symbol>detectGaps, findClipAtTime, findClipAtPlayhead, Gap interface</symbol>
+        <lines>13-78, 152-185</lines>
+        <reason>Existing gap detection utility for finding gaps between clips on a track. Gap handling story will extend this with black frame rendering when playhead is in gap.</reason>
+      </artifact>
+
+      <!-- Timeline Store - State Management -->
+      <artifact>
+        <path>src/stores/timelineStore.ts</path>
+        <kind>store</kind>
+        <symbol>TimelineState interface</symbol>
+        <lines>10-106</lines>
+        <reason>Timeline state provides tracks and clips data for gap analysis. getClip(), tracks array will be queried to determine if playhead is in gap region.</reason>
+      </artifact>
+
+      <!-- Player Store - Mode and Playback State -->
+      <artifact>
+        <path>src/stores/playerStore.ts</path>
+        <kind>store</kind>
+        <symbol>PlayerStore interface</symbol>
+        <lines>9-69</lines>
+        <reason>Playback mode ('preview' vs 'timeline') and playhead position state. Gap handling occurs only in timeline mode. setPlayheadPosition tracks current timeline position.</reason>
+      </artifact>
+
+      <!-- Composition Store - NOT YET CREATED (Story 5.2 prerequisite) -->
+      <artifact>
+        <path>src/stores/compositionStore.ts</path>
+        <kind>store</kind>
+        <symbol>CompositionStore (to be created)</symbol>
+        <lines>N/A</lines>
+        <reason>Story 5.2 prerequisite. Will provide composition state: currentCompositionTime, activeClips, gap detection logic. Gap handling will integrate with this store.</reason>
+      </artifact>
+
+      <!-- MPV Player Service - Playback Backend -->
+      <artifact>
+        <path>src-tauri/src/services/mpv_player.rs</path>
+        <kind>service</kind>
+        <symbol>MpvPlayer struct</symbol>
+        <lines>1-400</lines>
+        <reason>MPV player service handles video/audio playback. Gap handling may need to pause MPV and render black frames + silence during gap periods. Audio output enabled per ADR-006 update.</reason>
+      </artifact>
+
+      <!-- VideoPlayer Component - Frontend Integration -->
+      <artifact>
+        <path>src/components/player/VideoPlayer.tsx</path>
+        <kind>component</kind>
+        <symbol>VideoPlayer</symbol>
+        <lines>N/A</lines>
+        <reason>VideoPlayer component checks mode and integrates with MPV. Gap handling will modify this to detect gaps and render black frames when playhead in gap region.</reason>
+      </artifact>
+    </code>
+
+    <dependencies>
+      <frontend>
+        <package name="react" version="^19.1.0">UI framework</package>
+        <package name="zustand" version="^4">State management for compositionStore</package>
+        <package name="konva" version="^9.3.22">Timeline canvas rendering (may render black frames)</package>
+        <package name="react-konva" version="^19.2.0">React bindings for Konva</package>
+        <package name="@tauri-apps/api" version="^2">Tauri frontend API for MPV commands</package>
+        <package name="vitest" version="^2">Testing framework</package>
+        <package name="@testing-library/react" version="^16">React component testing</package>
+      </frontend>
+      <backend>
+        <package name="libmpv2" version="5.0">MPV player bindings for video/audio playback</package>
+        <package name="ffmpeg-sidecar" version="2.1">FFmpeg integration (may be used for silence generation or black frame rendering)</package>
+        <package name="tokio" version="1">Async runtime for background tasks</package>
+        <package name="anyhow" version="1">Error handling</package>
+        <package name="tracing" version="0.1">Structured logging</package>
+      </backend>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - **Prerequisite:** Story 5.2 (Composition State Management) must be complete with compositionStore.ts and mode-aware logic in VideoPlayer
+    - **Prerequisite:** Story 5.3 (Sequential Clip Playback) provides foundation for clip-to-clip transitions; gap handling extends this pattern
+    - **Single-track scope:** Gap handling initially for single track (Story 5.3 context). Multi-track gap strategy documented in Dev Notes (composite active clips from all tracks)
+    - **Performance target:** Black frame rendering must have zero measurable overhead (&lt; 1% CPU per AC #8)
+    - **Transition latency:** Clip → gap → clip transitions must be &lt; 100ms (imperceptible to user per AC #6)
+    - **Audio requirements:** Silence generation must match timeline audio format (48kHz stereo default), no pops/clicks at gap boundaries
+    - **Architecture alignment:** Follow ADR-007 playback mode architecture (gap handling only in timeline mode, not preview mode)
+    - **Timestamp precision:** All timestamps in milliseconds per ADR-005 (gap duration calculations must be millisecond-accurate per AC #4)
+    - **MPV integration:** MPV configured with vo=null (headless), audio=auto (enabled). Gap handling may pause MPV during gaps or feed silent audio buffer.
+    - **Testing requirement:** Gap detection, black frame rendering, silence generation, and playhead advancement must all have unit tests
+  </constraints>
+
+  <interfaces>
+    <!-- Gap Interface (existing) -->
+    <interface>
+      <name>Gap</name>
+      <kind>TypeScript interface</kind>
+      <signature>
+interface Gap {
+  startTime: number;  // ms
+  endTime: number;    // ms
+  duration: number;   // ms (calculated: endTime - startTime)
+}
+      </signature>
+      <path>src/lib/timeline/clipOperations.ts</path>
+    </interface>
+
+    <!-- detectGaps utility (existing) -->
+    <interface>
+      <name>detectGaps</name>
+      <kind>TypeScript function</kind>
+      <signature>
+function detectGaps(track: Track): Gap[]
+      </signature>
+      <path>src/lib/timeline/clipOperations.ts</path>
+    </interface>
+
+    <!-- CompositionStore (to be created in Story 5.2) -->
+    <interface>
+      <name>CompositionStore</name>
+      <kind>Zustand store</kind>
+      <signature>
+interface CompositionStore {
+  currentCompositionTime: number;  // ms
+  activeClips: ActiveClip[];
+  activeTracks: string[];
+  renderState: RenderState;
+  getActiveClipsAtTime(time: number): ActiveClip[];
+  detectGaps(time: number): boolean;
+}
+      </signature>
+      <path>src/stores/compositionStore.ts (Story 5.2 prerequisite)</path>
+    </interface>
+
+    <!-- MPV Player Tauri Commands -->
+    <interface>
+      <name>MPV Tauri Commands</name>
+      <kind>Rust Tauri commands</kind>
+      <signature>
+mpv_init() -> Result&lt;(), String&gt;
+mpv_load_file(path: String) -> Result&lt;(), String&gt;
+mpv_play() -> Result&lt;(), String&gt;
+mpv_pause() -> Result&lt;(), String&gt;
+mpv_set_volume(volume: f32, muted: bool) -> Result&lt;(), String&gt;
+      </signature>
+      <path>src-tauri/src/commands/mpv.rs</path>
+    </interface>
+
+    <!-- TimelineStore -->
+    <interface>
+      <name>TimelineState</name>
+      <kind>Zustand store</kind>
+      <signature>
+interface TimelineState {
+  tracks: Track[];
+  totalDuration: number;
+  getClip(clipId: string): Clip | undefined;
+  // ... other timeline operations
+}
+      </signature>
+      <path>src/stores/timelineStore.ts</path>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Frontend tests use Vitest + React Testing Library. Rust tests use built-in cargo test framework with #[cfg(test)] modules. Performance tests measure execution time with performance.now() (frontend) or std::time::Instant (Rust). Target: state updates &lt; 16ms (60 FPS), black frame rendering &lt; 1% CPU overhead. Integration tests verify end-to-end workflows across frontend-backend boundary.
+    </standards>
+
+    <locations>
+      - Frontend unit tests: src/**/*.test.ts, src/**/*.test.tsx (co-located with source files)
+      - Rust unit tests: src-tauri/src/**/*_tests.rs or #[cfg(test)] modules inline
+      - Integration tests: tests/ directory (Rust) or src/__tests__/ (TypeScript)
+      - Test runner: npm test (Vitest for frontend), cargo test (Rust backend)
+    </locations>
+
+    <ideas>
+      - **AC #1 - Gap Detection:** Unit test detectGaps() with timelines: (1) single gap in middle, (2) multiple consecutive gaps, (3) gap at start/end, (4) multi-track with overlapping gaps
+      - **AC #2 - Black Frame Rendering:** Test black frame generation: verify canvas fillRect with #000000, dimensions match timeline canvas, no flicker during clip → gap transition
+      - **AC #3 - Silent Audio:** Test silence buffer: verify PCM samples = 0.0 amplitude, sample rate = 48kHz stereo, no audio artifacts at gap boundaries (record output and analyze waveform)
+      - **AC #4 - Gap Duration Calculation:** Test gap duration derived from timeline metadata (not fixed), verify millisecond precision, test variable-length gaps
+      - **AC #5 - Playhead Advancement:** Test playhead continues at normal speed through gaps, timeline canvas indicator remains visible, currentTime updates continuously
+      - **AC #6 - Seamless Transitions:** Test clip → gap → clip with &lt; 100ms latency (measure with high-resolution timer), verify synchronization across audio/video, test multiple consecutive gaps
+      - **AC #7 - Gap Positions:** Test start gap (timeline begins with gap), middle gap (between two clips), end gap (after last clip), verify all positions render with same quality
+      - **AC #8 - Performance:** Profile black frame rendering with Activity Monitor, confirm &lt; 1% CPU overhead vs continuous clip playback, verify zero memory allocation per gap frame
+      - **Integration test:** Create test timeline with 3 clips + 2 gaps, play through entire composition, verify smooth playback with no errors or visual artifacts
+      - **Edge case test:** Empty timeline (gap-only), timeline with zero-duration clips (skip gap detection), multi-track with different gap patterns
+    </ideas>
+  </tests>
+</story-context>
