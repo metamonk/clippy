@@ -75,6 +75,24 @@ export async function startExport(
       audioBitrate: config?.audioBitrate,
     };
 
+    // Debug: Log timeline structure before export
+    console.log("[Export Debug] Timeline structure:", {
+      trackCount: timeline.tracks.length,
+      totalDuration: timeline.totalDuration,
+      tracks: timeline.tracks.map((track, idx) => ({
+        index: idx,
+        id: track.id,
+        trackType: track.trackType,
+        clipCount: track.clips.length,
+        clips: track.clips.map(clip => ({
+          id: clip.id,
+          filePath: clip.filePath,
+          startTime: clip.startTime,
+          duration: clip.duration,
+        })),
+      })),
+    });
+
     // Start export
     const exportId = await invoke<string>("cmd_start_export", {
       timeline,

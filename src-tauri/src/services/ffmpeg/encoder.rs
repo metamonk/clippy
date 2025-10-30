@@ -125,12 +125,14 @@ impl FFmpegEncoder {
             .arg("-c:v").arg("libx264")
             .arg("-preset").arg("fast")  // Fast preset for real-time encoding
             .arg("-crf").arg("23")  // Constant Rate Factor for quality
+            .arg("-pix_fmt").arg("yuv420p")  // Standard pixel format for maximum compatibility
 
             // macOS VideoToolbox hardware acceleration (if available)
             // Note: libx264 will automatically use VideoToolbox on macOS
 
             // Output format
             .arg("-f").arg("mp4")
+            .arg("-movflags").arg("faststart")  // Move moov atom to beginning for QuickTime compatibility
             .arg("-y")  // Overwrite output file
             .arg(&self.output_path);
 

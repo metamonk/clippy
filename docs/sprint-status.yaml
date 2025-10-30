@@ -80,8 +80,8 @@ development_status:
   3-9-per-clip-volume-control: done
   3-9-1-preview-playback-volume-control: done
   3-10-audio-fade-in-out: done  # Review #2 outcome: Approved (2025-10-29) - 5/6 ACs satisfied, test coverage 75%+, AC #4 deferred to Story 3.10.1
-  3-10-1-preview-playback-audio-fades: review  # Follow-up to Story 3.10 AC #4 - Enable MPV audio output and apply fade filters during preview playback (COMPLETE - also completes Story 3.9.1)
-  epic-3-retrospective: optional
+  3-10-1-preview-playback-audio-fades: done  # Review outcome: APPROVED (2025-10-29) - All 7 ACs satisfied, 23 tests passing, completes Story 3.10 AC #4 + Story 3.9.1 gap
+  epic-3-retrospective: completed  # Completed 2025-10-29 - Lessons learned captured, Epic 5 preparation plan created
 
   # Epic 4: Advanced Recording & PiP Composition
   epic-4: backlog
@@ -92,7 +92,7 @@ development_status:
   4-5-pip-position-and-size-configuration: done  # Review #3 (2025-10-29): APPROVED - All 6 ACs satisfied, 25/25 frontend tests + 8/8 backend tests passing, production-ready
   4-6-simultaneous-screen-webcam-recording: done  # Review #2 (2025-10-29): APPROVED - All 6 ACs satisfied, 17/17 backend tests passing, production-ready (manual testing recommended for AC #7)
   4-7-independent-audio-track-management-in-pip-recording: done  # Session 4 (2025-10-29): Review #2 APPROVED - All 6 ACs satisfied, integration test passing, production-ready (2025-10-29)
-  4-8-advanced-recording-controls-pause-resume: backlog
+  4-8-advanced-recording-controls-pause-resume: done  # Review #2 (2025-10-29): APPROVED - All 7 ACs satisfied, frame discard approach, comprehensive tests, production-ready
   epic-4-retrospective: optional
 
   # Epic 5: AI-Powered Workflow Automation

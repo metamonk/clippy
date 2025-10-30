@@ -428,6 +428,91 @@ impl Drop for AudioCapture {
     }
 }
 
+/// PCM File Writer
+///
+/// Writes audio samples to a PCM file in s16le format (signed 16-bit little-endian).
+/// This format is compatible with FFmpeg's audio muxing.
+pub struct PcmFileWriter {
+    file: std::fs::File,
+    samples_written: usize,
+}
+
+impl PcmFileWriter {
+    /// Create a new PCM file writer
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the output PCM file
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(PcmFileWriter)` if file created successfully
+    pub fn new(path: &std::path::Path) -> std::io::Result<Self> {
+        let file = std::fs::File::create(path)?;
+        info!("Created PCM file writer: {}", path.display());
+        Ok(Self {
+            file,
+            samples_written: 0,
+        })
+    }
+
+    /// Write audio samples to the PCM file
+    ///
+    /// Converts f32 samples to s16le format and writes to file.
+    ///
+    /// # Arguments
+    ///
+    /// * `sample` - Audio sample with f32 data
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if write succeeded
+    pub fn write_sample(&mut self, sample: &AudioSample) -> std::io::Result<()> {
+        use std::io::Write;
+
+        // Convert f32 samples to s16le (signed 16-bit little-endian)
+        let mut buffer = Vec::with_capacity(sample.data.len() * 2); // 2 bytes per sample
+
+        for &f32_sample in &sample.data {
+            // Clamp to [-1.0, 1.0] range
+            let clamped = f32_sample.max(-1.0).min(1.0);
+
+            // Convert to s16 range [-32768, 32767]
+            let s16_sample = (clamped * 32767.0) as i16;
+
+            // Write as little-endian bytes
+            buffer.extend_from_slice(&s16_sample.to_le_bytes());
+        }
+
+        // Write to file
+        self.file.write_all(&buffer)?;
+        self.samples_written += sample.data.len();
+
+        if self.samples_written % 48000 == 0 {
+            debug!("Wrote {} audio samples to PCM file", self.samples_written);
+        }
+
+        Ok(())
+    }
+
+    /// Get the total number of samples written
+    pub fn samples_written(&self) -> usize {
+        self.samples_written
+    }
+
+    /// Flush and sync the file to disk
+    pub fn finalize(mut self) -> std::io::Result<()> {
+        use std::io::Write;
+        self.file.flush()?;
+        self.file.sync_all()?;
+        info!(
+            "PCM file finalized with {} total samples",
+            self.samples_written
+        );
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

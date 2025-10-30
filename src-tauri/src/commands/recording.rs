@@ -28,9 +28,11 @@ use uuid::Uuid;
 type RecordingHandle = (
     tokio::task::JoinHandle<()>,          // Capture task
     tokio::task::JoinHandle<Result<(), crate::services::screen_capture::FrameHandlerError>>, // Writer task
-    PathBuf,                               // Output file path
+    PathBuf,                               // Output file path (video-only MP4)
     Arc<std::sync::atomic::AtomicBool>,   // Pause flag (Story 4.8)
     Arc<std::sync::atomic::AtomicBool>,   // Stop signal
+    Option<tokio::task::JoinHandle<Result<(), String>>>, // Audio writer task
+    Option<PathBuf>,                       // Audio PCM file path
 );
 
 lazy_static::lazy_static! {
@@ -1028,6 +1030,15 @@ pub async fn cmd_start_screen_recording(
         format!("Screen capture initialization failed: {}", e)
     })?;
 
+    // Enable system audio if requested (Story 2.4)
+    if config.system_audio {
+        screen_capture.enable_system_audio(48000, 2).map_err(|e| {
+            error!("Failed to enable system audio: {}", e);
+            format!("Failed to enable system audio: {}", e)
+        })?;
+        info!("System audio enabled for recording");
+    }
+
     // Get capture dimensions
     let (capture_width, capture_height) = screen_capture.get_dimensions();
     info!("Capture dimensions: {}x{}", capture_width, capture_height);
@@ -1073,9 +1084,57 @@ pub async fn cmd_start_screen_recording(
         format!("Failed to start encoder task: {}", e)
     })?;
 
+    // Setup audio capture if system audio is enabled
+    let (audio_tx_opt, audio_writer_handle_opt, audio_pcm_path_opt) = if config.system_audio {
+        // Create PCM file path for audio
+        let audio_pcm_path = home_dir
+            .join("Documents")
+            .join("clippy")
+            .join("recordings")
+            .join(format!("recording-{}-audio.pcm", recording_id));
+
+        info!("Audio PCM path: {}", audio_pcm_path.display());
+
+        // Create audio channel
+        let (audio_tx, audio_rx) = tokio::sync::mpsc::channel::<crate::services::audio_capture::AudioSample>(100);
+
+        // Spawn audio writer task
+        let pcm_path = audio_pcm_path.clone();
+        let audio_writer_handle = tokio::spawn(async move {
+            let mut writer = crate::services::audio_capture::PcmFileWriter::new(&pcm_path)
+                .map_err(|e| format!("Failed to create PCM writer: {}", e))?;
+
+            info!("Audio writer task started");
+
+            // Receive audio samples and write to PCM file
+            let mut rx = audio_rx;
+            while let Some(sample) = rx.recv().await {
+                writer.write_sample(&sample)
+                    .map_err(|e| {
+                        error!("Failed to write audio sample: {}", e);
+                        format!("Failed to write audio sample: {}", e)
+                    })?;
+            }
+
+            // Finalize PCM file
+            writer.finalize()
+                .map_err(|e| {
+                    error!("Failed to finalize PCM file: {}", e);
+                    format!("Failed to finalize PCM file: {}", e)
+                })?;
+
+            info!("Audio writer task completed");
+            Ok::<(), String>(())
+        });
+
+        (Some(audio_tx), Some(audio_writer_handle), Some(audio_pcm_path))
+    } else {
+        (None, None, None)
+    };
+
     // Start continuous capture (with app_handle for window-closed events)
     let capture_handle = screen_capture
-        .start_continuous_capture(frame_tx, None, Some(app_handle.clone()))
+        .start_continuous_capture(frame_tx, audio_tx_opt, Some(app_handle.clone()))
         .map_err(|e| {
             error!("Failed to start screen capture: {}", e);
             format!("Failed to start screen capture: {}", e)
@@ -1091,10 +1150,20 @@ pub async fn cmd_start_screen_recording(
     let mut recordings = ACTIVE_RECORDINGS.lock().await;
     recordings.insert(
         recording_id.clone(),
-        (capture_handle, encoder_handle, output_path, pause_flag, stop_signal),
+        (
+            capture_handle,
+            encoder_handle,
+            output_path,
+            pause_flag,
+            stop_signal,
+            audio_writer_handle_opt,
+            audio_pcm_path_opt,
+        ),
     );
 
-    info!("Screen recording started successfully with real-time encoding: {}", recording_id);
+    info!("Screen recording started successfully with real-time encoding{}: {}",
+        if config.system_audio { " + audio capture" } else { "" },
+        recording_id);
 
     Ok(recording_id)
 }
@@ -1132,7 +1201,15 @@ pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> 
 
     // Remove recording from active state
     let mut recordings = ACTIVE_RECORDINGS.lock().await;
-    let (capture_handle, encoder_handle, output_path, _pause_flag, stop_signal) = recordings
+    let (
+        capture_handle,
+        encoder_handle,
+        output_path,
+        _pause_flag,
+        stop_signal,
+        audio_writer_handle_opt,
+        audio_pcm_path_opt,
+    ) = recordings
         .remove(&recording_id)
         .ok_or_else(|| {
             error!("Recording not found: {}", recording_id);
@@ -1142,7 +1219,9 @@ pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> 
     // Release lock before awaiting
     drop(recordings);
 
-    info!("Stopping recording with real-time encoding: {}", recording_id);
+    info!("Stopping recording with real-time encoding{}: {}",
+        if audio_writer_handle_opt.is_some() { " + audio" } else { "" },
+        recording_id);
 
     // Signal capture task to stop
     info!("CMD: Setting stop_signal to true");
@@ -1175,13 +1254,100 @@ pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> 
         }
     }
 
+    // Wait for audio writer task and perform muxing if audio was captured
+    let final_output_path = if let (Some(audio_writer_handle), Some(audio_pcm_path)) =
+        (audio_writer_handle_opt, audio_pcm_path_opt)
+    {
+        info!("Waiting for audio writer task to complete");
+
+        // Wait for audio writer to finish
+        let audio_writer_success = match audio_writer_handle.await {
+            Ok(Ok(())) => {
+                info!("Audio writer task completed successfully");
+                true
+            }
+            Ok(Err(e)) => {
+                error!("Audio writer task failed: {}", e);
+                warn!("Continuing with video-only file");
+                false
+            }
+            Err(e) => {
+                error!("Audio writer task join error: {}", e);
+                warn!("Continuing with video-only file");
+                false
+            }
+        };
+
+        // Mux audio with video if audio writer succeeded
+        if audio_writer_success && audio_pcm_path.exists() {
+            info!("Muxing audio with video");
+
+            // Create final output path (replace video-only file)
+            let final_path = output_path
+                .parent()
+                .unwrap()
+                .join(format!(
+                    "recording-{}-final.mp4",
+                    recording_id
+                ));
+
+            // Create audio input config
+            let audio_inputs = vec![crate::services::ffmpeg::AudioInputConfig {
+                pcm_path: audio_pcm_path.clone(),
+                sample_rate: 48000,
+                channels: 2,
+                label: "System Audio".to_string(),
+            }];
+
+            // Mux video + audio
+            match crate::services::ffmpeg::FFmpegEncoder::finalize_with_audio(
+                output_path.clone(),
+                audio_inputs,
+                final_path.clone(),
+            )
+            .await
+            {
+                Ok(_) => {
+                    info!("Audio muxing completed successfully");
+
+                    // Delete temporary files
+                    if let Err(e) = std::fs::remove_file(&output_path) {
+                        warn!("Failed to remove video-only file: {}", e);
+                    }
+                    if let Err(e) = std::fs::remove_file(&audio_pcm_path) {
+                        warn!("Failed to remove PCM audio file: {}", e);
+                    }
+
+                    final_path
+                }
+                Err(e) => {
+                    error!("Audio muxing failed: {}", e);
+                    warn!("Returning video-only file");
+
+                    // Clean up PCM file even if muxing failed
+                    if let Err(e) = std::fs::remove_file(&audio_pcm_path) {
+                        warn!("Failed to remove PCM audio file: {}", e);
+                    }
+
+                    output_path.clone()
+                }
+            }
+        } else {
+            warn!("Audio PCM file not found, returning video-only file");
+            output_path.clone()
+        }
+    } else {
+        // No audio capture, return video-only file
+        output_path.clone()
+    };
+
     // Verify file exists
-    if !output_path.exists() {
-        error!("Recording file not found: {}", output_path.display());
-        return Err(format!("Recording file not found: {}", output_path.display()));
+    if !final_output_path.exists() {
+        error!("Recording file not found: {}", final_output_path.display());
+        return Err(format!("Recording file not found: {}", final_output_path.display()));
     }
 
-    let output_path_str = output_path.to_string_lossy().to_string();
+    let output_path_str = final_output_path.to_string_lossy().to_string();
     info!("Recording saved successfully: {}", output_path_str);
 
     Ok(output_path_str)
@@ -1226,7 +1392,15 @@ pub async fn cmd_pause_recording(recording_id: String) -> Result<(), String> {
 
     // Check if this is a simple screen recording
     let recordings = ACTIVE_RECORDINGS.lock().await;
-    let (_capture_handle, _encoder_handle, _output_path, pause_flag, _stop_signal) = recordings
+    let (
+        _capture_handle,
+        _encoder_handle,
+        _output_path,
+        pause_flag,
+        _stop_signal,
+        _audio_writer,
+        _audio_pcm_path,
+    ) = recordings
         .get(&recording_id)
         .ok_or_else(|| {
             error!("Recording not found: {}", recording_id);
@@ -1278,7 +1452,15 @@ pub async fn cmd_resume_recording(recording_id: String) -> Result<(), String> {
 
     // Check if this is a simple screen recording
     let recordings = ACTIVE_RECORDINGS.lock().await;
-    let (_capture_handle, _encoder_handle, _output_path, pause_flag, _stop_signal) = recordings
+    let (
+        _capture_handle,
+        _encoder_handle,
+        _output_path,
+        pause_flag,
+        _stop_signal,
+        _audio_writer,
+        _audio_pcm_path,
+    ) = recordings
         .get(&recording_id)
         .ok_or_else(|| {
             error!("Recording not found: {}", recording_id);
@@ -1309,7 +1491,15 @@ pub async fn cmd_cancel_recording(recording_id: String) -> Result<(), String> {
     debug!("Command: cancel recording {}", recording_id);
 
     let mut recordings = ACTIVE_RECORDINGS.lock().await;
-    let (capture_handle, encoder_handle, output_path, _pause_flag, stop_signal) = recordings.remove(&recording_id).ok_or_else(|| {
+    let (
+        capture_handle,
+        encoder_handle,
+        output_path,
+        _pause_flag,
+        stop_signal,
+        audio_writer_handle_opt,
+        audio_pcm_path_opt,
+    ) = recordings.remove(&recording_id).ok_or_else(|| {
         error!("Recording not found: {}", recording_id);
         format!("Recording not found: {}", recording_id)
     })?;
@@ -1323,6 +1513,11 @@ pub async fn cmd_cancel_recording(recording_id: String) -> Result<(), String> {
     capture_handle.abort();
     encoder_handle.abort();
 
+    // Abort audio writer task if present
+    if let Some(audio_writer_handle) = audio_writer_handle_opt {
+        audio_writer_handle.abort();
+    }
+
     // Wait a moment for tasks to clean up
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
@@ -1335,6 +1530,20 @@ pub async fn cmd_cancel_recording(recording_id: String) -> Result<(), String> {
             Err(e) => {
                 warn!("Failed to delete partial recording {}: {}", output_path.display(), e);
                 // Don't fail the command if deletion fails
+            }
+        }
+    }
+
+    // Delete the partial audio PCM file if present
+    if let Some(audio_pcm_path) = audio_pcm_path_opt {
+        if audio_pcm_path.exists() {
+            match std::fs::remove_file(&audio_pcm_path) {
+                Ok(()) => {
+                    info!("Deleted partial audio PCM file: {}", audio_pcm_path.display());
+                }
+                Err(e) => {
+                    warn!("Failed to delete partial audio PCM file {}: {}", audio_pcm_path.display(), e);
+                }
             }
         }
     }

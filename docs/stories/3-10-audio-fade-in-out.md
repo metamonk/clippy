@@ -62,6 +62,16 @@ so that audio transitions sound professional without abrupt starts/stops.
 - [x] **[AI-Review][Medium]** Document AC #4 limitation in Epic 3 retrospective and release notes - ✅ COMPLETED (2025-10-29): Documented in docs/epic-3-retrospective.md and RELEASE_NOTES.md with workarounds and resolution plan
 - [ ] **[AI-Review][Low]** Address compilation errors from other stories before Epic 3 completion - Fix Rust/TypeScript errors from Stories 4.6, 3.9, 3.6 (not blocking Story 3.10). Files: screencapturekit.rs, orchestrator.rs, test files
 
+### Story 3.10.1 Resolution - Added 2025-10-29
+
+- [x] **Story 3.10.1 completed** - AC #4 (Preview Playback Audio Fades) is now **SATISFIED** ✅
+  - MPV audio output enabled (`audio: auto` in mpv_player.rs)
+  - Volume control implemented (Story 3.9.1 gap filled)
+  - Fade filters (afade) applied during preview playback
+  - Integration complete: VideoPlayer.tsx applies volume and fade filters when playing
+  - All 8 integration tests passing (Rust + TypeScript)
+  - **Result:** Story 3.10 now has 6 of 6 ACs satisfied (100% complete)
+
 ## Dev Notes
 
 ### Architecture Patterns and Constraints
@@ -238,7 +248,7 @@ Implementation completed on 2025-10-29 with the following components:
 - ✅ Both single-clip and multi-clip export support fades
 
 **What's Missing:**
-- ❌ Fades don't apply during preview playback (MPV has audio disabled)
+- ~~❌ Fades don't apply during preview playback (MPV has audio disabled)~~ ✅ **RESOLVED via Story 3.10.1**
 - ⚠️ Tooltips during drag (not essential for MVP)
 - ⚠️ Numeric inputs in clip properties panel (no panel exists)
 - ⚠️ Limited fade-specific unit tests (relying mostly on existing coverage)
@@ -248,15 +258,15 @@ Implementation completed on 2025-10-29 with the following components:
 - AC #1 (Fade handles on edges) - ✅ SATISFIED
 - AC #2 (Visual fade curve) - ✅ SATISFIED
 - AC #3 (Adjustable 0-5s) - ✅ SATISFIED
-- AC #4 (Preview playback) - ❌ NOT SATISFIED (MPV limitation)
+- AC #4 (Preview playback) - ✅ SATISFIED (via Story 3.10.1)
 - AC #5 (FFmpeg export) - ✅ SATISFIED
 - AC #6 (Independent fades) - ✅ SATISFIED
 
-**Overall: 5 of 6 ACs satisfied (83% complete)**
+**Overall: 6 of 6 ACs satisfied (100% complete) - Completed via Stories 3.10 + 3.10.1**
 
 **Recommended Next Steps:**
 1. Manual testing: Export video with fade-in/out to verify FFmpeg filters work correctly
-2. Enable MPV audio output and implement preview playback fades (future story)
+2. ~~Enable MPV audio output and implement preview playback fades (future story)~~ ✅ **COMPLETED via Story 3.10.1**
 3. Add comprehensive E2E tests for fade UI interaction
 4. Consider adding tooltips for improved UX
 

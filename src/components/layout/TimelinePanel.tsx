@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Timeline } from "@/components/timeline/Timeline";
+import { TrackManagementControls } from "@/components/timeline/TrackManagementControls";
 
 export const TimelinePanel = forwardRef<HTMLDivElement>((_props, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -28,6 +29,7 @@ export const TimelinePanel = forwardRef<HTMLDivElement>((_props, ref) => {
       ref={ref}
       className={cn(
         "flex-1 min-h-0 bg-gray-50 rounded-lg shadow-sm",
+        "flex flex-col",
         "border border-gray-200",
         "overflow-hidden",
         "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -36,7 +38,11 @@ export const TimelinePanel = forwardRef<HTMLDivElement>((_props, ref) => {
       role="region"
       aria-label="Timeline Editor"
     >
-      <div ref={containerRef} className="w-full h-full">
+      {/* Track Management Toolbar */}
+      <TrackManagementControls />
+
+      {/* Timeline Canvas */}
+      <div ref={containerRef} className="flex-1 w-full min-h-0">
         {dimensions.width > 0 && dimensions.height > 0 && (
           <Timeline width={dimensions.width} height={dimensions.height} />
         )}

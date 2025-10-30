@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Play, Pause, RotateCcw } from "lucide-react";
 import { usePlayerStore } from "@/stores/playerStore";
+import { useTimelineStore } from "@/stores/timelineStore";
 import { formatTime } from "@/lib/utils/timeUtils";
 import { cn } from "@/lib/utils";
 import { Slider } from "@/components/ui/slider";
@@ -11,13 +12,38 @@ import { Slider } from "@/components/ui/slider";
  * Custom playback controls for the video player.
  * Provides play/pause button, time display, and keyboard shortcuts.
  *
- * Note: This component complements Video.js built-in controls.
- * For this story, Video.js built-in controls are sufficient to meet ACs.
- * This component is scaffolded for future timeline integration (Story 1.7).
+ * Implements ADR-007 Focus Context System:
+ * - Automatically switches to timeline mode when timeline has clips
+ * - Falls back to preview mode when playing library videos
+ * - "Last interaction wins" - intelligent mode switching based on content
  */
 export function PlayerControls() {
-  const { isPlaying, currentTime, duration, togglePlayPause, seek } =
+  const { isPlaying, currentTime, duration, togglePlayPause, seek, setFocusContext, focusContext, currentVideo } =
     usePlayerStore();
+
+  // Subscribe to timeline to detect if there are clips for auto-mode switching
+  const tracks = useTimelineStore((state) => state.tracks);
+
+  // Check if timeline has any clips for intelligent mode switching
+  const hasTimelineClips = tracks.some(track => track.clips.length > 0);
+
+  // Handle play/pause with intelligent mode switching (ADR-007)
+  const handlePlayPause = () => {
+    // SMART AUTO-DETECTION:
+    // 1. If user just selected a library video (focusContext='source' and currentVideo exists), play that
+    // 2. Otherwise, if timeline has clips, play timeline composition
+    // 3. Otherwise, stay in current mode
+
+    if (focusContext === 'source' && currentVideo) {
+      // User selected a library video - keep preview mode
+      // Don't switch to timeline mode
+    } else if (hasTimelineClips) {
+      // No library video selected but timeline has clips - play timeline composition
+      setFocusContext('timeline');
+    }
+
+    togglePlayPause();
+  };
 
   // Handle slider seek
   const handleSliderChange = (value: number[]) => {
@@ -50,7 +76,7 @@ export function PlayerControls() {
       switch (e.code) {
         case "Space":
           e.preventDefault();
-          togglePlayPause();
+          handlePlayPause();
           break;
         case "ArrowLeft":
           e.preventDefault();
@@ -85,7 +111,7 @@ export function PlayerControls() {
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, [togglePlayPause, seek, currentTime, duration]);
+  }, [handlePlayPause, seek, currentTime, duration]);
 
   return (
     <div
@@ -96,7 +122,7 @@ export function PlayerControls() {
     >
       {/* Play/Pause Button */}
       <button
-        onClick={togglePlayPause}
+        onClick={handlePlayPause}
         className={cn(
           "p-2 rounded-md bg-white border border-gray-300",
           "hover:bg-gray-100 transition-colors",

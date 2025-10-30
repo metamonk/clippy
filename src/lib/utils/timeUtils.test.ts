@@ -20,15 +20,23 @@ describe("timeUtils", () => {
       expect(formatTime(36000)).toBe("10:00:00");
     });
 
-    it("should handle decimal seconds by rounding to nearest integer (TD-004 fix)", () => {
-      // Changed from Math.floor to Math.round to fix display issue
-      expect(formatTime(65.7)).toBe("1:06"); // Rounds up
-      expect(formatTime(125.9)).toBe("2:06"); // Rounds up
-      expect(formatTime(3665.5)).toBe("1:01:06"); // Rounds up at .5
+    it("should show decimals for times >0.05s away from whole seconds", () => {
+      // Times significantly away from whole seconds show .X
+      expect(formatTime(65.7)).toBe("1:05.7");
+      expect(formatTime(125.9)).toBe("2:05.9");
+      expect(formatTime(3665.5)).toBe("1:01:05.5");
+      expect(formatTime(4.967)).toBe("0:05.0"); // Real-world case
+      expect(formatTime(4.1)).toBe("0:04.1");
+      expect(formatTime(125.3)).toBe("2:05.3");
+    });
 
-      // Test rounding down
-      expect(formatTime(65.4)).toBe("1:05"); // Rounds down
-      expect(formatTime(125.3)).toBe("2:05"); // Rounds down
+    it("should hide decimals for times within 0.02s of whole seconds", () => {
+      // Times close to whole seconds show clean display
+      expect(formatTime(5.0)).toBe("0:05");
+      expect(formatTime(5.01)).toBe("0:05"); // Within tolerance
+      expect(formatTime(4.99)).toBe("0:05"); // Within tolerance
+      expect(formatTime(65.015)).toBe("1:05");
+      expect(formatTime(125.02)).toBe("2:05");
     });
 
     it("should pad single digit minutes and seconds with leading zeros", () => {
@@ -43,31 +51,28 @@ describe("timeUtils", () => {
       expect(formatTime(3600)).toBe("1:00:00");
     });
 
-    it("should fix TD-004: video end-of-playback display issue", () => {
-      // Root cause: Videos stop at ~4.967s (last frame) but duration is 5.000s
-      // Before fix: formatTime(4.967) = "0:04", formatTime(5.000) = "0:05"
-      // Users saw "0:04 / 0:05" and thought playback stopped 1s early
-      // After fix: formatTime(4.967) = "0:05", formatTime(5.000) = "0:05"
-      // Users now see "0:05 / 0:05" correctly
+    it("should fix TD-004: video end-of-playback display issue with precision", () => {
+      // Root cause: Videos stop at ~4.967s (last frame) but displayed "0:05"
+      // Users thought they could seek to 5.0s when video ends at 4.967s
+      // New fix: Show decimal precision to indicate exact duration
 
       // Test with real codec values from testing
-      expect(formatTime(4.967)).toBe("0:05"); // H.264 actual playback end
-      expect(formatTime(5.000)).toBe("0:05"); // H.264 duration
+      expect(formatTime(4.967)).toBe("0:05.0"); // H.264 actual playback end - shows decimal
+      expect(formatTime(5.000)).toBe("0:05");   // H.264 exact duration - no decimal
 
-      // Both should display the same value
-      const currentTime = formatTime(4.967);
-      const duration = formatTime(5.000);
-      expect(currentTime).toBe(duration);
-      expect(currentTime).toBe("0:05");
+      // Now users can distinguish between exact and approximate times
+      expect(formatTime(4.960)).toBe("0:05.0"); // HEVC/ProRes/VP9 - shows decimal (40ms from 5)
+      expect(formatTime(5.015)).toBe("0:05");   // Within 0.02s tolerance, no decimal
+      expect(formatTime(5.025)).toBe("0:05.0"); // Just outside 0.02s tolerance, shows decimal
 
-      // Test with other codec scenarios
-      expect(formatTime(4.960)).toBe("0:05"); // HEVC/ProRes/VP9 end
-      expect(formatTime(5.015)).toBe("0:05"); // HEVC duration
-      expect(formatTime(5.017)).toBe("0:05"); // ProRes/VP9 duration
+      // Times within 0.02s of whole seconds don't show decimals
+      expect(formatTime(4.99)).toBe("0:05");  // Within tolerance, no decimal
+      expect(formatTime(5.01)).toBe("0:05");  // Within tolerance, no decimal
 
-      // Ensure we don't over-round
-      expect(formatTime(4.4)).toBe("0:04"); // Should still show 0:04
-      expect(formatTime(4.5)).toBe("0:05"); // Rounds up at 0.5
+      // Times far from whole seconds show decimals
+      expect(formatTime(4.4)).toBe("0:04.4");
+      expect(formatTime(4.5)).toBe("0:04.5");
+      expect(formatTime(4.6)).toBe("0:04.6");
     });
   });
 

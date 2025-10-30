@@ -56,7 +56,71 @@ use screencapturekit::{
 use core_media_rs::cm_sample_buffer::CMSampleBuffer;
 
 #[cfg(target_os = "macos")]
+use core_foundation::base::TCFType;
+
+#[cfg(target_os = "macos")]
 use core_video_rs::cv_pixel_buffer::lock::LockTrait;
+
+// FFI bindings for Core Media audio extraction
+#[cfg(target_os = "macos")]
+#[allow(non_camel_case_types)]
+mod core_media_ffi {
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    pub struct OpaqueCMBlockBuffer {
+        _private: [u8; 0],
+    }
+    pub type CMBlockBufferRef = *mut OpaqueCMBlockBuffer;
+
+    #[repr(C)]
+    pub struct OpaqueCMFormatDescription {
+        _private: [u8; 0],
+    }
+    pub type CMFormatDescriptionRef = *const OpaqueCMFormatDescription;
+
+    // AudioStreamBasicDescription from CoreAudio
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    #[allow(non_snake_case)]
+    pub struct AudioStreamBasicDescription {
+        pub mSampleRate: f64,
+        pub mFormatID: u32,
+        pub mFormatFlags: u32,
+        pub mBytesPerPacket: u32,
+        pub mFramesPerPacket: u32,
+        pub mBytesPerFrame: u32,
+        pub mChannelsPerFrame: u32,
+        pub mBitsPerChannel: u32,
+        pub mReserved: u32,
+    }
+
+    #[link(name = "CoreMedia", kind = "framework")]
+    extern "C" {
+        // Get the block buffer containing audio data from a sample buffer
+        pub fn CMSampleBufferGetDataBuffer(sbuf: *const c_void) -> CMBlockBufferRef;
+
+        // Get the length of data in the block buffer
+        pub fn CMBlockBufferGetDataLength(theBuffer: CMBlockBufferRef) -> usize;
+
+        // Get a pointer to the data in the block buffer
+        pub fn CMBlockBufferGetDataPointer(
+            theBuffer: CMBlockBufferRef,
+            offsetToData: usize,
+            lengthAtOffsetOut: *mut usize,
+            totalLengthOut: *mut usize,
+            dataPointerOut: *mut *mut u8,
+        ) -> i32; // OSStatus (0 = success)
+
+        // Get format description from sample buffer
+        pub fn CMSampleBufferGetFormatDescription(sbuf: *const c_void) -> CMFormatDescriptionRef;
+
+        // Get audio stream basic description from format description
+        pub fn CMAudioFormatDescriptionGetStreamBasicDescription(
+            desc: CMFormatDescriptionRef,
+        ) -> *const AudioStreamBasicDescription;
+    }
+}
 
 /// Errors that can occur during screen capture operations
 #[derive(Error, Debug)]
@@ -170,9 +234,6 @@ impl SCStreamOutputTrait for VideoStreamOutput {
 
         // Lock guard automatically unlocks when dropped
 
-        // Log every successful frame at INFO level for debugging
-        info!("Frame captured successfully: {}x{}, {} bytes, sending to encoder", width, height, frame_data.len());
-
         // Calculate timestamp since recording start
         let timestamp_ms = if let Ok(guard) = self.recording_start.lock() {
             if let Some(start) = *guard {
@@ -239,11 +300,60 @@ impl SCStreamOutputTrait for AudioStreamOutput {
             return;
         }
 
-        // Get audio buffer list from sample buffer
-        // Note: For a realistic implementation, we would extract actual audio data
-        // from the CMSampleBuffer using core-media-rs APIs. However, similar to
-        // the ScreenCaptureKit video delegate pattern (Stories 2.2-2.3), we'll
-        // create a simulated audio sample for now.
+        // Detect actual sample rate from the audio buffer
+        let actual_sample_rate = unsafe {
+            let format_desc = core_media_ffi::CMSampleBufferGetFormatDescription(
+                _sample_buffer.as_concrete_TypeRef() as *const std::ffi::c_void
+            );
+
+            if !format_desc.is_null() {
+                let asbd = core_media_ffi::CMAudioFormatDescriptionGetStreamBasicDescription(format_desc);
+                if !asbd.is_null() {
+                    let sample_rate = (*asbd).mSampleRate as u32;
+                    let channels = (*asbd).mChannelsPerFrame as u16;
+                    let format_id = (*asbd).mFormatID;
+                    let format_flags = (*asbd).mFormatFlags;
+                    let bits_per_channel = (*asbd).mBitsPerChannel;
+                    let bytes_per_frame = (*asbd).mBytesPerFrame;
+
+                    // Audio format flags
+                    const AUDIO_FORMAT_FLAG_IS_FLOAT: u32 = 1 << 0;
+                    const AUDIO_FORMAT_FLAG_IS_BIG_ENDIAN: u32 = 1 << 1;
+                    const AUDIO_FORMAT_FLAG_IS_NON_INTERLEAVED: u32 = 1 << 5;
+
+                    let is_float = (format_flags & AUDIO_FORMAT_FLAG_IS_FLOAT) != 0;
+                    let is_big_endian = (format_flags & AUDIO_FORMAT_FLAG_IS_BIG_ENDIAN) != 0;
+                    let is_non_interleaved = (format_flags & AUDIO_FORMAT_FLAG_IS_NON_INTERLEAVED) != 0;
+
+                    // Always log what we detected (only once per recording)
+                    static LOGGED_FORMAT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                    if !LOGGED_FORMAT.swap(true, Ordering::Relaxed) {
+                        info!(
+                            "ScreenCaptureKit audio format: {}Hz/{}ch, formatID=0x{:08x}, flags=0x{:08x}, {} bits/ch, {} bytes/frame",
+                            sample_rate, channels, format_id, format_flags, bits_per_channel, bytes_per_frame
+                        );
+                        info!(
+                            "Audio format details: float={}, big_endian={}, non_interleaved={}",
+                            is_float, is_big_endian, is_non_interleaved
+                        );
+                        if sample_rate != self.sample_rate || channels != self.channels {
+                            warn!(
+                                "Audio format mismatch! Expected {}Hz/{}ch, using actual {}Hz/{}ch",
+                                self.sample_rate, self.channels, sample_rate, channels
+                            );
+                        }
+                    }
+
+                    sample_rate
+                } else {
+                    warn!("Could not get AudioStreamBasicDescription, using configured sample rate");
+                    self.sample_rate
+                }
+            } else {
+                warn!("Could not get format description, using configured sample rate");
+                self.sample_rate
+            }
+        };
 
         // Calculate timestamp since recording start
         let timestamp_ns = if let Ok(guard) = self.recording_start.lock() {
@@ -256,15 +366,97 @@ impl SCStreamOutputTrait for AudioStreamOutput {
             0
         };
 
-        // Create a simulated audio sample (silence)
-        // In production, this would extract actual PCM data from CMSampleBuffer
-        let samples_per_channel = (self.sample_rate / 30) as usize; // ~30ms of audio at 48kHz
-        let total_samples = samples_per_channel * self.channels as usize;
-        let audio_data = vec![0.0f32; total_samples]; // Silence
+        // Extract real audio data from CMSampleBuffer using Core Media FFI
+        let audio_data = unsafe {
+            // Get the CMBlockBuffer containing audio data
+            // CMSampleBuffer implements TCFType, so we can use as_concrete_TypeRef()
+            let block_buffer = core_media_ffi::CMSampleBufferGetDataBuffer(
+                _sample_buffer.as_concrete_TypeRef() as *const std::ffi::c_void
+            );
+
+            if block_buffer.is_null() {
+                warn!("CMSampleBufferGetDataBuffer returned null, using silence");
+                // Fallback to silence
+                let samples_per_channel = (self.sample_rate / 30) as usize;
+                let total_samples = samples_per_channel * self.channels as usize;
+                vec![0.0f32; total_samples]
+            } else {
+                // Get the total length of audio data
+                let data_length = core_media_ffi::CMBlockBufferGetDataLength(block_buffer);
+
+                if data_length == 0 {
+                    warn!("Empty audio block buffer, using silence");
+                    let samples_per_channel = (self.sample_rate / 30) as usize;
+                    let total_samples = samples_per_channel * self.channels as usize;
+                    vec![0.0f32; total_samples]
+                } else {
+                    // Get pointer to the audio data
+                    let mut data_ptr: *mut u8 = std::ptr::null_mut();
+                    let mut length_at_offset: usize = 0;
+                    let mut total_length: usize = 0;
+
+                    let status = core_media_ffi::CMBlockBufferGetDataPointer(
+                        block_buffer,
+                        0, // offset
+                        &mut length_at_offset,
+                        &mut total_length,
+                        &mut data_ptr,
+                    );
+
+                    if status != 0 || data_ptr.is_null() {
+                        warn!("CMBlockBufferGetDataPointer failed with status {}, using silence", status);
+                        let samples_per_channel = (self.sample_rate / 30) as usize;
+                        let total_samples = samples_per_channel * self.channels as usize;
+                        vec![0.0f32; total_samples]
+                    } else {
+                        // ScreenCaptureKit provides audio in non-interleaved Float32 PCM format
+                        // Non-interleaved (planar) means: [L L L L...] [R R R R...]
+                        // We need to convert to interleaved: [L R L R L R...]
+
+                        let num_samples_total = data_length / 4;  // Total float32 samples
+                        let samples_per_channel = num_samples_total / self.channels as usize;
+
+                        // Create slice of f32 samples directly from raw pointer
+                        let planar_samples = std::slice::from_raw_parts(
+                            data_ptr as *const f32,
+                            num_samples_total
+                        );
+
+                        if self.channels == 2 {
+                            // Stereo: deinterleave from [L L L...] [R R R...] to [L R L R...]
+                            let mut interleaved = Vec::with_capacity(num_samples_total);
+                            let left_channel = &planar_samples[0..samples_per_channel];
+                            let right_channel = &planar_samples[samples_per_channel..num_samples_total];
+
+                            for i in 0..samples_per_channel {
+                                interleaved.push(left_channel[i]);
+                                interleaved.push(right_channel[i]);
+                            }
+
+                            debug!("Converted {} planar samples to {} interleaved samples", num_samples_total, interleaved.len());
+                            interleaved
+                        } else if self.channels == 1 {
+                            // Mono: already in correct format
+                            planar_samples.to_vec()
+                        } else {
+                            // Multi-channel (>2): generalized deinterleaving
+                            let mut interleaved = Vec::with_capacity(num_samples_total);
+                            for i in 0..samples_per_channel {
+                                for ch in 0..self.channels as usize {
+                                    let channel_offset = ch * samples_per_channel;
+                                    interleaved.push(planar_samples[channel_offset + i]);
+                                }
+                            }
+                            interleaved
+                        }
+                    }
+                }
+            }
+        };
 
         let audio_sample = crate::services::audio_capture::AudioSample {
             data: audio_data,
-            sample_rate: self.sample_rate,
+            sample_rate: actual_sample_rate,  // Use actual sample rate from ScreenCaptureKit
             channels: self.channels,
             timestamp_ns,
         };

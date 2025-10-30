@@ -25,7 +25,8 @@ impl MpvPlayer {
 
         // Enable audio output for preview playback (Story 3.10.1)
         // Audio driver auto-detected (CoreAudio on macOS, PulseAudio/ALSA on Linux, WASAPI on Windows)
-        mpv.set_property("audio", "yes").map_err(|e| anyhow!("Failed to enable audio: {:?}", e))?;
+        // Use "auto" to enable audio only if the video has an audio track
+        mpv.set_property("audio", "auto").map_err(|e| anyhow!("Failed to set audio mode: {:?}", e))?;
 
         mpv.set_property("hwdec", "auto").map_err(|e| anyhow!("Failed to enable hardware decoding: {:?}", e))?;
         mpv.set_property("keep-open", "always").map_err(|e| anyhow!("Failed to set keep-open: {:?}", e))?;
@@ -499,5 +500,176 @@ mod tests {
 
             println!("✅ {} - Playback reached end successfully", codec_name);
         }
+    }
+
+    /// Test audio output initialization (Story 3.10.1 - AC #1)
+    #[test]
+    fn test_audio_initialization() {
+        let player = MpvPlayer::new().expect("Failed to create MPV player");
+
+        // Verify audio is enabled
+        let mpv = player.mpv.lock().unwrap();
+        let audio_mode: String = mpv.get_property("audio")
+            .expect("Failed to get audio property");
+
+        assert_eq!(audio_mode, "auto", "Audio should be set to 'auto'");
+        println!("✅ Audio initialization test passed - audio mode: {}", audio_mode);
+    }
+
+    /// Test volume control (Story 3.9.1/3.10.1 - AC #5)
+    #[test]
+    fn test_volume_control() {
+        let player = MpvPlayer::new().expect("Failed to create MPV player");
+
+        // Test setting volume at 100% (Clippy scale)
+        player.set_volume(100.0, false).expect("Failed to set volume to 100");
+        let mpv = player.mpv.lock().unwrap();
+        let volume: f64 = mpv.get_property("volume").expect("Failed to get volume");
+        assert_eq!(volume, 50.0, "Clippy 100% should map to MPV 50%");
+        println!("✅ Volume at 100% (Clippy) = {}% (MPV)", volume);
+
+        // Test setting volume at 200% (Clippy scale)
+        drop(mpv);
+        player.set_volume(200.0, false).expect("Failed to set volume to 200");
+        let mpv = player.mpv.lock().unwrap();
+        let volume: f64 = mpv.get_property("volume").expect("Failed to get volume");
+        assert_eq!(volume, 100.0, "Clippy 200% should map to MPV 100%");
+        println!("✅ Volume at 200% (Clippy) = {}% (MPV)", volume);
+
+        // Test muted state
+        drop(mpv);
+        player.set_volume(100.0, true).expect("Failed to set muted");
+        let mpv = player.mpv.lock().unwrap();
+        let volume: f64 = mpv.get_property("volume").expect("Failed to get volume");
+        assert_eq!(volume, 0.0, "Muted should set volume to 0");
+        println!("✅ Muted state sets volume to 0%");
+    }
+
+    /// Test fade-in filter application (Story 3.10.1 - AC #2, #3)
+    #[test]
+    fn test_fade_in_filter() {
+        let player = MpvPlayer::new().expect("Failed to create MPV player");
+
+        // Apply fade-in only (1000ms fade-in, 0ms fade-out, 5000ms clip)
+        player.apply_fade_filters(1000, 0, 5000)
+            .expect("Failed to apply fade-in filter");
+
+        let mpv = player.mpv.lock().unwrap();
+        let filter: String = mpv.get_property("af").expect("Failed to get audio filter");
+
+        assert!(filter.contains("afade=t=in:st=0:d=1"),
+            "Filter should contain fade-in with 1s duration, got: {}", filter);
+        assert!(!filter.contains("afade=t=out"),
+            "Filter should not contain fade-out");
+
+        println!("✅ Fade-in filter applied correctly: {}", filter);
+    }
+
+    /// Test fade-out filter application (Story 3.10.1 - AC #2, #4)
+    #[test]
+    fn test_fade_out_filter() {
+        let player = MpvPlayer::new().expect("Failed to create MPV player");
+
+        // Apply fade-out only (0ms fade-in, 1500ms fade-out, 5000ms clip)
+        player.apply_fade_filters(0, 1500, 5000)
+            .expect("Failed to apply fade-out filter");
+
+        let mpv = player.mpv.lock().unwrap();
+        let filter: String = mpv.get_property("af").expect("Failed to get audio filter");
+
+        // Check for fade-out filter with correct parameters (may be URL-encoded by MPV)
+        assert!(filter.contains("afade") && filter.contains("t=out") && filter.contains("st=") && filter.contains("3.5") && filter.contains("d=") && filter.contains("1.5"),
+            "Filter should contain fade-out starting at 3.5s with 1.5s duration, got: {}", filter);
+        assert!(!filter.contains("t=in"),
+            "Filter should not contain fade-in");
+
+        println!("✅ Fade-out filter applied correctly: {}", filter);
+    }
+
+    /// Test combined fade-in and fade-out filters (Story 3.10.1 - AC #2, #3, #4)
+    #[test]
+    fn test_combined_fade_filters() {
+        let player = MpvPlayer::new().expect("Failed to create MPV player");
+
+        // Apply both fades (2000ms fade-in, 2000ms fade-out, 10000ms clip)
+        player.apply_fade_filters(2000, 2000, 10000)
+            .expect("Failed to apply combined fade filters");
+
+        let mpv = player.mpv.lock().unwrap();
+        let filter: String = mpv.get_property("af").expect("Failed to get audio filter");
+
+        assert!(filter.contains("afade=t=in:st=0:d=2"),
+            "Filter should contain fade-in with 2s duration");
+        assert!(filter.contains("afade=t=out:st=8:d=2"),
+            "Filter should contain fade-out starting at 8s with 2s duration");
+
+        println!("✅ Combined fade filters applied correctly: {}", filter);
+    }
+
+    /// Test clearing audio filters (Story 3.10.1 - AC #6)
+    #[test]
+    fn test_clear_audio_filters() {
+        let player = MpvPlayer::new().expect("Failed to create MPV player");
+
+        // Apply filters first
+        player.apply_fade_filters(1000, 1000, 5000)
+            .expect("Failed to apply fade filters");
+
+        // Verify filters are applied
+        {
+            let mpv = player.mpv.lock().unwrap();
+            let filter: String = mpv.get_property("af").expect("Failed to get audio filter");
+            assert!(!filter.is_empty(), "Filters should be applied");
+            println!("✅ Filters applied: {}", filter);
+        }
+
+        // Clear filters
+        player.clear_audio_filters()
+            .expect("Failed to clear audio filters");
+
+        // Verify filters are cleared
+        let mpv = player.mpv.lock().unwrap();
+        let filter: String = mpv.get_property("af").expect("Failed to get audio filter");
+        assert!(filter.is_empty(), "Filters should be cleared, got: {}", filter);
+
+        println!("✅ Audio filters cleared successfully");
+    }
+
+    /// Test fade filter edge case: very short clip (Story 3.10.1 - AC #2)
+    #[test]
+    fn test_fade_filters_short_clip() {
+        let player = MpvPlayer::new().expect("Failed to create MPV player");
+
+        // Short clip: 2s total, 1s fade-in, 1s fade-out
+        player.apply_fade_filters(1000, 1000, 2000)
+            .expect("Failed to apply fade filters to short clip");
+
+        let mpv = player.mpv.lock().unwrap();
+        let filter: String = mpv.get_property("af").expect("Failed to get audio filter");
+
+        assert!(filter.contains("afade=t=in:st=0:d=1"),
+            "Fade-in should be 1s from start");
+        assert!(filter.contains("afade=t=out:st=1:d=1"),
+            "Fade-out should start at 1s (meeting fade-in at midpoint)");
+
+        println!("✅ Short clip fade filters applied correctly: {}", filter);
+    }
+
+    /// Test no fade filters when durations are zero (Story 3.10.1 - AC #2)
+    #[test]
+    fn test_no_fade_when_zero_duration() {
+        let player = MpvPlayer::new().expect("Failed to create MPV player");
+
+        // Zero fade durations
+        player.apply_fade_filters(0, 0, 5000)
+            .expect("Failed to apply zero-duration fades");
+
+        let mpv = player.mpv.lock().unwrap();
+        let filter: String = mpv.get_property("af").expect("Failed to get audio filter");
+
+        assert!(filter.is_empty(),
+            "No filters should be applied when fade durations are zero, got: {}", filter);
+
+        println!("✅ No filters applied for zero-duration fades");
     }
 }

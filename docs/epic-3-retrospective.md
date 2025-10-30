@@ -22,48 +22,42 @@ Epic 3 transformed clippy from a basic single-track video editor into a professi
 - ✅ Audio waveform visualization (Story 3.8)
 - ✅ Per-clip volume control (Story 3.9)
 - ✅ Preview playback volume control (Story 3.9.1)
-- ✅ Audio fade in/out (Story 3.10) - **5/6 ACs satisfied, AC #4 deferred**
+- ✅ Audio fade in/out (Story 3.10) - **6/6 ACs satisfied (AC #4 completed via Story 3.10.1)**
+- ✅ Preview playback audio fades (Story 3.10.1) - **All ACs satisfied**
 
 ---
 
 ## Known Limitations (v0.1.0)
 
-### Story 3.10: Audio Fade Preview During Playback
+### ~~Story 3.10: Audio Fade Preview During Playback~~ ✅ **RESOLVED** (2025-10-29)
 
-**Limitation:** Audio fade effects (fade-in/fade-out) are not audible during preview playback. Users must export the video to hear fade effects.
+**Limitation:** ~~Audio fade effects (fade-in/fade-out) are not audible during preview playback. Users must export the video to hear fade effects.~~ **RESOLVED via Story 3.10.1**
 
 **Background:**
 - Story 3.10 successfully implemented fade UI controls (AC #1-3) and FFmpeg export with fade effects (AC #5-6)
-- AC #4 (fade effects audible during preview playback) was deferred due to MPV audio architecture limitations
-- MPV player currently has audio disabled (`audio: no` in configuration)
-- Enabling audio and implementing real-time fade effects requires significant MPV reconfiguration (8-12 hours estimated effort)
+- AC #4 (fade effects audible during preview playback) was initially deferred due to MPV audio architecture limitations
+- MPV player had audio disabled (`audio: no` in configuration)
+- Enabling audio and implementing real-time fade effects required MPV reconfiguration
+
+**Resolution (Story 3.10.1 - Completed 2025-10-29):**
+- ✅ MPV audio output enabled (`audio: auto` in mpv_player.rs)
+- ✅ Volume control implemented (filled Story 3.9.1 gap)
+- ✅ Fade filters (afade) applied during preview playback
+- ✅ Integration complete: VideoPlayer.tsx applies volume and fade filters when playing
+- ✅ All 8 integration tests passing (Rust + TypeScript)
+- ✅ **Result:** Story 3.10 now has 6/6 ACs satisfied (100% complete)
 
 **Impact:**
-- Users can visually see fade curves on timeline clips
-- Users can adjust fade durations with drag handles
-- Fade effects ARE applied correctly in exported videos
-- Users CANNOT hear fade effects during preview playback (must export to verify)
-
-**Workaround:**
-- Export a short test clip to verify fade effect behavior
-- Use visual fade curve overlay as guide during editing
-- Rely on waveform visualization to estimate fade regions
-
-**Resolution Plan:**
-- **Story 3.10.1** (backlog) will address AC #4 in a future release
-- Estimated effort: 8-12 hours (MPV audio enablement + fade filter application)
-- Priority: Medium (UX improvement, not blocking MVP)
-- Target: Epic 3 or Epic 4 cleanup phase
-
-**User Communication:**
-- Include in release notes for v0.1.0
-- Add tooltip to fade handles: "Preview in export - real-time preview coming soon"
-- Document in user guide under "Known Limitations"
+- ✅ Users can now hear fade effects during preview playback (matching export behavior)
+- ✅ Visual fade curves match auditory experience
+- ✅ No need to export to verify fade effects
+- ✅ Complete audio preview: volume + fades
 
 **Review History:**
 - Story 3.10 Review #1 (2025-10-29): Changes Requested - flagged AC #4 as high severity
 - Story 3.10 Review #2 (2025-10-29): Approved - acknowledged AC #4 deferral with explicit follow-up story
-- Rationale: 5/6 ACs provide substantial user value, deferring AC #4 allows Epic 3 to proceed while maintaining quality
+- Story 3.10.1 Implementation (2025-10-29): Completed - AC #4 fully satisfied
+- Rationale: Two-story approach allowed Epic 3 progress while ensuring complete audio fade functionality
 
 ---
 

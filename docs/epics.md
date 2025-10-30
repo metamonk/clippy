@@ -814,7 +814,255 @@ So that I can take breaks during long recordings without losing continuity.
 
 ---
 
-## Epic 5: AI-Powered Workflow Automation
+**Story 4.9: Timeline Track Management UI**
+
+As a user,
+I want UI controls to add and remove timeline tracks,
+So that I can manage my multi-track composition without manual configuration.
+
+**Acceptance Criteria:**
+1. Track management toolbar appears above timeline canvas
+2. Track count display shows current number of tracks
+3. "Add Video Track" button creates new video track
+4. "Add Audio Track" button creates new audio track
+5. "Remove Track" button removes last track (with confirmation dialog)
+6. Minimum 2 tracks enforced (cannot delete below 2)
+7. Confirmation dialog warns about deleting clips on removed track
+8. Track addition/removal immediately reflects in timeline UI
+9. All controls accessible via keyboard and mouse
+10. Keyboard shortcut: Cmd+T to add track (documented in tooltip)
+
+**Prerequisites:** Story 4.8
+
+---
+
+## Epic 5: Timeline Composition Playback
+
+**Expanded Goal:**
+
+Transform timeline playback from "single-clip preview" to "full composition preview" that seamlessly plays through all clips, handles gaps intelligently, mixes audio from multiple tracks in real-time, and composites multi-track video—delivering a professional editing experience where preview matches export. This epic establishes a critical foundation for professional video editing, enabling users to preview their complete timeline composition before exporting, matching the behavior of industry-standard tools like Premiere Pro, DaVinci Resolve, and Final Cut Pro.
+
+**Why This is Needed:**
+
+Current timeline playback is a "single-clip preview" system—it plays the clip at the playhead position, but cannot automatically transition between clips, handle gaps intelligently, or composite multiple tracks. This creates a disjointed editing experience where users must export to see their final composition, making iterative editing slow and painful. Professional video editors expect continuous playback through the entire timeline with real-time audio mixing and video compositing.
+
+This epic must be completed before Epic 6 (AI Automation) because:
+1. **User Experience Foundation:** AI features generate timeline content that users need to preview
+2. **Testing AI Output:** Users cannot validate AI-generated captions/edits without composition playback
+3. **Product Maturity:** Professional editing UX must exist before adding advanced AI features
+4. **Technical Dependency:** AI features may generate complex timelines that require composition rendering
+
+**Success Metrics:**
+- ✅ Timeline plays continuously through all clips without manual intervention
+- ✅ Gaps render as black frames with silence (no error messages)
+- ✅ Multi-track audio mixed in real-time during playback
+- ✅ Video tracks composite correctly (opacity, layering)
+- ✅ Preview playback matches export output (visual parity)
+- ✅ Performance: 60 FPS playback on MacBook Pro (2020+) with 3+ clips
+- ✅ Seamless transitions between clips (< 100ms latency)
+
+**Estimated Stories:** 8
+
+**Estimated Duration:** 5-7 weeks
+
+---
+
+**Story 5.1: Composition Playback Architecture & ADR**
+
+As a developer,
+I want to define the composition playback architecture,
+So that implementation has clear technical direction.
+
+**Acceptance Criteria:**
+1. Research document compares 3 approaches:
+   - **Approach A:** Real-time MPV switching with audio mixing
+   - **Approach B:** FFmpeg pre-render to temp file, play via MPV
+   - **Approach C:** Hybrid: pre-render small segments, stream
+2. ADR-008 documents chosen approach with pros/cons
+3. Architecture diagram shows composition renderer components
+4. Performance benchmarks for each approach documented
+5. Memory/CPU requirements estimated
+6. API interface defined for CompositionRenderer service
+7. Timeline → Renderer data flow documented
+8. Edge cases documented (gaps, overlapping clips, audio-only tracks)
+
+**Prerequisites:** Epic 4 complete (Story 4.9)
+
+---
+
+**Story 5.2: Composition State Management**
+
+As a developer,
+I want composition state separate from clip preview state,
+So that I can manage complex timeline playback.
+
+**Acceptance Criteria:**
+1. New `compositionStore.ts` created for composition state
+2. State tracks: currentCompositionTime, activeClips, activeTracks, renderState
+3. `VideoPlayer` checks `mode === 'timeline'` and uses composition state
+4. Clip switching logic triggers at clip boundaries
+5. Gap detection identifies timeline regions without clips
+6. Multi-track clip queries return all clips at given time
+7. Unit tests for composition state transitions
+8. Performance: state updates < 16ms (60 FPS target)
+
+**Prerequisites:** Story 5.1
+
+---
+
+**Story 5.3: Sequential Clip Playback (Single Track)**
+
+As a user,
+I want playback to continue automatically when one clip ends,
+So that I can preview multi-clip sequences without manual intervention.
+
+**Acceptance Criteria:**
+1. When clip ends, composition renderer finds next clip
+2. Next clip loads and starts playing seamlessly
+3. Transition latency < 100ms (imperceptible to user)
+4. Playhead continues moving through transition
+5. CurrentTime updates correctly across clip boundaries
+6. Works for 2+ consecutive clips on same track
+7. End of timeline stops playback (no error)
+8. Keyboard shortcuts (Space, Arrow keys) work during transitions
+
+**Prerequisites:** Story 5.2
+
+**Note:** Single-track only. Multi-track compositing in Story 5.6.
+
+---
+
+**Story 5.4: Gap Handling with Black Frames**
+
+As a user,
+I want gaps in my timeline to show black frames instead of errors,
+So that my composition plays smoothly even with intentional spacing.
+
+**Acceptance Criteria:**
+1. Gap detection identifies timeline regions without clips
+2. Black frame rendered in video preview during gaps
+3. Silent audio played during gaps (no audio artifacts)
+4. Gap duration calculated from timeline structure
+5. Playhead continues advancing through gaps
+6. Transition from clip → gap → clip is seamless
+7. Works for gaps at start, middle, and end of timeline
+8. Performance: black frame rendering has zero overhead
+
+**Prerequisites:** Story 5.3
+
+---
+
+**Story 5.5: Multi-Track Audio Mixing**
+
+As a user,
+I want to hear audio from all tracks during playback,
+So that I can preview voice-over, music, and sound effects together.
+
+**Acceptance Criteria:**
+1. Composition renderer identifies all clips at current playhead position
+2. Audio streams from overlapping clips mixed in real-time
+3. Per-clip volume settings applied during mixing
+4. Muted clips excluded from mix
+5. Audio synchronization maintained across tracks (< 10ms variance)
+6. Supports 2-8 simultaneous audio tracks
+7. Mix output sent to single MPV audio stream
+8. No audio distortion or clipping with multiple loud tracks
+9. Fade-in/fade-out effects applied correctly in mix
+
+**Prerequisites:** Story 5.4
+
+**Technical Challenge:** Real-time audio mixing with MPV. May require external audio library (rodio, cpal) or FFmpeg audio filter.
+
+---
+
+**Story 5.6: Multi-Track Video Compositing**
+
+As a user,
+I want video tracks to layer on top of each other,
+So that I can create picture-in-picture effects and overlays.
+
+**Acceptance Criteria:**
+1. Track z-index determines layer order (Track 1 = bottom, Track N = top)
+2. Clips on higher tracks render over lower tracks
+3. Opacity/alpha channel support for semi-transparent overlays
+4. Black background if no clips at bottom track level
+5. Compositing performance: 60 FPS with 3 simultaneous video tracks
+6. Works with different video resolutions (scales to canvas)
+7. Maintains aspect ratio for each clip
+8. Position/scale transforms applied (for PiP effects)
+
+**Prerequisites:** Story 5.5
+
+**Technical Challenge:** Real-time video compositing. May require:
+- **Option A:** FFmpeg overlay filter (requires pre-processing)
+- **Option B:** GPU-accelerated compositor (OpenGL/Metal)
+- **Option C:** Canvas/WebGL rendering in frontend
+
+---
+
+**Story 5.7: Composition Export Parity Validation**
+
+As a developer,
+I want automated tests comparing playback to export,
+So that users see accurate previews.
+
+**Acceptance Criteria:**
+1. Test suite exports timeline composition to MP4
+2. Test suite captures playback frames at same timestamps
+3. Frame comparison detects visual differences (pixel diff)
+4. Audio waveform comparison validates audio mixing
+5. Test runs on 3 test timelines: single-track, multi-track, gaps
+6. Differences < 5% pixel variance (accounts for compression)
+7. Timing accuracy: playback within 33ms of export timestamps
+8. Documentation: known parity gaps and reasons
+
+**Prerequisites:** Story 5.6
+
+---
+
+**Story 5.8: Real-Time Performance Optimization**
+
+As a user,
+I want smooth playback even with multi-track compositions,
+So that I can edit without lag or stuttering.
+
+**Acceptance Criteria:**
+1. Frame rate monitoring in dev mode shows FPS during playback
+2. Maintain 60 FPS with 3+ video tracks + 4+ audio tracks
+3. Decode-ahead buffer for upcoming clips (500ms ahead)
+4. Frame dropping strategy for performance degradation (skip, not freeze)
+5. Memory usage < 1GB for typical 5-minute timeline
+6. CPU usage < 80% on MacBook Pro (2020+)
+7. Smooth scrubbing through timeline (< 100ms seek latency)
+8. Performance profiling documented in architecture.md
+
+**Prerequisites:** Story 5.7
+
+---
+
+**Story 5.9: Video Transitions (Fade, Crossfade)**
+
+As a user,
+I want to add fade and crossfade transitions between clips,
+So that my video has professional-looking scene changes.
+
+**Acceptance Criteria:**
+1. Transition handles appear at clip boundaries when clips are adjacent
+2. Drag transition handle to set crossfade duration (0-3 seconds)
+3. Transition types: Fade to Black, Crossfade (dissolve)
+4. Visual transition curve shown on timeline
+5. Transition effect visible during composition playback
+6. Transition applied during export via FFmpeg filters
+7. Transition duration adjustable in properties panel
+8. Can remove transition (revert to hard cut)
+
+**Prerequisites:** Story 5.8
+
+**Note:** Transitions included per user request during Epic 5 planning.
+
+---
+
+## Epic 6: AI-Powered Workflow Automation
 
 **Expanded Goal:**
 
@@ -824,7 +1072,7 @@ Integrate OpenAI's Whisper API for automatic transcription and GPT-4 for content
 
 ---
 
-**Story 5.1: OpenAI API Integration & Configuration**
+**Story 6.1: OpenAI API Integration & Configuration**
 
 As a developer,
 I want to integrate OpenAI API client in the Rust backend,
@@ -841,11 +1089,11 @@ So that clippy can call Whisper and GPT-4 services securely.
 8. API client uses pinned model versions (whisper-1, gpt-4-turbo-preview) with documented upgrade path
 9. Graceful degradation if API unavailable (user notified, editing features remain functional)
 
-**Prerequisites:** Epic 4 complete (Story 4.8)
+**Prerequisites:** Epic 5 complete (Story 5.9)
 
 ---
 
-**Story 5.2: Audio Extraction from Video Clips**
+**Story 6.2: Audio Extraction from Video Clips**
 
 As a developer,
 I want to extract audio from video clips efficiently,
@@ -859,11 +1107,11 @@ So that audio can be sent to Whisper API for transcription.
 5. Progress indicator shows extraction status
 6. Extraction works for all supported video formats (MP4, MOV, WebM)
 
-**Prerequisites:** Story 5.1
+**Prerequisites:** Story 6.1
 
 ---
 
-**Story 5.3: Whisper API Transcription**
+**Story 6.3: Whisper API Transcription**
 
 As a user,
 I want to automatically transcribe spoken audio from my video,
@@ -878,11 +1126,11 @@ So that I can create captions without manual typing.
 6. Error handling for API failures with clear user messaging
 7. Transcription accuracy acceptable (>90% for clear English audio)
 
-**Prerequisites:** Story 5.2
+**Prerequisites:** Story 6.2
 
 ---
 
-**Story 5.4: Transcript Display and Editing Panel**
+**Story 6.4: Transcript Display and Editing Panel**
 
 As a user,
 I want to view and edit the generated transcript,
@@ -897,11 +1145,11 @@ So that I can correct any AI transcription errors before generating captions.
 6. Search functionality within transcript
 7. Export transcript as plain text file option
 
-**Prerequisites:** Story 5.3
+**Prerequisites:** Story 6.3
 
 ---
 
-**Story 5.5: Auto-Generate Captions from Transcript**
+**Story 6.5: Auto-Generate Captions from Transcript**
 
 As a user,
 I want to automatically generate timed captions from the transcript,
@@ -915,11 +1163,11 @@ So that I can add accessibility captions to my video quickly.
 5. Caption track stored in timeline state linked to clip
 6. Multiple caption tracks supported per project (e.g., different languages)
 
-**Prerequisites:** Story 5.4
+**Prerequisites:** Story 6.4
 
 ---
 
-**Story 5.6: Caption Editor with Timing Adjustments**
+**Story 6.6: Caption Editor with Timing Adjustments**
 
 As a user,
 I want to adjust caption text and timing,
@@ -935,11 +1183,11 @@ So that I can perfect captions for clarity and synchronization.
 7. Timeline shows caption markers at corresponding positions
 8. Changes sync with video preview in real-time
 
-**Prerequisites:** Story 5.5
+**Prerequisites:** Story 6.5
 
 ---
 
-**Story 5.7: Caption Styling and Preview**
+**Story 6.7: Caption Styling and Preview**
 
 As a user,
 I want to customize caption appearance and preview them on video,
@@ -953,11 +1201,11 @@ So that captions are readable and match my brand aesthetic.
 5. Caption preview updates immediately when style changed
 6. Caption readability validated (contrast ratio check)
 
-**Prerequisites:** Story 5.6
+**Prerequisites:** Story 6.6
 
 ---
 
-**Story 5.8: GPT-4 Content Analysis**
+**Story 6.8: GPT-4 Content Analysis**
 
 As a user,
 I want AI to analyze my video content and suggest descriptions and tags,
@@ -972,11 +1220,11 @@ So that I can optimize video metadata for discovery without manual effort.
 6. Analysis results saved to project metadata
 7. Cost warning before sending (GPT-4 more expensive than Whisper)
 
-**Prerequisites:** Story 5.7
+**Prerequisites:** Story 6.7
 
 ---
 
-**Story 5.9: Caption Export (SRT/VTT Files)**
+**Story 6.9: Caption Export (SRT/VTT Files)**
 
 As a user,
 I want to export captions as separate SRT or VTT files,
@@ -991,11 +1239,11 @@ So that I can upload them to YouTube, Vimeo, or other platforms.
 6. Exported captions loadable in VLC, YouTube, and other standard players
 7. Can export without exporting video (standalone caption file)
 
-**Prerequisites:** Story 5.8
+**Prerequisites:** Story 6.8
 
 ---
 
-**Story 5.10: Burn Captions into Video Export**
+**Story 6.10: Burn Captions into Video Export**
 
 As a user,
 I want to permanently burn captions into exported video,
@@ -1010,7 +1258,7 @@ So that captions are visible on any platform without separate caption files.
 6. Can export with both burned captions AND separate caption file
 7. Option to preview burned caption appearance before export
 
-**Prerequisites:** Story 5.9
+**Prerequisites:** Story 6.9
 
 ---
 

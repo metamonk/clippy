@@ -2012,6 +2012,60 @@ mpv.set_property("pause", "yes")?;            // Start paused
 
 **Reference:** `docs/HANDOFF-PLAYBACK-MODE-DEBUG-2025-10-28.md`, `docs/TECHNICAL-DEBT.md` (TD-002)
 
+**Update (2025-10-29): MPV Audio Output Enabled for Preview Playback**
+
+During Story 3.10.1 (Preview Playback Audio Fades), MPV audio output was enabled to support real-time audio fade effects and volume control during preview playback.
+
+**Context:** Story 3.10 implemented audio fade-in/fade-out UI and FFmpeg export, but AC #4 (fade effects audible during preview) was deferred because MPV had audio disabled (`audio: no`). Story 3.10.1 enables MPV audio to complete the feature.
+
+**Configuration Changes:**
+```rust
+// src-tauri/src/services/mpv_player.rs (line 29)
+// Changed from: mpv.set_property("audio", "no")?;
+// Changed to:
+mpv.set_property("audio", "auto")?;  // Enable audio only if video has audio track
+```
+
+**Audio Features Implemented:**
+1. **Volume Control (Story 3.9.1/3.10.1):**
+   - `set_volume(volume: f32, muted: bool)` method added to MpvPlayer
+   - Converts Clippy's 0-200% scale to MPV's 0-100% scale
+   - Tauri command: `mpv_set_volume`
+
+2. **Fade Filters (Story 3.10.1):**
+   - `apply_fade_filters(fade_in_ms, fade_out_ms, clip_duration_ms)` method added
+   - Uses MPV's `afade` audio filter with dynamic timing
+   - Fade-in: `afade=t=in:st=0:d={fade_in_sec}`
+   - Fade-out: `afade=t=out:st={start_time}:d={fade_out_sec}`
+   - Filter chain order: volume → fade-in → fade-out (matches FFmpeg export)
+   - Tauri commands: `mpv_apply_fade_filters`, `mpv_clear_audio_filters`
+
+3. **VideoPlayer Integration:**
+   - `VideoPlayer.tsx` applies volume and fade filters when playback starts
+   - Filters cleared when playback stops
+   - Ensures preview matches export behavior
+
+**Audio Driver Selection:**
+- `audio: auto` enables auto-detection:
+  - macOS: CoreAudio (default)
+  - Linux: PulseAudio or ALSA
+  - Windows: WASAPI
+- Default audio format: 48kHz stereo (standard for video editing)
+
+**Testing:**
+- ✅ 8 new integration tests (5 Rust + 3 TypeScript) covering volume, fades, and filter clearing
+- ✅ Volume conversion (Clippy 100% → MPV 50%, Clippy 200% → MPV 100%)
+- ✅ Fade filter syntax validated (afade parameters)
+- ✅ Filter clearing verified
+
+**Results:**
+- ✅ Audio fades now audible during preview playback
+- ✅ Preview matches export behavior (volume + fades)
+- ✅ Story 3.10 AC #4 satisfied (6/6 ACs complete)
+- ✅ No audio distortion or clipping artifacts
+
+**Reference:** `docs/stories/3-10-1-preview-playback-audio-fades.md`, `docs/stories/3-10-audio-fade-in-out.md`
+
 ---
 
 ### ADR-007: Playback Mode Architecture (Preview vs Timeline)

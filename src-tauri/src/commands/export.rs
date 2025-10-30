@@ -43,8 +43,21 @@ pub async fn cmd_start_export(
         event = "cmd_start_export",
         output_path = %config.output_path,
         timeline_duration = timeline.total_duration,
+        track_count = timeline.tracks.len(),
         "Starting export command"
     );
+
+    // Debug: Log track details
+    for (idx, track) in timeline.tracks.iter().enumerate() {
+        tracing::info!(
+            event = "track_details",
+            track_index = idx,
+            track_id = %track.id,
+            track_type = ?track.track_type,
+            clip_count = track.clips.len(),
+            "Track information"
+        );
+    }
 
     // Generate export ID
     let export_id = uuid::Uuid::new_v4().to_string();
