@@ -19,9 +19,11 @@ interface WebcamPreviewProps {
 }
 
 interface CameraFramePayload {
-  data: string; // base64-encoded frame data
+  camera_index: number;
+  frame_data: string; // base64-encoded frame data
   width: number;
   height: number;
+  timestamp: number;
 }
 
 export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPreviewProps) {
@@ -31,6 +33,7 @@ export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPr
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let errorUnlisten: (() => void) | null = null;
 
     const setupPreview = async () => {
       if (!active) {
@@ -54,7 +57,10 @@ export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPr
         // "camera-frame" events at 30 FPS with CameraFramePayload structure.
         // See: src-tauri/src/commands/recording.rs line 256 for interface contract.
         unlisten = await listen<CameraFramePayload>('camera-frame', (event) => {
-          const { data, width, height } = event.payload;
+          const { camera_index, frame_data, width, height } = event.payload;
+
+          // Only process frames for this camera
+          if (camera_index !== cameraIndex) return;
 
           const canvas = canvasRef.current;
           if (!canvas) return;
@@ -71,16 +77,23 @@ export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPr
           // Decode base64 frame and draw to canvas
           // Note: The backend sends raw RGB data (3 bytes/pixel), we need to convert to RGBA (4 bytes/pixel)
           try {
-            const binaryString = atob(data);
+            const binaryString = atob(frame_data);
             const rgbBytes = new Uint8ClampedArray(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
               rgbBytes[i] = binaryString.charCodeAt(i);
+            }
+
+            // Debug: Log first frame info
+            if (canvas.width === 0) {
+              console.log(`First frame: width=${width}, height=${height}, rgbBytes.length=${rgbBytes.length}`);
+              console.log(`First 12 bytes:`, Array.from(rgbBytes.slice(0, 12)));
             }
 
             // Validate RGB data size
             const expectedSize = width * height * 3;
             if (rgbBytes.length !== expectedSize) {
               console.warn(`Frame size mismatch: expected ${expectedSize}, got ${rgbBytes.length}`);
+              console.log(`Bytes per pixel: ${rgbBytes.length / (width * height)}`);
             }
 
             // Convert RGB to RGBA (ImageData requires RGBA format)
@@ -106,7 +119,7 @@ export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPr
         });
 
         // Listen for camera errors
-        const errorUnlisten = await listen<string>('camera-error', (event) => {
+        errorUnlisten = await listen<string>('camera-error', (event) => {
           const errorMsg = event.payload;
           console.error('Camera error:', errorMsg);
           setError(errorMsg);
@@ -117,11 +130,6 @@ export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPr
         // Start camera preview
         await startCameraPreview(cameraIndex);
         setIsLoading(false);
-
-        // Return cleanup function that also removes error listener
-        return () => {
-          errorUnlisten();
-        };
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         console.error('Failed to start camera preview:', errorMsg);
@@ -137,6 +145,9 @@ export default function WebcamPreview({ cameraIndex, active, onError }: WebcamPr
       // Cleanup listeners and stop preview
       if (unlisten) {
         unlisten();
+      }
+      if (errorUnlisten) {
+        errorUnlisten();
       }
 
       stopCameraPreview(cameraIndex).catch((err) => {

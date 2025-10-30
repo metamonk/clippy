@@ -125,12 +125,9 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   // Calculate visual duration (trimmed duration)
   const visualDuration = clip.trimOut - clip.trimIn;
 
-  // When trimming from the left, the visible portion should start later on the timeline
-  // Adjust the timeline position by the trimIn amount
-  const adjustedStartTime = clip.startTime + clip.trimIn;
-
   // Use dragPosition when dragging for smooth visual feedback, otherwise use actual position
-  const displayStartTime = dragPosition !== null ? dragPosition + clip.trimIn : adjustedStartTime;
+  // clip.startTime already represents where the clip should be positioned on the timeline
+  const displayStartTime = dragPosition !== null ? dragPosition : clip.startTime;
 
   // Calculate position and width based on the VISIBLE portion
   const { x, width } = calculateClipPosition(displayStartTime, visualDuration, pixelsPerSecond);

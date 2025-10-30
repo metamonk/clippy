@@ -29,6 +29,7 @@ use nokhwa::{
     Camera,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -223,9 +224,10 @@ impl CameraService {
     pub fn capture_frame(&self, camera: &mut Camera) -> Result<Vec<u8>, CameraError> {
         camera
             .frame()
-            .map(|frame| frame.buffer().to_vec())
+            .and_then(|frame| frame.decode_image::<RgbFormat>())
+            .map(|img| img.into_raw())
             .map_err(|e| {
-                error!("Failed to capture frame: {}", e);
+                error!("Failed to capture and decode frame: {}", e);
                 CameraError::CaptureFailed(e.to_string())
             })
     }
@@ -263,8 +265,8 @@ pub struct CameraCapture {
     camera_index: u32,
     /// Flag indicating if capture is active
     is_capturing: bool,
-    /// Stop signal sender
-    stop_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    /// Stop signal flag (Arc to share with capture thread)
+    stop_flag: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl CameraCapture {
@@ -309,8 +311,23 @@ impl CameraCapture {
             height,
             camera_index,
             is_capturing: false,
-            stop_tx: None,
+            stop_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
+    }
+
+    /// Set target resolution for capture
+    ///
+    /// Override the camera's native resolution with a target resolution for capture.
+    /// Useful for capping resolution at 1080p or other limits.
+    ///
+    /// # Arguments
+    ///
+    /// * `width` - Target width in pixels
+    /// * `height` - Target height in pixels
+    pub fn set_target_resolution(&mut self, width: u32, height: u32) {
+        self.width = width;
+        self.height = height;
+        info!("Camera capture target resolution set to {}x{}", width, height);
     }
 
     /// Start continuous camera capture
@@ -339,9 +356,9 @@ impl CameraCapture {
 
         self.is_capturing = true;
 
-        // Create stop signal channel and store sender before moving data
-        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
-        self.stop_tx = Some(stop_tx);
+        // Reset stop flag and clone for capture thread
+        self.stop_flag.store(false, std::sync::atomic::Ordering::Relaxed);
+        let stop_flag = self.stop_flag.clone();
 
         // Clone/copy all needed data before async move
         let width = self.width;
@@ -355,8 +372,11 @@ impl CameraCapture {
 
         // Spawn blocking capture task (Camera is not Send)
         let handle = tokio::task::spawn_blocking(move || {
-            // Open camera in blocking thread
-            let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
+            // Open camera at its native highest resolution
+            // We'll downscale in software to the target resolution
+            let requested = RequestedFormat::new::<RgbFormat>(
+                RequestedFormatType::AbsoluteHighestResolution
+            );
             let index = CameraIndex::Index(camera_index);
 
             let mut camera = match Camera::new(index, requested) {
@@ -373,26 +393,33 @@ impl CameraCapture {
                 return;
             }
 
-            info!("Camera stream started in capture thread");
+            // Get actual resolution the camera opened at
+            let actual_resolution = camera.resolution();
+            let actual_width = actual_resolution.width();
+            let actual_height = actual_resolution.height();
 
+            info!(
+                "Camera stream started at {}x{} (requested {}x{})",
+                actual_width, actual_height, width, height
+            );
+
+            info!("Starting capture loop at 30 FPS");
             let recording_start = std::time::Instant::now();
             let frame_interval = std::time::Duration::from_millis(33); // ~30 FPS
             let mut next_frame_time = std::time::Instant::now();
 
-            // Create a runtime for checking stop signal in blocking thread
+            // Create a runtime for frame sending
             let rt = tokio::runtime::Handle::current();
-            let mut stop_rx = stop_rx;
 
+            let mut loop_count = 0;
             loop {
-                // Check stop signal non-blocking
-                let should_stop = rt.block_on(async {
-                    match tokio::time::timeout(std::time::Duration::from_micros(1), &mut stop_rx).await {
-                        Ok(_) => true,  // Stop signal received
-                        Err(_) => false, // Timeout (no signal yet)
-                    }
-                });
+                loop_count += 1;
+                if loop_count % 30 == 1 {
+                    info!("Capture loop iteration {} (at {:?})", loop_count, recording_start.elapsed());
+                }
 
-                if should_stop {
+                // Check stop signal (AtomicBool can be checked multiple times safely)
+                if stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
                     info!("Stop signal received, stopping camera capture");
                     break;
                 }
@@ -404,21 +431,37 @@ impl CameraCapture {
                 }
                 next_frame_time = next_frame_time + frame_interval;
 
-                // Capture frame
-                let rgb_data = match camera.frame() {
-                    Ok(frame) => frame.buffer().to_vec(),
+                // Capture frame and decode to RGB
+                let rgb_image = match camera.frame().and_then(|frame| frame.decode_image::<RgbFormat>()) {
+                    Ok(img) => img,
                     Err(e) => {
-                        warn!("Failed to capture camera frame: {}", e);
+                        warn!("Failed to capture and decode camera frame: {}", e);
                         continue;
                     }
                 };
 
+                // Downscale if needed (actual resolution != target resolution)
+                let rgb_data = if actual_width != width || actual_height != height {
+                    // Need to downscale
+                    use image::imageops::FilterType;
+                    let resized = image::imageops::resize(
+                        &rgb_image,
+                        width,
+                        height,
+                        FilterType::Lanczos3
+                    );
+                    resized.into_raw()
+                } else {
+                    // No scaling needed
+                    rgb_image.into_raw()
+                };
+
                 // Convert RGB to BGRA (nokhwa returns RGB, FFmpeg expects BGRA)
                 // RGB has 3 bytes per pixel, BGRA has 4 bytes per pixel
-                let pixel_count = (width * height) as usize;
-                let mut bgra_data = Vec::with_capacity(pixel_count * 4);
+                let target_pixel_count = (width * height) as usize;
+                let mut bgra_data = Vec::with_capacity(target_pixel_count * 4);
 
-                for i in 0..pixel_count {
+                for i in 0..target_pixel_count {
                     let rgb_idx = i * 3;
                     if rgb_idx + 2 < rgb_data.len() {
                         bgra_data.push(rgb_data[rgb_idx + 2]); // B
@@ -431,7 +474,7 @@ impl CameraCapture {
                 // Calculate timestamp since recording start
                 let timestamp_ms = recording_start.elapsed().as_millis() as u64;
 
-                // Create timestamped frame
+                // Create timestamped frame using target resolution (after downscaling)
                 let frame = crate::services::ffmpeg::TimestampedFrame {
                     data: bgra_data,
                     timestamp_ms,
@@ -443,6 +486,10 @@ impl CameraCapture {
                 if rt.block_on(frame_tx.send(frame)).is_err() {
                     info!("Frame channel closed, stopping camera capture");
                     break;
+                }
+
+                if loop_count % 30 == 0 {
+                    info!("Successfully sent frame {} to encoder", loop_count);
                 }
             }
 
@@ -456,9 +503,9 @@ impl CameraCapture {
     ///
     /// Sends a stop signal to the capture task.
     pub fn stop_capture(&mut self) {
-        if let Some(stop_tx) = self.stop_tx.take() {
+        if self.is_capturing {
             info!("Stopping camera capture");
-            let _ = stop_tx.send(());
+            self.stop_flag.store(true, std::sync::atomic::Ordering::Relaxed);
             self.is_capturing = false;
         } else {
             warn!("No active camera capture to stop");

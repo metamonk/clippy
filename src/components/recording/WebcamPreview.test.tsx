@@ -150,11 +150,11 @@ describe('WebcamPreview', () => {
 
   describe('Camera Frame Handling', () => {
     it('should decode and render base64 frames to canvas', async () => {
-      let frameHandler: ((event: { payload: { data: string; width: number; height: number } }) => void) | null = null;
+      let frameHandler: ((event: { payload: { camera_index: number; frame_data: string; width: number; height: number; timestamp: number } }) => void) | null = null;
 
       listenMock.mockImplementation((eventName: string, handler: (event: any) => void) => {
         if (eventName === 'camera-frame') {
-          frameHandler = handler as (event: { payload: { data: string; width: number; height: number } }) => void;
+          frameHandler = handler as (event: { payload: { camera_index: number; frame_data: string; width: number; height: number; timestamp: number } }) => void;
           return Promise.resolve(mockUnlisten);
         }
         if (eventName === 'camera-error') {
@@ -169,12 +169,12 @@ describe('WebcamPreview', () => {
         expect(frameHandler).not.toBeNull();
       });
 
-      // Create a simple 2x2 red image (RGBA format, 16 bytes)
+      // Create a simple 2x2 red image (RGB format, 12 bytes - 3 bytes per pixel)
       const imageData = new Uint8ClampedArray([
-        255, 0, 0, 255, // Red pixel 1
-        255, 0, 0, 255, // Red pixel 2
-        255, 0, 0, 255, // Red pixel 3
-        255, 0, 0, 255, // Red pixel 4
+        255, 0, 0, // Red pixel 1
+        255, 0, 0, // Red pixel 2
+        255, 0, 0, // Red pixel 3
+        255, 0, 0, // Red pixel 4
       ]);
 
       // Convert to base64
@@ -183,9 +183,11 @@ describe('WebcamPreview', () => {
       // Simulate frame event
       frameHandler!({
         payload: {
-          data: base64Data,
+          camera_index: 0,
+          frame_data: base64Data,
           width: 2,
           height: 2,
+          timestamp: Date.now(),
         },
       });
 
@@ -197,12 +199,12 @@ describe('WebcamPreview', () => {
     });
 
     it('should handle invalid base64 data gracefully', async () => {
-      let frameHandler: ((event: { payload: { data: string; width: number; height: number } }) => void) | null = null;
+      let frameHandler: ((event: { payload: { camera_index: number; frame_data: string; width: number; height: number; timestamp: number } }) => void) | null = null;
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       listenMock.mockImplementation((eventName: string, handler: (event: any) => void) => {
         if (eventName === 'camera-frame') {
-          frameHandler = handler as (event: { payload: { data: string; width: number; height: number } }) => void;
+          frameHandler = handler as (event: { payload: { camera_index: number; frame_data: string; width: number; height: number; timestamp: number } }) => void;
           return Promise.resolve(mockUnlisten);
         }
         if (eventName === 'camera-error') {
@@ -220,9 +222,11 @@ describe('WebcamPreview', () => {
       // Send invalid base64
       frameHandler!({
         payload: {
-          data: 'invalid-base64!!!',
+          camera_index: 0,
+          frame_data: 'invalid-base64!!!',
           width: 100,
           height: 100,
+          timestamp: Date.now(),
         },
       });
 
@@ -233,11 +237,11 @@ describe('WebcamPreview', () => {
     });
 
     it('should update canvas dimensions when frame size changes', async () => {
-      let frameHandler: ((event: { payload: { data: string; width: number; height: number } }) => void) | null = null;
+      let frameHandler: ((event: { payload: { camera_index: number; frame_data: string; width: number; height: number; timestamp: number } }) => void) | null = null;
 
       listenMock.mockImplementation((eventName: string, handler: (event: any) => void) => {
         if (eventName === 'camera-frame') {
-          frameHandler = handler as (event: { payload: { data: string; width: number; height: number } }) => void;
+          frameHandler = handler as (event: { payload: { camera_index: number; frame_data: string; width: number; height: number; timestamp: number } }) => void;
           return Promise.resolve(mockUnlisten);
         }
         if (eventName === 'camera-error') {
@@ -254,26 +258,30 @@ describe('WebcamPreview', () => {
 
       const canvas = document.querySelector('canvas') as HTMLCanvasElement;
 
-      // Send first frame (10x10)
-      const smallFrame = new Uint8ClampedArray(10 * 10 * 4).fill(255);
+      // Send first frame (10x10 RGB - 3 bytes per pixel)
+      const smallFrame = new Uint8ClampedArray(10 * 10 * 3).fill(255);
       frameHandler!({
         payload: {
-          data: btoa(String.fromCharCode(...smallFrame)),
+          camera_index: 0,
+          frame_data: btoa(String.fromCharCode(...smallFrame)),
           width: 10,
           height: 10,
+          timestamp: Date.now(),
         },
       });
 
       expect(canvas!.width).toBe(10);
       expect(canvas!.height).toBe(10);
 
-      // Send second frame (20x20)
-      const largeFrame = new Uint8ClampedArray(20 * 20 * 4).fill(255);
+      // Send second frame (20x20 RGB - 3 bytes per pixel)
+      const largeFrame = new Uint8ClampedArray(20 * 20 * 3).fill(255);
       frameHandler!({
         payload: {
-          data: btoa(String.fromCharCode(...largeFrame)),
+          camera_index: 0,
+          frame_data: btoa(String.fromCharCode(...largeFrame)),
           width: 20,
           height: 20,
+          timestamp: Date.now(),
         },
       });
 
@@ -458,11 +466,11 @@ describe('WebcamPreview', () => {
     });
 
     it('should handle missing canvas ref gracefully', async () => {
-      let frameHandler: ((event: { payload: { data: string; width: number; height: number } }) => void) | null = null;
+      let frameHandler: ((event: { payload: { camera_index: number; frame_data: string; width: number; height: number; timestamp: number } }) => void) | null = null;
 
       listenMock.mockImplementation((eventName: string, handler: (event: any) => void) => {
         if (eventName === 'camera-frame') {
-          frameHandler = handler as (event: { payload: { data: string; width: number; height: number } }) => void;
+          frameHandler = handler as (event: { payload: { camera_index: number; frame_data: string; width: number; height: number; timestamp: number } }) => void;
           return Promise.resolve(mockUnlisten);
         }
         if (eventName === 'camera-error') {
@@ -480,13 +488,15 @@ describe('WebcamPreview', () => {
       // Unmount to clear canvas ref
       unmount();
 
-      // Try to send frame (should not crash)
-      const frame = new Uint8ClampedArray(100 * 100 * 4).fill(255);
+      // Try to send frame (should not crash) - RGB format (3 bytes per pixel)
+      const frame = new Uint8ClampedArray(100 * 100 * 3).fill(255);
       frameHandler!({
         payload: {
-          data: btoa(String.fromCharCode(...frame)),
+          camera_index: 0,
+          frame_data: btoa(String.fromCharCode(...frame)),
           width: 100,
           height: 100,
+          timestamp: Date.now(),
         },
       });
 

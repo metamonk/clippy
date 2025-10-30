@@ -203,6 +203,9 @@ export function getEffectiveDuration(clip: Clip): number {
  * @returns Tuple of [firstClip, secondClip] or null if split is invalid
  */
 export function splitClipAtTime(clip: Clip, splitTime: number): [Clip, Clip] | null {
+  // Round splitTime immediately to ensure integer arithmetic throughout
+  splitTime = Math.round(splitTime);
+
   const clipStart = clip.startTime;
   const clipEnd = clip.startTime + (clip.trimOut - clip.trimIn);
 
@@ -212,6 +215,7 @@ export function splitClipAtTime(clip: Clip, splitTime: number): [Clip, Clip] | n
   }
 
   // Calculate split point relative to clip's internal timeline
+  // All values are integers now since we rounded splitTime at the start
   const splitOffset = splitTime - clipStart;
   const splitPointInFile = clip.trimIn + splitOffset;
 
@@ -219,28 +223,33 @@ export function splitClipAtTime(clip: Clip, splitTime: number): [Clip, Clip] | n
   const firstClip: Clip = {
     id: uuidv4(),
     filePath: clip.filePath,
-    startTime: clip.startTime,
+    startTime: clip.startTime, // Keep original startTime
     duration: clip.duration,
     trimIn: clip.trimIn,
     trimOut: splitPointInFile,
-    fadeIn: clip.fadeIn, // Preserve fade-in from original
-    fadeOut: 0, // Reset fade-out at split point
-    volume: clip.volume, // Preserve volume
-    muted: clip.muted, // Preserve mute state
+    fadeIn: clip.fadeIn,
+    fadeOut: 0,
+    volume: clip.volume,
+    muted: clip.muted,
+    audioTracks: clip.audioTracks,
+    transform: clip.transform,
   };
 
   // Second clip: from split point to original end
+  // Use rounded splitTime directly to ensure no gap
   const secondClip: Clip = {
     id: uuidv4(),
     filePath: clip.filePath,
-    startTime: splitTime,
+    startTime: splitTime, // This is exactly where first clip ends
     duration: clip.duration,
     trimIn: splitPointInFile,
     trimOut: clip.trimOut,
-    fadeIn: 0, // Reset fade-in at split point
-    fadeOut: clip.fadeOut, // Preserve fade-out from original
-    volume: clip.volume, // Preserve volume
-    muted: clip.muted, // Preserve mute state
+    fadeIn: 0,
+    fadeOut: clip.fadeOut,
+    volume: clip.volume,
+    muted: clip.muted,
+    audioTracks: clip.audioTracks,
+    transform: clip.transform,
   };
 
   return [firstClip, secondClip];

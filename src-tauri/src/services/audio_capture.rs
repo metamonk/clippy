@@ -154,6 +154,16 @@ impl AudioCapture {
         Ok(devices)
     }
 
+    /// Get the channel count of the selected device
+    ///
+    /// Returns the number of channels (1=mono, 2=stereo) or error if no device selected
+    pub fn get_channels(&self) -> Result<u16, AudioCaptureError> {
+        let config = self.config.as_ref().ok_or_else(|| {
+            AudioCaptureError::StreamConfigError("No device config available".to_string())
+        })?;
+        Ok(config.channels())
+    }
+
     /// Select the default input device
     ///
     /// This selects the system's default microphone for capture.
@@ -278,7 +288,7 @@ impl AudioCapture {
         })?;
 
         self.stream = Some(stream);
-        info!("Audio capture started successfully");
+        info!("Audio capture started successfully - waiting for audio callbacks");
 
         Ok(())
     }
@@ -305,8 +315,17 @@ impl AudioCapture {
         };
 
         let sample_tx = Arc::new(sample_tx);
+        let callback_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let callback_count_clone = callback_count.clone();
 
         let data_fn = move |data: &[T], _: &cpal::InputCallbackInfo| {
+            let count = callback_count_clone.fetch_add(1, Ordering::Relaxed) + 1;
+
+            // Log first few callbacks to verify stream is working
+            if count <= 3 {
+                info!("Audio callback #{}: received {} samples", count, data.len());
+            }
+
             // Story 4.8: Discard samples during pause (sample discard approach)
             if is_paused.load(Ordering::Relaxed) {
                 debug!("Microphone audio sample discarded during pause");
@@ -337,6 +356,8 @@ impl AudioCapture {
             // Send sample (non-blocking)
             if let Err(e) = sample_tx.try_send(audio_sample) {
                 warn!("Failed to send audio sample: {}", e);
+            } else if count <= 3 {
+                info!("Audio sample #{} sent successfully to channel", count);
             }
         };
 

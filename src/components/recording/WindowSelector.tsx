@@ -2,7 +2,7 @@
  * Window Selector Component (Story 4.1)
  *
  * Dropdown selector for choosing which application window to record.
- * Displays window titles with app names, supports search/filter, and refresh.
+ * Displays window titles with app names and refresh button.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -10,8 +10,7 @@ import { useRecordingStore } from '@/stores/recordingStore';
 import type { WindowInfo } from '@/types/recording';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { RefreshCw, Search } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 interface WindowSelectorProps {
   /** Callback when window selection changes */
@@ -26,7 +25,6 @@ export function WindowSelector({ onWindowSelect }: WindowSelectorProps) {
     refreshWindows,
   } = useRecordingStore();
 
-  const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleRefresh = useCallback(async () => {
@@ -49,18 +47,8 @@ export function WindowSelector({ onWindowSelect }: WindowSelectorProps) {
     onWindowSelect?.(windowId);
   };
 
-  // Filter windows by search query
-  const filteredWindows = availableWindows.filter((window) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      window.title.toLowerCase().includes(query) ||
-      window.ownerName.toLowerCase().includes(query)
-    );
-  });
-
   // Group windows by application
-  const groupedWindows = filteredWindows.reduce(
+  const groupedWindows = availableWindows.reduce(
     (acc, window) => {
       if (!acc[window.ownerName]) {
         acc[window.ownerName] = [];
@@ -70,9 +58,6 @@ export function WindowSelector({ onWindowSelect }: WindowSelectorProps) {
     },
     {} as Record<string, WindowInfo[]>
   );
-
-  // Show search input only if there are more than 10 windows
-  const showSearch = availableWindows.length > 10;
 
   if (availableWindows.length === 0) {
     return (
@@ -94,39 +79,15 @@ export function WindowSelector({ onWindowSelect }: WindowSelectorProps) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex gap-2">
-        {showSearch && (
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search windows..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-        )}
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          title="Refresh window list"
-        >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-        </Button>
-      </div>
-
+    <div className="flex gap-2">
       <Select
         value={selectedWindowId?.toString() ?? 'none'}
         onValueChange={handleSelect}
       >
-        <SelectTrigger className="w-full">
+        <SelectTrigger className="flex-1">
           <SelectValue placeholder="Select a window to record" />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="max-h-[300px]">
           <SelectItem value="none">Select a window...</SelectItem>
           {Object.entries(groupedWindows).map(([appName, windows]) => (
             <SelectGroup key={appName}>
@@ -149,6 +110,16 @@ export function WindowSelector({ onWindowSelect }: WindowSelectorProps) {
           ))}
         </SelectContent>
       </Select>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={handleRefresh}
+        disabled={isRefreshing}
+        title="Refresh window list"
+        className="shrink-0"
+      >
+        <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+      </Button>
     </div>
   );
 }

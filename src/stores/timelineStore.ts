@@ -4,6 +4,7 @@ import type { Clip, Timeline, TimelineViewConfig } from '@/types/timeline';
 import { TIMELINE_DEFAULTS } from '@/types/timeline';
 import { v4 as uuidv4 } from 'uuid';
 import { splitClipAtTime } from '@/lib/timeline/clipOperations';
+import { BASE_PIXELS_PER_SECOND } from '@/lib/timeline/zoomUtils';
 
 // Story 3.3: Maximum history depth for undo functionality
 const MAX_HISTORY = 10;
@@ -26,6 +27,9 @@ interface TimelineState extends Timeline {
 
   /** Per-track audio settings for multi-audio clips (Story 4.7) */
   audioTrackSettings: Record<string, Record<number, { volume: number; muted: boolean }>>;
+
+  /** Fixed timeline duration in milliseconds (overrides auto-calculated duration if set) */
+  fixedDuration: number | null;
 
   /** Add a clip to a specific track */
   addClip: (trackId: string, clip: Omit<Clip, 'id'>) => void;
@@ -104,6 +108,9 @@ interface TimelineState extends Timeline {
 
   /** Get audio track settings for a specific clip and track (Story 4.7) */
   getAudioTrackSettings: (clipId: string, trackIndex: number) => { volume: number; muted: boolean } | undefined;
+
+  /** Set fixed timeline duration (null to use auto-calculated duration) */
+  setFixedDuration: (duration: number | null) => void;
 }
 
 /**
@@ -140,10 +147,12 @@ export const useTimelineStore = create<TimelineState>()(
       history: [],
       historyIndex: -1,
       audioTrackSettings: {},
+      fixedDuration: null,
       viewConfig: {
         pixelsPerSecond: TIMELINE_DEFAULTS.PIXELS_PER_SECOND,
         trackHeight: TIMELINE_DEFAULTS.TRACK_HEIGHT,
         rulerHeight: TIMELINE_DEFAULTS.RULER_HEIGHT,
+        zoomLevel: TIMELINE_DEFAULTS.PIXELS_PER_SECOND / BASE_PIXELS_PER_SECOND, // 50 / 100 = 0.5x
       },
 
       addClip: (trackId: string, clipData: Omit<Clip, 'id'>) =>
@@ -828,12 +837,16 @@ export const useTimelineStore = create<TimelineState>()(
       // Story 3.6: Zoom controls
       setZoomLevel: (level: number) =>
         set(
-          (state) => ({
-            viewConfig: {
-              ...state.viewConfig,
-              zoomLevel: Math.max(0.1, Math.min(10, level)), // Clamp between 0.1x and 10x
-            },
-          }),
+          (state) => {
+            const clampedZoom = Math.max(0.1, Math.min(10, level)); // Clamp between 0.1x and 10x
+            return {
+              viewConfig: {
+                ...state.viewConfig,
+                zoomLevel: clampedZoom,
+                pixelsPerSecond: BASE_PIXELS_PER_SECOND * clampedZoom,
+              },
+            };
+          },
           false,
           'setZoomLevel'
         ),
@@ -847,6 +860,7 @@ export const useTimelineStore = create<TimelineState>()(
               viewConfig: {
                 ...state.viewConfig,
                 zoomLevel: newZoom,
+                pixelsPerSecond: BASE_PIXELS_PER_SECOND * newZoom,
               },
             };
           },
@@ -863,6 +877,7 @@ export const useTimelineStore = create<TimelineState>()(
               viewConfig: {
                 ...state.viewConfig,
                 zoomLevel: newZoom,
+                pixelsPerSecond: BASE_PIXELS_PER_SECOND * newZoom,
               },
             };
           },
@@ -943,6 +958,15 @@ export const useTimelineStore = create<TimelineState>()(
         const state = get();
         return state.audioTrackSettings[clipId]?.[trackIndex];
       },
+
+      setFixedDuration: (duration: number | null) =>
+        set(
+          {
+            fixedDuration: duration,
+          },
+          false,
+          'setFixedDuration'
+        ),
     }),
     {
       name: 'timeline-store',

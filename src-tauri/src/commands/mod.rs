@@ -5,6 +5,7 @@ pub mod recording;
 pub mod performance;
 pub mod composition;
 pub mod timeline_render;
+pub mod ai_analysis;
 
 pub use media::cmd_import_media;
 pub use export::{ExportState, cmd_start_export, cmd_get_export_progress, cmd_cancel_export};
@@ -31,6 +32,7 @@ pub use recording::{
     cmd_check_camera_permission,
     cmd_request_camera_permission,
     cmd_list_cameras,
+    cmd_list_microphones,
     cmd_start_camera_preview,
     cmd_stop_camera_preview,
     cmd_start_webcam_recording,
@@ -65,3 +67,4 @@ pub use timeline_render::{
     cmd_render_timeline,
     cmd_clear_timeline_cache,
 };
+pub use ai_analysis::cmd_analyze_recording;

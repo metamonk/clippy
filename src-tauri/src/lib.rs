@@ -34,6 +34,7 @@ use commands::{
     cmd_check_camera_permission,
     cmd_request_camera_permission,
     cmd_list_cameras,
+    cmd_list_microphones,
     cmd_start_camera_preview,
     cmd_stop_camera_preview,
     cmd_start_webcam_recording,
@@ -57,6 +58,7 @@ use commands::{
     cmd_classify_segment_type,
     cmd_render_timeline,
     cmd_clear_timeline_cache,
+    cmd_analyze_recording,
 };
 
 /// Initialize logging system with file output to ~/Library/Logs/clippy/app.log
@@ -199,6 +201,7 @@ pub fn run() {
             cmd_check_camera_permission,
             cmd_request_camera_permission,
             cmd_list_cameras,
+            cmd_list_microphones,
             cmd_start_camera_preview,
             cmd_stop_camera_preview,
             cmd_start_webcam_recording,
@@ -221,7 +224,8 @@ pub fn run() {
             cmd_render_segment,
             cmd_classify_segment_type,
             cmd_render_timeline,
-            cmd_clear_timeline_cache
+            cmd_clear_timeline_cache,
+            cmd_analyze_recording
         ])
         .setup(|app| {
             use tauri::menu::*;

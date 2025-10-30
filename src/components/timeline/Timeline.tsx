@@ -12,6 +12,9 @@ import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Clip } from '@/types/timeline';
 
+// Padding added to timeline after last clip for editing space (ms)
+const TIMELINE_PADDING_MS = 30000; // 30 seconds of breathing room
+
 interface TimelineProps {
   width: number;
   height: number;
@@ -33,13 +36,12 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
   // Subscribe to timeline store
   const tracks = useTimelineStore((state) => state.tracks);
   const totalDuration = useTimelineStore((state) => state.totalDuration);
+  const fixedDuration = useTimelineStore((state) => state.fixedDuration);
   const viewConfig = useTimelineStore((state) => state.viewConfig);
   // const addClip = useTimelineStore((state) => state.addClip); // TODO: Use when adding clips from UI
   const selectedClipId = useTimelineStore((state) => state.selectedClipId);
   const setSelectedClip = useTimelineStore((state) => state.setSelectedClip);
-  const getClip = useTimelineStore((state) => state.getClip);
-  const resetTrim = useTimelineStore((state) => state.resetTrim);
-  const splitClip = useTimelineStore((state) => state.splitClip); // Story 3.4 AC#1
+  const splitClip = useTimelineStore((state) => state.splitClip); // Story 3.4 AC#1 - keyboard shortcut
   const undo = useTimelineStore((state) => state.undo); // Story 3.3 AC#5
 
   // Subscribe to media library
@@ -84,12 +86,13 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, splitClip, playheadPosition, setSelectedClip]);
 
-  // Calculate timeline dimensions
-  const minTimelineWidth = Math.max(
-    calculateTimelineWidth(totalDuration || 60000, viewConfig.pixelsPerSecond),
-    width
-  );
-
+  // Calculate timeline dimensions with padding for breathing room
+  // Use fixed duration if set, otherwise use auto-calculated duration + padding
+  const effectiveTimelineDuration = fixedDuration !== null
+    ? fixedDuration
+    : (totalDuration || 60000) + TIMELINE_PADDING_MS;
+  const calculatedWidth = calculateTimelineWidth(effectiveTimelineDuration, viewConfig.pixelsPerSecond);
+  const minTimelineWidth = Math.max(calculatedWidth, width);
   const timelineHeight = viewConfig.rulerHeight + tracks.length * viewConfig.trackHeight;
 
   // Handle click on timeline to seek and deselect clips
@@ -139,30 +142,6 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
     return null;
   }, [tracks, playheadPosition]);
 
-  // Handle reset trim button click
-  const handleResetTrim = useCallback(() => {
-    if (selectedClipId) {
-      resetTrim(selectedClipId);
-    }
-  }, [selectedClipId, resetTrim]);
-
-  // Story 3.4 AC#1: Handle split button click
-  const handleSplit = useCallback(() => {
-    const clipAtPlayhead = findClipAtPlayhead();
-    if (clipAtPlayhead) {
-      splitClip(clipAtPlayhead.id, playheadPosition);
-    }
-  }, [findClipAtPlayhead, splitClip, playheadPosition]);
-
-  // Check if selected clip has been trimmed
-  const selectedClip = selectedClipId ? getClip(selectedClipId) : null;
-  const showResetButton = selectedClip && (
-    selectedClip.trimIn > 0 || selectedClip.trimOut < selectedClip.duration
-  );
-
-  // Story 3.4 AC#1: Check if playhead is over a clip (for split button)
-  const clipAtPlayhead = findClipAtPlayhead();
-  const showSplitButton = clipAtPlayhead !== null;
 
   return (
     <div
@@ -175,65 +154,6 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
         position: 'relative',
       }}
     >
-      {/* Reset Trim Button */}
-      {showResetButton && (
-        <button
-          onClick={handleResetTrim}
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '8px',
-            zIndex: 10,
-            padding: '6px 12px',
-            backgroundColor: '#4a4a4a',
-            color: '#ffffff',
-            border: '1px solid #666666',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontFamily: 'Arial, sans-serif',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#5a5a5a';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#4a4a4a';
-          }}
-        >
-          Reset Trim
-        </button>
-      )}
-
-      {/* Story 3.4 AC#1: Split Button */}
-      {showSplitButton && (
-        <button
-          onClick={handleSplit}
-          title="Split clip at playhead (Cmd+B)"
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: showResetButton ? '110px' : '8px', // Position to left of reset button if both showing
-            zIndex: 10,
-            padding: '6px 12px',
-            backgroundColor: '#4a4a4a',
-            color: '#ffffff',
-            border: '1px solid #666666',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontFamily: 'Arial, sans-serif',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#5a5a5a';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#4a4a4a';
-          }}
-        >
-          Split (Cmd+B)
-        </button>
-      )}
-
       <Stage
         width={minTimelineWidth}
         height={timelineHeight}
@@ -284,7 +204,7 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
           <TimeRuler
             width={minTimelineWidth}
             height={viewConfig.rulerHeight}
-            durationMs={totalDuration || 60000}
+            durationMs={effectiveTimelineDuration}
             pixelsPerSecond={viewConfig.pixelsPerSecond}
           />
         </Layer>

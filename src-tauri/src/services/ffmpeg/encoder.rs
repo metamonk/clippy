@@ -408,15 +408,28 @@ impl FFmpegEncoder {
         // Map video stream from input 0
         command.arg("-map").arg("0:v");
 
-        // Map each audio stream (inputs 1, 2, 3, ...)
+        // Build audio filter to mix all audio inputs together
+        // This ensures the user hears all audio sources (system + microphone) simultaneously
+        let mut filter_complex = String::new();
         for i in 0..audio_inputs.len() {
-            command.arg("-map").arg(format!("{}:a", i + 1));
+            // Convert each input to stereo if needed and label it
+            filter_complex.push_str(&format!("[{}:a]aformat=channel_layouts=stereo[a{}];", i + 1, i));
         }
+
+        // Mix all audio streams together
+        for i in 0..audio_inputs.len() {
+            filter_complex.push_str(&format!("[a{}]", i));
+        }
+        // Use amix with normalize=0 to prevent automatic volume reduction, then boost output
+        filter_complex.push_str(&format!("amix=inputs={}:duration=longest:dropout_transition=2:normalize=0,volume=2.0[aout]", audio_inputs.len()));
+
+        command.arg("-filter_complex").arg(&filter_complex);
+        command.arg("-map").arg("[aout]");
 
         // Video codec: copy (already encoded)
         command.arg("-c:v").arg("copy");
 
-        // Audio codec: AAC for all tracks
+        // Audio codec: AAC
         command.arg("-c:a").arg("aac");
         command.arg("-b:a").arg("192k");
 

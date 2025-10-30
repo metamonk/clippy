@@ -5,7 +5,7 @@
 use crate::models::recording::RecordingConfig;
 use crate::services::permissions::{
     check_camera_permission, check_screen_recording_permission, request_camera_permission,
-    request_screen_recording_permission,
+    request_screen_recording_permission, check_microphone_permission,
 };
 use crate::services::camera::{CameraCapture, CameraInfo, CameraService};
 use crate::services::ffmpeg::{FFmpegEncoder, FFmpegCompositor, CompositorFrame, PipConfig, TimestampedFrame};
@@ -31,14 +31,25 @@ type RecordingHandle = (
     PathBuf,                               // Output file path (video-only MP4)
     Arc<std::sync::atomic::AtomicBool>,   // Pause flag (Story 4.8)
     Arc<std::sync::atomic::AtomicBool>,   // Stop signal
-    Option<tokio::task::JoinHandle<Result<(), String>>>, // Audio writer task
-    Option<PathBuf>,                       // Audio PCM file path
+    Option<tokio::task::JoinHandle<Result<(), String>>>, // System audio writer task
+    Option<PathBuf>,                       // System audio PCM file path
+    Option<tokio::task::JoinHandle<Result<(), String>>>, // Microphone audio writer task
+    Option<PathBuf>,                       // Microphone audio PCM file path
+    Option<Arc<AtomicBool>>,               // Microphone pause flag (Story 4.8)
+    Option<u16>,                           // Microphone channel count (1=mono, 2=stereo)
 );
 
 lazy_static::lazy_static! {
     static ref ACTIVE_RECORDINGS: Arc<Mutex<HashMap<String, RecordingHandle>>> =
         Arc::new(Mutex::new(HashMap::new()));
 }
+
+// Storage for microphone audio channel senders (needed to close channels on stop)
+lazy_static::lazy_static! {
+    static ref MICROPHONE_SENDERS: Arc<tokio::sync::Mutex<HashMap<String, tokio::sync::mpsc::Sender<AudioSample>>>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+}
+
 
 /// Global state for managing active camera previews
 ///
@@ -301,8 +312,8 @@ pub async fn cmd_start_camera_preview(
     // Check if preview already running for this camera
     let mut previews = ACTIVE_CAMERA_PREVIEWS.lock().await;
     if previews.contains_key(&camera_index) {
-        warn!("Camera preview already running for index {}", camera_index);
-        return Err(format!("Camera preview already running for index {}", camera_index));
+        warn!("Camera preview already running for index {} - ignoring duplicate start request", camera_index);
+        return Ok(()); // Return success - already running is not an error
     }
 
     info!("Starting camera preview for index {}", camera_index);
@@ -426,15 +437,18 @@ pub async fn cmd_stop_camera_preview(camera_index: u32) -> Result<(), String> {
     debug!("Command: stop camera preview for index {}", camera_index);
 
     let mut previews = ACTIVE_CAMERA_PREVIEWS.lock().await;
-    let handle = previews.remove(&camera_index).ok_or_else(|| {
-        error!("Camera preview not found for index {}", camera_index);
-        format!("Camera preview not found for index {}", camera_index)
-    })?;
 
-    // Abort the preview task
-    handle.abort();
+    match previews.remove(&camera_index) {
+        Some(handle) => {
+            // Abort the preview task
+            handle.abort();
+            info!("Camera preview stopped for index {}", camera_index);
+        }
+        None => {
+            debug!("Camera preview not found for index {} (already stopped or never started)", camera_index);
+        }
+    }
 
-    info!("Camera preview stopped for index {}", camera_index);
     Ok(())
 }
 
@@ -642,6 +656,9 @@ pub async fn cmd_start_webcam_recording(
     };
 
     info!("Recording at {}x{} @ 30 FPS", width, height);
+
+    // Update camera capture with capped resolution
+    camera_capture.set_target_resolution(width, height);
 
     // Create FFmpeg encoder
     let mut encoder = FFmpegEncoder::new(output_path.clone(), width, height, 30).map_err(|e| {
@@ -974,7 +991,8 @@ pub async fn cmd_start_screen_recording(
 
     // Use provided config or default
     let config = config.unwrap_or_default();
-    info!("Recording config: frameRate={}, resolution={}", config.frame_rate, config.resolution);
+    info!("Recording config: frameRate={}, resolution={}, systemAudio={}, microphone={}",
+        config.frame_rate, config.resolution, config.system_audio, config.microphone);
 
     // Check permission first
     match check_screen_recording_permission() {
@@ -1132,6 +1150,131 @@ pub async fn cmd_start_screen_recording(
         (None, None, None)
     };
 
+    // Setup microphone capture if enabled
+    let (mic_writer_handle_opt, mic_pcm_path_opt, mic_pause_flag_opt, mic_tx_opt, mic_channels_opt) = if config.microphone {
+        info!("Initializing microphone capture");
+
+        // Check microphone permission
+        match check_microphone_permission() {
+            Ok(true) => {
+                info!("Microphone permission granted");
+            }
+            Ok(false) => {
+                error!("Microphone permission not granted");
+                return Err("Microphone permission required. Please enable in System Preferences → Privacy & Security → Microphone".to_string());
+            }
+            Err(e) => {
+                error!("Microphone permission check failed: {}", e);
+                return Err(format!("Microphone permission check failed: {}", e));
+            }
+        }
+
+        // Create AudioCapture instance
+        let mut audio_capture = AudioCapture::new().map_err(|e| {
+            error!("Failed to initialize microphone capture: {}", e);
+            format!("Failed to initialize microphone capture: {}", e)
+        })?;
+
+        // Select default microphone device
+        let device_name = audio_capture.select_default_device().map_err(|e| {
+            error!("Failed to select default microphone device: {}", e);
+            format!("Failed to select microphone device: {}", e)
+        })?;
+
+        info!("Selected microphone device: {}", device_name);
+
+        // Get channel count (1=mono, 2=stereo)
+        let mic_channels = audio_capture.get_channels().map_err(|e| {
+            error!("Failed to get microphone channel count: {}", e);
+            format!("Failed to get microphone channel count: {}", e)
+        })?;
+
+        info!("Microphone audio format: {} channels ({})",
+            mic_channels,
+            if mic_channels == 1 { "mono" } else { "stereo" });
+
+        // Create PCM file path for microphone audio
+        let mic_pcm_path = home_dir
+            .join("Documents")
+            .join("clippy")
+            .join("recordings")
+            .join(format!("recording-{}-microphone.pcm", recording_id));
+
+        info!("Microphone PCM path: {}", mic_pcm_path.display());
+
+        // Create microphone audio channel
+        let (mic_tx, mic_rx) = tokio::sync::mpsc::channel::<AudioSample>(100);
+
+        // Create pause flag for microphone
+        let mic_pause_flag = Arc::new(AtomicBool::new(false));
+        let mic_pause_flag_clone = mic_pause_flag.clone();
+
+        // Spawn microphone writer task
+        let pcm_path = mic_pcm_path.clone();
+        let mic_writer_handle = tokio::spawn(async move {
+            let mut writer = crate::services::audio_capture::PcmFileWriter::new(&pcm_path)
+                .map_err(|e| format!("Failed to create microphone PCM writer: {}", e))?;
+
+            info!("Microphone writer task started");
+
+            // Receive audio samples and write to PCM file
+            let mut rx = mic_rx;
+            let mut sample_count = 0;
+            let mut paused_count = 0;
+
+            while let Some(sample) = rx.recv().await {
+                sample_count += 1;
+
+                // Log first few samples to verify we're receiving data
+                if sample_count <= 3 {
+                    info!("Microphone sample #{}: {} samples, {} Hz, {} channels",
+                        sample_count, sample.data.len(), sample.sample_rate, sample.channels);
+                }
+
+                // Check pause flag
+                if !mic_pause_flag_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                    writer.write_sample(&sample)
+                        .map_err(|e| {
+                            error!("Failed to write microphone sample: {}", e);
+                            format!("Failed to write microphone sample: {}", e)
+                        })?;
+                } else {
+                    paused_count += 1;
+                }
+            }
+
+            // Finalize PCM file
+            writer.finalize()
+                .map_err(|e| {
+                    error!("Failed to finalize microphone PCM file: {}", e);
+                    format!("Failed to finalize microphone PCM file: {}", e)
+                })?;
+
+            info!("Microphone writer task completed: {} total samples ({} written, {} paused)",
+                sample_count, sample_count - paused_count, paused_count);
+            Ok::<(), String>(())
+        });
+
+        // Clone mic_tx before passing to start_capture (we need to keep one to close the channel later)
+        let mic_tx_for_storage = mic_tx.clone();
+
+        // Start microphone capture
+        audio_capture.start_capture(mic_tx).map_err(|e| {
+            error!("Failed to start microphone capture: {}", e);
+            format!("Failed to start microphone capture: {}", e)
+        })?;
+
+        info!("Microphone capture started successfully");
+
+        // Leak AudioCapture to keep it alive for the recording duration
+        // This is intentional - the stream must stay alive or it stops immediately
+        Box::leak(Box::new(audio_capture));
+
+        (Some(mic_writer_handle), Some(mic_pcm_path), Some(mic_pause_flag), Some(mic_tx_for_storage), Some(mic_channels))
+    } else {
+        (None, None, None, None, None)
+    };
+
     // Start continuous capture (with app_handle for window-closed events)
     let capture_handle = screen_capture
         .start_continuous_capture(frame_tx, audio_tx_opt, Some(app_handle.clone()))
@@ -1158,11 +1301,28 @@ pub async fn cmd_start_screen_recording(
             stop_signal,
             audio_writer_handle_opt,
             audio_pcm_path_opt,
+            mic_writer_handle_opt,
+            mic_pcm_path_opt,
+            mic_pause_flag_opt,
+            mic_channels_opt,
         ),
     );
 
+    // Store microphone sender for channel cleanup
+    if let Some(mic_tx) = mic_tx_opt {
+        MICROPHONE_SENDERS.lock().await.insert(recording_id.clone(), mic_tx);
+    }
+
+    // Build audio capture status message
+    let audio_status = match (config.system_audio, config.microphone) {
+        (true, true) => " + system audio + microphone",
+        (true, false) => " + system audio",
+        (false, true) => " + microphone",
+        (false, false) => "",
+    };
+
     info!("Screen recording started successfully with real-time encoding{}: {}",
-        if config.system_audio { " + audio capture" } else { "" },
+        audio_status,
         recording_id);
 
     Ok(recording_id)
@@ -1209,6 +1369,10 @@ pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> 
         stop_signal,
         audio_writer_handle_opt,
         audio_pcm_path_opt,
+        mic_writer_handle_opt,
+        mic_pcm_path_opt,
+        _mic_pause_flag_opt,
+        mic_channels_opt,
     ) = recordings
         .remove(&recording_id)
         .ok_or_else(|| {
@@ -1216,11 +1380,27 @@ pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> 
             format!("Recording not found: {}", recording_id)
         })?;
 
+    // Note: AudioCapture is intentionally leaked (see start_recording)
+    // Close the microphone channel by dropping the sender - this allows writer task to finish
+    if let Some(_) = mic_writer_handle_opt {
+        let mic_sender = MICROPHONE_SENDERS.lock().await.remove(&recording_id);
+        drop(mic_sender);
+        info!("Microphone channel closed");
+    }
+
     // Release lock before awaiting
     drop(recordings);
 
+    // Build audio status message
+    let audio_status = match (audio_writer_handle_opt.is_some(), mic_writer_handle_opt.is_some()) {
+        (true, true) => " + system audio + microphone",
+        (true, false) => " + system audio",
+        (false, true) => " + microphone",
+        (false, false) => "",
+    };
+
     info!("Stopping recording with real-time encoding{}: {}",
-        if audio_writer_handle_opt.is_some() { " + audio" } else { "" },
+        audio_status,
         recording_id);
 
     // Signal capture task to stop
@@ -1254,90 +1434,145 @@ pub async fn cmd_stop_recording(recording_id: String) -> Result<String, String> 
         }
     }
 
-    // Wait for audio writer task and perform muxing if audio was captured
-    let final_output_path = if let (Some(audio_writer_handle), Some(audio_pcm_path)) =
+    // Wait for audio writer tasks and collect successful PCM paths
+    let mut audio_inputs: Vec<crate::services::ffmpeg::AudioInputConfig> = Vec::new();
+    let mut pcm_files_to_cleanup: Vec<PathBuf> = Vec::new();
+
+    // Wait for system audio writer task if present
+    if let (Some(audio_writer_handle), Some(audio_pcm_path)) =
         (audio_writer_handle_opt, audio_pcm_path_opt)
     {
-        info!("Waiting for audio writer task to complete");
+        info!("Waiting for system audio writer task to complete");
 
-        // Wait for audio writer to finish
-        let audio_writer_success = match audio_writer_handle.await {
+        match audio_writer_handle.await {
             Ok(Ok(())) => {
-                info!("Audio writer task completed successfully");
-                true
+                info!("System audio writer task completed successfully");
+                if audio_pcm_path.exists() {
+                    audio_inputs.push(crate::services::ffmpeg::AudioInputConfig {
+                        pcm_path: audio_pcm_path.clone(),
+                        sample_rate: 48000,
+                        channels: 2,
+                        label: "System Audio".to_string(),
+                    });
+                    pcm_files_to_cleanup.push(audio_pcm_path);
+                } else {
+                    warn!("System audio PCM file not found");
+                }
             }
             Ok(Err(e)) => {
-                error!("Audio writer task failed: {}", e);
-                warn!("Continuing with video-only file");
-                false
+                error!("System audio writer task failed: {}", e);
             }
             Err(e) => {
-                error!("Audio writer task join error: {}", e);
-                warn!("Continuing with video-only file");
-                false
+                error!("System audio writer task join error: {}", e);
             }
-        };
+        }
+    }
 
-        // Mux audio with video if audio writer succeeded
-        if audio_writer_success && audio_pcm_path.exists() {
-            info!("Muxing audio with video");
+    // Wait for microphone writer task if present (with timeout)
+    if let (Some(mic_writer_handle), Some(mic_pcm_path)) =
+        (mic_writer_handle_opt, mic_pcm_path_opt)
+    {
+        info!("Waiting for microphone writer task to complete");
 
-            // Create final output path (replace video-only file)
-            let final_path = output_path
-                .parent()
-                .unwrap()
-                .join(format!(
-                    "recording-{}-final.mp4",
-                    recording_id
-                ));
-
-            // Create audio input config
-            let audio_inputs = vec![crate::services::ffmpeg::AudioInputConfig {
-                pcm_path: audio_pcm_path.clone(),
-                sample_rate: 48000,
-                channels: 2,
-                label: "System Audio".to_string(),
-            }];
-
-            // Mux video + audio
-            match crate::services::ffmpeg::FFmpegEncoder::finalize_with_audio(
-                output_path.clone(),
-                audio_inputs,
-                final_path.clone(),
-            )
-            .await
-            {
-                Ok(_) => {
-                    info!("Audio muxing completed successfully");
-
-                    // Delete temporary files
-                    if let Err(e) = std::fs::remove_file(&output_path) {
-                        warn!("Failed to remove video-only file: {}", e);
-                    }
-                    if let Err(e) = std::fs::remove_file(&audio_pcm_path) {
-                        warn!("Failed to remove PCM audio file: {}", e);
-                    }
-
-                    final_path
-                }
-                Err(e) => {
-                    error!("Audio muxing failed: {}", e);
-                    warn!("Returning video-only file");
-
-                    // Clean up PCM file even if muxing failed
-                    if let Err(e) = std::fs::remove_file(&audio_pcm_path) {
-                        warn!("Failed to remove PCM audio file: {}", e);
-                    }
-
-                    output_path.clone()
+        // Use timeout to avoid hanging if stream doesn't close properly
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            mic_writer_handle
+        ).await {
+            Ok(Ok(Ok(()))) => {
+                info!("Microphone writer task completed successfully");
+                if mic_pcm_path.exists() {
+                    let mic_channels = mic_channels_opt.unwrap_or(1); // Default to mono if not set
+                    info!("Using microphone PCM file with {} channels", mic_channels);
+                    audio_inputs.push(crate::services::ffmpeg::AudioInputConfig {
+                        pcm_path: mic_pcm_path.clone(),
+                        sample_rate: 48000,
+                        channels: mic_channels,
+                        label: "Microphone".to_string(),
+                    });
+                    pcm_files_to_cleanup.push(mic_pcm_path);
+                } else {
+                    warn!("Microphone PCM file not found");
                 }
             }
-        } else {
-            warn!("Audio PCM file not found, returning video-only file");
-            output_path.clone()
+            Ok(Ok(Err(e))) => {
+                error!("Microphone writer task failed: {}", e);
+            }
+            Ok(Err(e)) => {
+                error!("Microphone writer task join error: {}", e);
+            }
+            Err(_) => {
+                warn!("Microphone writer task timed out after 5 seconds - continuing with available audio");
+                // Still try to use the PCM file if it exists
+                if mic_pcm_path.exists() {
+                    let mic_channels = mic_channels_opt.unwrap_or(1);
+                    info!("Microphone PCM file exists ({}), will attempt to use it",
+                        if mic_channels == 1 { "mono" } else { "stereo" });
+                    audio_inputs.push(crate::services::ffmpeg::AudioInputConfig {
+                        pcm_path: mic_pcm_path.clone(),
+                        sample_rate: 48000,
+                        channels: mic_channels,
+                        label: "Microphone".to_string(),
+                    });
+                    pcm_files_to_cleanup.push(mic_pcm_path);
+                }
+            }
+        }
+    }
+
+    // Perform audio muxing if we have any audio inputs
+    let final_output_path = if !audio_inputs.is_empty() {
+        info!("Muxing {} audio track(s) with video", audio_inputs.len());
+
+        // Create final output path (replace video-only file)
+        let final_path = output_path
+            .parent()
+            .unwrap()
+            .join(format!(
+                "recording-{}-final.mp4",
+                recording_id
+            ));
+
+        // Mux video + audio(s)
+        match crate::services::ffmpeg::FFmpegEncoder::finalize_with_audio(
+            output_path.clone(),
+            audio_inputs,
+            final_path.clone(),
+        )
+        .await
+        {
+            Ok(_) => {
+                info!("Audio muxing completed successfully");
+
+                // Delete temporary files
+                if let Err(e) = std::fs::remove_file(&output_path) {
+                    warn!("Failed to remove video-only file: {}", e);
+                }
+                for pcm_file in pcm_files_to_cleanup {
+                    if let Err(e) = std::fs::remove_file(&pcm_file) {
+                        warn!("Failed to remove PCM audio file {}: {}", pcm_file.display(), e);
+                    }
+                }
+
+                final_path
+            }
+            Err(e) => {
+                error!("Audio muxing failed: {}", e);
+                warn!("Returning video-only file");
+
+                // Clean up PCM files even if muxing failed
+                for pcm_file in pcm_files_to_cleanup {
+                    if let Err(e) = std::fs::remove_file(&pcm_file) {
+                        warn!("Failed to remove PCM audio file {}: {}", pcm_file.display(), e);
+                    }
+                }
+
+                output_path.clone()
+            }
         }
     } else {
         // No audio capture, return video-only file
+        info!("No audio tracks captured, returning video-only file");
         output_path.clone()
     };
 
@@ -1400,6 +1635,10 @@ pub async fn cmd_pause_recording(recording_id: String) -> Result<(), String> {
         _stop_signal,
         _audio_writer,
         _audio_pcm_path,
+        _mic_writer,
+        _mic_pcm_path,
+        mic_pause_flag,
+        _mic_channels,
     ) = recordings
         .get(&recording_id)
         .ok_or_else(|| {
@@ -1409,6 +1648,12 @@ pub async fn cmd_pause_recording(recording_id: String) -> Result<(), String> {
 
     // Set pause flag (frame discard enabled in capture callbacks)
     pause_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+
+    // Pause microphone if present
+    if let Some(ref mic_pause) = mic_pause_flag {
+        mic_pause.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
     info!("Recording paused (frame discard enabled): {}", recording_id);
 
     Ok(())
@@ -1460,6 +1705,10 @@ pub async fn cmd_resume_recording(recording_id: String) -> Result<(), String> {
         _stop_signal,
         _audio_writer,
         _audio_pcm_path,
+        _mic_writer,
+        _mic_pcm_path,
+        mic_pause_flag,
+        _mic_channels,
     ) = recordings
         .get(&recording_id)
         .ok_or_else(|| {
@@ -1469,6 +1718,12 @@ pub async fn cmd_resume_recording(recording_id: String) -> Result<(), String> {
 
     // Clear pause flag (frame discard disabled, normal capture resumes)
     pause_flag.store(false, std::sync::atomic::Ordering::Relaxed);
+
+    // Resume microphone if present
+    if let Some(ref mic_pause) = mic_pause_flag {
+        mic_pause.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+
     info!("Recording resumed: {}", recording_id);
 
     Ok(())
@@ -1499,10 +1754,21 @@ pub async fn cmd_cancel_recording(recording_id: String) -> Result<(), String> {
         stop_signal,
         audio_writer_handle_opt,
         audio_pcm_path_opt,
+        mic_writer_handle_opt,
+        mic_pcm_path_opt,
+        _mic_pause_flag,
+        _mic_channels_opt,
     ) = recordings.remove(&recording_id).ok_or_else(|| {
         error!("Recording not found: {}", recording_id);
         format!("Recording not found: {}", recording_id)
     })?;
+
+    // Note: AudioCapture is intentionally leaked (see start_recording)
+    // Close the microphone channel by dropping the sender
+    if let Some(_) = mic_writer_handle_opt {
+        let mic_sender = MICROPHONE_SENDERS.lock().await.remove(&recording_id);
+        drop(mic_sender);
+    }
 
     // Signal capture task to stop
     stop_signal.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -1516,6 +1782,11 @@ pub async fn cmd_cancel_recording(recording_id: String) -> Result<(), String> {
     // Abort audio writer task if present
     if let Some(audio_writer_handle) = audio_writer_handle_opt {
         audio_writer_handle.abort();
+    }
+
+    // Abort microphone writer task if present
+    if let Some(mic_writer_handle) = mic_writer_handle_opt {
+        mic_writer_handle.abort();
     }
 
     // Wait a moment for tasks to clean up
@@ -1548,7 +1819,46 @@ pub async fn cmd_cancel_recording(recording_id: String) -> Result<(), String> {
         }
     }
 
+    // Delete the partial microphone PCM file if present
+    if let Some(mic_pcm_path) = mic_pcm_path_opt {
+        if mic_pcm_path.exists() {
+            match std::fs::remove_file(&mic_pcm_path) {
+                Ok(()) => {
+                    info!("Deleted partial microphone PCM file: {}", mic_pcm_path.display());
+                }
+                Err(e) => {
+                    warn!("Failed to delete partial microphone PCM file {}: {}", mic_pcm_path.display(), e);
+                }
+            }
+        }
+    }
+
     Ok(())
+}
+
+/// List available microphone devices
+///
+/// This command lists all available audio input devices (microphones) on the system.
+/// Useful for debugging microphone issues.
+#[tauri::command]
+pub async fn cmd_list_microphones() -> Result<Vec<String>, String> {
+    debug!("Command: list microphones");
+
+    let audio_capture = AudioCapture::new().map_err(|e| {
+        error!("Failed to initialize audio capture: {}", e);
+        format!("Failed to initialize audio capture: {}", e)
+    })?;
+
+    let devices = audio_capture.enumerate_devices().map_err(|e| {
+        error!("Failed to enumerate devices: {}", e);
+        format!("Failed to enumerate devices: {}", e)
+    })?;
+
+    let device_names: Vec<String> = devices.iter().map(|d| d.name.clone()).collect();
+
+    info!("Found {} microphone device(s): {:?}", device_names.len(), device_names);
+
+    Ok(device_names)
 }
 
 /// Check available disk space at the given path

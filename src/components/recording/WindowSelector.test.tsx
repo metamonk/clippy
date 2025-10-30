@@ -125,30 +125,6 @@ describe('WindowSelector', () => {
   });
 
   /**
-   * Test ID: 4.1-UT-005
-   * AC: #2 - Search/filter works for >10 windows
-   */
-  it('shows search input when there are more than 10 windows', () => {
-    const manyWindows = Array.from({ length: 15 }, (_, i) => ({
-      windowId: i,
-      ownerName: `App${i}`,
-      title: `Window ${i}`,
-      isOnScreen: true,
-    }));
-
-    vi.mocked(useRecordingStore).mockReturnValue({
-      availableWindows: manyWindows,
-      selectedWindowId: null,
-      setSelectedWindow: mockSetSelectedWindow,
-      refreshWindows: mockRefreshWindows,
-    } as any);
-
-    render(<WindowSelector />);
-
-    expect(screen.getByPlaceholderText('Search windows...')).toBeInTheDocument();
-  });
-
-  /**
    * Test ID: 4.1-UT-006
    * AC: #2 - Hidden windows are disabled
    */
