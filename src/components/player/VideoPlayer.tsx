@@ -214,10 +214,21 @@ export function VideoPlayer({
         setRenderProgress(0);
         setVideoLoaded(false);
 
-        // Construct timeline object from store
+        // Sanitize timeline data - convert all floating point numbers to integers for Rust u64 fields
         const timeline = {
-          tracks: timelineStore.tracks,
-          totalDuration: timelineStore.totalDuration,
+          tracks: timelineStore.tracks.map(track => ({
+            ...track,
+            clips: track.clips.map(clip => ({
+              ...clip,
+              startTime: Math.round(clip.startTime),
+              duration: Math.round(clip.duration),
+              trimIn: Math.round(clip.trimIn),
+              trimOut: Math.round(clip.trimOut),
+              fadeIn: clip.fadeIn !== undefined ? Math.round(clip.fadeIn) : undefined,
+              fadeOut: clip.fadeOut !== undefined ? Math.round(clip.fadeOut) : undefined,
+            })),
+          })),
+          totalDuration: Math.round(timelineStore.totalDuration),
         };
 
         // Render entire timeline to single file

@@ -147,15 +147,17 @@ async fn analyze_personality(client: &Client<OpenAIConfig>, transcript: &str) ->
 Transcript:
 {}
 
-Generate a JSON response with this structure:
+IMPORTANT: Return ONLY valid JSON with no additional text, explanations, or markdown formatting.
+
+Generate a JSON response with this EXACT structure (use camelCase for field names):
 {{
   "style": "A catchy 2-3 word presenter style name (e.g., 'Caffeinated Professor', 'Zen Explainer', 'Chaotic Genius')",
-  "energy_description": "A fun 1-sentence description of their energy and pacing",
-  "fun_stats": [
+  "energyDescription": "A fun 1-sentence description of their energy and pacing",
+  "funStats": [
     "3-5 funny or interesting statistics about their presentation style",
     "Examples: 'Tab switches per minute: 23', 'Used the word basically 47 times', 'Mouse cursor traveled 2.3 miles'"
   ],
-  "motivational_feedback": "A funny motivational message in the style of a sports coach"
+  "motivationalFeedback": "A funny motivational message in the style of a sports coach"
 }}
 
 Be creative, funny, and engaging. Make the user smile!"#,
@@ -182,7 +184,13 @@ Be creative, funny, and engaging. Make the user smile!"#,
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No content in response"))?;
 
-    let personality: PersonalityAnalysis = serde_json::from_str(content)?;
+    // Extract JSON from markdown code blocks if present
+    let json_content = extract_json_from_response(content);
+
+    tracing::debug!(event = "personality_json_parse", json = ?json_content, "Parsing personality JSON");
+
+    let personality: PersonalityAnalysis = serde_json::from_str(&json_content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse personality JSON: {}. Content: {}", e, json_content))?;
     Ok(personality)
 }
 
@@ -193,21 +201,39 @@ async fn generate_alternative_narrations(client: &Client<OpenAIConfig>, transcri
 Original transcript:
 {}
 
-Generate a JSON array with 4 alternative narrations using these styles:
+IMPORTANT: Return ONLY valid JSON with no additional text, explanations, or markdown formatting.
+
+Generate a JSON object with 4 alternative narrations using these styles:
 1. Movie Trailer Voice (dramatic, epic)
 2. Pirate Narrator (arr matey!)
 3. Shakespearean (to click or not to click)
 4. Robot Overlord (commands and declarations)
 
-Format:
-[
-  {{
-    "style_name": "Movie Trailer Voice",
-    "emoji": "🎬",
-    "text": "The rewritten transcript in this style (keep it concise, max 2-3 sentences)"
-  }},
-  ...
-]
+Format (use camelCase for field names):
+{{
+  "narrations": [
+    {{
+      "styleName": "Movie Trailer Voice",
+      "emoji": "🎬",
+      "text": "The rewritten transcript in this style (keep it concise, max 2-3 sentences)"
+    }},
+    {{
+      "styleName": "Pirate Narrator",
+      "emoji": "🏴‍☠️",
+      "text": "The rewritten transcript in pirate style"
+    }},
+    {{
+      "styleName": "Shakespearean",
+      "emoji": "📚",
+      "text": "The rewritten transcript in Shakespearean style"
+    }},
+    {{
+      "styleName": "Robot Overlord",
+      "emoji": "🤖",
+      "text": "The rewritten transcript in robot style"
+    }}
+  ]
+}}
 
 Make it funny and memorable!"#,
         transcript
@@ -233,6 +259,38 @@ Make it funny and memorable!"#,
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No content in response"))?;
 
-    let narrations: Vec<AlternativeNarration> = serde_json::from_str(content)?;
-    Ok(narrations)
+    // Extract JSON from markdown code blocks if present
+    let json_content = extract_json_from_response(content);
+
+    tracing::debug!(event = "narrations_json_parse", json = ?json_content, "Parsing narrations JSON");
+
+    // Parse the wrapper object and extract the narrations array
+    #[derive(serde::Deserialize)]
+    struct NarrationsWrapper {
+        narrations: Vec<AlternativeNarration>,
+    }
+
+    let wrapper: NarrationsWrapper = serde_json::from_str(&json_content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse narrations JSON: {}. Content: {}", e, json_content))?;
+    Ok(wrapper.narrations)
+}
+
+/// Extract JSON from GPT response, handling markdown code blocks and extra text
+fn extract_json_from_response(content: &str) -> String {
+    let trimmed = content.trim();
+
+    // Check if wrapped in markdown code block
+    if trimmed.starts_with("```") {
+        // Find the actual JSON content between ```json and ```
+        let lines: Vec<&str> = trimmed.lines().collect();
+        let json_lines: Vec<&str> = lines.iter()
+            .skip(1) // Skip first ```json line
+            .take_while(|line| !line.starts_with("```")) // Take until closing ```
+            .copied()
+            .collect();
+        json_lines.join("\n")
+    } else {
+        // Return as-is if not in code block
+        trimmed.to_string()
+    }
 }

@@ -231,46 +231,70 @@ impl FFmpegCompositor {
         // Build FFmpeg command with two FIFO inputs
         let mut command = FfmpegCommand::new();
 
+        // Add verbose logging to diagnose issues
+        command.arg("-loglevel").arg("verbose");
+
         // Input 0: Screen video (base layer) from FIFO
+        // Minimal probing to avoid delays waiting for data
         command
+            .arg("-probesize")
+            .arg("32")
+            .arg("-analyzeduration")
+            .arg("0")
+            .arg("-thread_queue_size")
+            .arg("1024")
             .arg("-f")
             .arg("rawvideo")
             .arg("-pix_fmt")
             .arg("bgra")
-            .arg("-s")
+            .arg("-video_size")
             .arg(format!("{}x{}", self.screen_width, self.screen_height))
-            .arg("-r")
+            .arg("-framerate")
             .arg(self.fps.to_string())
             .arg("-i")
             .arg(&screen_fifo);
 
         // Input 1: Webcam video (overlay layer) from FIFO
+        // Minimal probing for this input as well
         command
+            .arg("-probesize")
+            .arg("32")
+            .arg("-analyzeduration")
+            .arg("0")
+            .arg("-thread_queue_size")
+            .arg("1024")
             .arg("-f")
             .arg("rawvideo")
             .arg("-pix_fmt")
             .arg("bgra")
-            .arg("-s")
+            .arg("-video_size")
             .arg(format!("{}x{}", self.webcam_width, self.webcam_height))
-            .arg("-r")
+            .arg("-framerate")
             .arg(self.fps.to_string())
             .arg("-i")
             .arg(&webcam_fifo);
 
         // Filter complex: Scale webcam to PiP size, then overlay on screen
+        // Output the result to a labeled stream [out]
         let filter = format!(
-            "[1:v]scale={}:{}[pip];[0:v][pip]overlay={}:{}",
+            "[1:v]scale={}:{}[pip];[0:v][pip]overlay={}:{}[out]",
             self.pip_config.width, self.pip_config.height, self.pip_config.x, self.pip_config.y
         );
 
         command.arg("-filter_complex").arg(&filter);
+
+        // Map the filtered output stream to the output file
+        command.arg("-map").arg("[out]");
+
+        // Use modern fps_mode instead of deprecated vsync
+        command.arg("-fps_mode").arg("vfr");
 
         // H.264 encoding with real-time optimizations
         command
             .arg("-c:v")
             .arg("libx264")
             .arg("-preset")
-            .arg("fast")
+            .arg("ultrafast")  // Use ultrafast for real-time encoding
             .arg("-crf")
             .arg("23");
 
@@ -299,14 +323,20 @@ impl FFmpegCompositor {
 
         info!("FFmpeg compositor process spawned successfully");
 
-        // Capture stderr for logging
+        // Capture stderr for logging immediately to catch early errors
         if let Some(stderr) = child.take_stderr() {
             tokio::task::spawn_blocking(move || {
                 use std::io::{BufRead, BufReader};
                 let reader = BufReader::new(stderr);
+                let mut line_count = 0;
                 for line in reader.lines() {
                     if let Ok(line) = line {
-                        if line.contains("Error") || line.contains("error") {
+                        line_count += 1;
+
+                        // Log first 50 lines at INFO to see full FFmpeg startup and diagnostics
+                        if line_count <= 50 {
+                            info!(event = "ffmpeg_compositor_stderr", line_num = line_count, line = %line);
+                        } else if line.contains("Error") || line.contains("error") {
                             error!(event = "ffmpeg_compositor_stderr", line = %line);
                         } else if line.contains("Warning") || line.contains("warning") {
                             warn!(event = "ffmpeg_compositor_stderr", line = %line);
@@ -315,45 +345,117 @@ impl FFmpegCompositor {
                         }
                     }
                 }
+                info!("FFmpeg compositor stderr closed after {} lines", line_count);
             });
         }
 
-        // Open FIFOs for writing (will block until FFmpeg opens them for reading)
-        // Do this in background tasks to avoid blocking
-        let screen_fifo_clone = screen_fifo.clone();
-        let webcam_fifo_clone = webcam_fifo.clone();
-
-        // Open screen FIFO
-        let screen_file = tokio::task::spawn_blocking(move || {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .open(&screen_fifo_clone)
-        })
-        .await
-        .context("Failed to spawn screen FIFO open task")??;
-
-        // Open webcam FIFO
-        let webcam_file = tokio::task::spawn_blocking(move || {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .open(&webcam_fifo_clone)
-        })
-        .await
-        .context("Failed to spawn webcam FIFO open task")??;
-
-        info!("Named pipes opened for writing");
-
-        // Store file handles as stdin
-        let mut screen_stdin_lock = self.screen_stdin.lock().await;
-        *screen_stdin_lock = Some(screen_file);
-
-        let mut webcam_stdin_lock = self.webcam_stdin.lock().await;
-        *webcam_stdin_lock = Some(webcam_file);
-
+        // Store process immediately
         let mut process_lock = self.process.lock().await;
         *process_lock = Some(child);
+        drop(process_lock);
 
-        info!("FFmpeg compositor started successfully with named pipes");
+        // Spawn background task to open FIFOs asynchronously
+        // This allows composition to start immediately while FIFOs are opening
+        let screen_stdin_arc = self.screen_stdin.clone();
+        let webcam_stdin_arc = self.webcam_stdin.clone();
+
+        tokio::spawn(async move {
+            use std::os::unix::fs::OpenOptionsExt;
+
+            info!("Background FIFO open task started (no delay, immediate open)");
+
+            // Open screen FIFO in background
+            let screen_fifo_clone = screen_fifo.clone();
+            let screen_task = tokio::task::spawn_blocking(move || -> Result<std::fs::File> {
+                info!("Opening screen FIFO with O_NONBLOCK...");
+                let mut attempts = 0;
+                loop {
+                    match std::fs::OpenOptions::new()
+                        .write(true)
+                        .custom_flags(libc::O_NONBLOCK)
+                        .open(&screen_fifo_clone)
+                    {
+                        Ok(file) => {
+                            info!("Screen FIFO opened successfully after {} attempts", attempts);
+                            return Ok(file);
+                        }
+                        Err(e) if e.raw_os_error() == Some(libc::ENXIO) => {
+                            attempts += 1;
+                            if attempts % 20 == 0 {
+                                info!("Waiting for FFmpeg to open screen FIFO (attempt {})", attempts);
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                        Err(e) => {
+                            return Err(anyhow::anyhow!("Failed to open screen FIFO: {}", e));
+                        }
+                    }
+                }
+            });
+
+            // Open webcam FIFO in background
+            let webcam_fifo_clone = webcam_fifo.clone();
+            let webcam_task = tokio::task::spawn_blocking(move || -> Result<std::fs::File> {
+                info!("Opening webcam FIFO with O_NONBLOCK...");
+                let mut attempts = 0;
+                loop {
+                    match std::fs::OpenOptions::new()
+                        .write(true)
+                        .custom_flags(libc::O_NONBLOCK)
+                        .open(&webcam_fifo_clone)
+                    {
+                        Ok(file) => {
+                            info!("Webcam FIFO opened successfully after {} attempts", attempts);
+                            return Ok(file);
+                        }
+                        Err(e) if e.raw_os_error() == Some(libc::ENXIO) => {
+                            attempts += 1;
+                            if attempts % 20 == 0 {
+                                info!("Waiting for FFmpeg to open webcam FIFO (attempt {})", attempts);
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                        Err(e) => {
+                            return Err(anyhow::anyhow!("Failed to open webcam FIFO: {}", e));
+                        }
+                    }
+                }
+            });
+
+            // Wait for screen FIFO and store it
+            match screen_task.await {
+                Ok(Ok(screen_file)) => {
+                    let mut lock = screen_stdin_arc.lock().await;
+                    *lock = Some(screen_file);
+                    info!("Screen FIFO handle stored");
+                }
+                Ok(Err(e)) => {
+                    error!("Failed to open screen FIFO: {}", e);
+                }
+                Err(e) => {
+                    error!("Screen FIFO task panicked: {}", e);
+                }
+            }
+
+            // Wait for webcam FIFO and store it
+            match webcam_task.await {
+                Ok(Ok(webcam_file)) => {
+                    let mut lock = webcam_stdin_arc.lock().await;
+                    *lock = Some(webcam_file);
+                    info!("Webcam FIFO handle stored");
+                }
+                Ok(Err(e)) => {
+                    error!("Failed to open webcam FIFO: {}", e);
+                }
+                Err(e) => {
+                    error!("Webcam FIFO task panicked: {}", e);
+                }
+            }
+
+            info!("FIFO open task completed");
+        });
+
+        info!("FFmpeg compositor started, FIFOs opening in background");
 
         Ok(())
     }
@@ -390,9 +492,16 @@ impl FFmpegCompositor {
         }
 
         let mut stdin_lock = self.screen_stdin.lock().await;
-        let stdin = stdin_lock
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("Screen stdin not available"))?;
+
+        // If FIFO isn't ready yet, skip this frame
+        // The background task is still opening it
+        let stdin = match stdin_lock.as_mut() {
+            Some(s) => s,
+            None => {
+                // Drop frame silently - FIFO not ready yet
+                return Ok(());
+            }
+        };
 
         stdin
             .write_all(&frame.data)
@@ -439,9 +548,16 @@ impl FFmpegCompositor {
         }
 
         let mut stdin_lock = self.webcam_stdin.lock().await;
-        let stdin = stdin_lock
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("Webcam stdin not available"))?;
+
+        // If FIFO isn't ready yet, skip this frame
+        // The background task is still opening it
+        let stdin = match stdin_lock.as_mut() {
+            Some(s) => s,
+            None => {
+                // Drop frame silently - FIFO not ready yet
+                return Ok(());
+            }
+        };
 
         stdin
             .write_all(&frame.data)

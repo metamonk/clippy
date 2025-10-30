@@ -30,8 +30,9 @@ npm run tauri dev
 - Click "Stop Recording"
 
 ### 3. Trigger AI Analysis
-- After stopping, you'll see a "Recording Complete!" screen
-- Click the big **"Analyze with AI"** button (purple/blue gradient)
+- After stopping, the recording appears in your Media Library
+- Hover over the video thumbnail
+- Click the purple **✨ Sparkles** button (appears on hover)
 - Wait 15-30 seconds while AI processes your recording
 
 ### 4. View Results

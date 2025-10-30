@@ -359,7 +359,7 @@ pub fn check_camera_permission() -> Result<bool, PermissionError> {
     // If it fails with permission error, we don't have permission
     match nokhwa::query(nokhwa::utils::ApiBackend::AVFoundation) {
         Ok(_cameras) => {
-            info!("Camera permission granted (camera enumeration successful)");
+            debug!("Camera permission granted (camera enumeration successful)");
             Ok(true)
         }
         Err(e) => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { startExport } from "@/lib/tauri/export";
 import { ExportProgress } from "./ExportProgress";
 import { sendNotification } from "@tauri-apps/plugin-notification";
@@ -23,6 +23,15 @@ export function ExportDialog({ timeline, isOpen, onClose }: ExportDialogProps) {
   const [exportId, setExportId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setExportId(null);
+      setError(null);
+      setIsExporting(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

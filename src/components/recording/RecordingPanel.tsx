@@ -622,9 +622,9 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
 
               {/* Information */}
               {!isRecording && hasPermission && (
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-md text-sm">
+                <div className="bg-blue-100 dark:bg-blue-900/30 p-4 rounded-md text-sm text-gray-900 dark:text-gray-100">
                   <p className="font-semibold mb-2">Ready to Record</p>
-                  <ul className="list-disc list-inside space-y-1 ml-2 text-gray-700 dark:text-gray-300">
+                  <ul className="list-disc list-inside space-y-1 ml-2">
                     <li>Click "Record Screen" to start</li>
                     <li>Full screen will be captured at 30 FPS</li>
                     <li>Audio sources configured above will be captured</li>
@@ -701,9 +701,9 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
 
               {/* Information */}
               {!isRecording && hasCameraPermission && selectedCamera && (
-                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-md text-sm">
+                <div className="bg-purple-100 dark:bg-purple-900/30 p-4 rounded-md text-sm text-gray-900 dark:text-gray-100">
                   <p className="font-semibold mb-2">Ready to Record</p>
-                  <ul className="list-disc list-inside space-y-1 ml-2 text-gray-700 dark:text-gray-300">
+                  <ul className="list-disc list-inside space-y-1 ml-2">
                     <li>Click "Record Webcam" to start</li>
                     <li>Camera will be captured at native resolution (capped at 1080p)</li>
                     <li>Recording at 30 FPS</li>
@@ -802,9 +802,9 @@ export function RecordingPanel({ open, onOpenChange }: RecordingPanelProps) {
 
               {/* Information */}
               {!isRecording && hasPermission && hasCameraPermission && selectedCamera && (
-                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-md text-sm">
+                <div className="bg-purple-100 dark:bg-purple-900/30 p-4 rounded-md text-sm text-gray-900 dark:text-gray-100">
                   <p className="font-semibold mb-2">Ready for PiP Recording</p>
-                  <ul className="list-disc list-inside space-y-1 ml-2 text-gray-700 dark:text-gray-300">
+                  <ul className="list-disc list-inside space-y-1 ml-2">
                     <li>Click "Record Screen" to start recording screen and webcam simultaneously</li>
                     <li>Webcam will appear as overlay on screen recording</li>
                     <li>Recording at 30 FPS with real-time composition</li>

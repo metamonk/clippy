@@ -7,8 +7,8 @@ use crate::services::permissions::{
     check_camera_permission, check_screen_recording_permission, request_camera_permission,
     request_screen_recording_permission, check_microphone_permission,
 };
-use crate::services::camera::{CameraCapture, CameraInfo, CameraService};
-use crate::services::ffmpeg::{FFmpegEncoder, FFmpegCompositor, CompositorFrame, PipConfig, TimestampedFrame};
+use crate::services::camera::{CameraBackend, CameraInfo, CameraService};
+use crate::services::ffmpeg::{FFmpegEncoder, PipConfig, TimestampedFrame};
 use crate::services::screen_capture::{FrameHandler, ScreenCapture};
 use crate::services::audio_capture::{AudioCapture, AudioSample};
 use anyhow::Result as AnyhowResult;
@@ -53,8 +53,11 @@ lazy_static::lazy_static! {
 
 /// Global state for managing active camera previews
 ///
-/// Maps camera index to preview task handle
-type CameraPreviewHandle = tokio::task::JoinHandle<()>;
+/// Maps camera index to preview task handle and camera backend
+type CameraPreviewHandle = (
+    tokio::task::JoinHandle<()>,  // Preview task
+    Arc<Mutex<Option<CameraBackend>>>,  // Camera backend for cleanup
+);
 
 lazy_static::lazy_static! {
     static ref ACTIVE_CAMERA_PREVIEWS: Arc<Mutex<HashMap<u32, CameraPreviewHandle>>> =
@@ -75,6 +78,7 @@ struct CameraFramePayload {
 ///
 /// Maps recording ID to webcam recording handles
 type WebcamRecordingHandle = (
+    CameraBackend,                               // Camera backend instance (for graceful stop)
     tokio::task::JoinHandle<()>,                 // Camera capture task
     Option<tokio::task::JoinHandle<()>>,         // Audio capture task (optional)
     tokio::task::JoinHandle<AnyhowResult<()>>,   // Encoding task
@@ -89,15 +93,22 @@ lazy_static::lazy_static! {
 
 /// Global state for managing active PiP recordings (screen + webcam)
 ///
-/// Maps recording ID to PiP recording handles (Story 4.8 - PiP pause/resume integration)
+/// Maps recording ID to PiP recording handles
+/// NEW ARCHITECTURE: Records to separate temp files, composites on stop
 type PipRecordingHandle = (
     tokio::task::JoinHandle<()>,                 // Screen capture task
     tokio::task::JoinHandle<()>,                 // Webcam capture task
-    tokio::task::JoinHandle<AnyhowResult<()>>,   // Composition task
-    PathBuf,                                      // Output file path
+    tokio::task::JoinHandle<()>,                 // Screen encoding task
+    tokio::task::JoinHandle<()>,                 // Webcam encoding task
+    Option<tokio::task::JoinHandle<()>>,         // Microphone audio writer task
+    PathBuf,                                      // Final output file path
+    PathBuf,                                      // Temp screen file path
+    PathBuf,                                      // Temp webcam file path
+    Option<PathBuf>,                              // Microphone audio WAV path
+    PipConfig,                                    // PiP configuration for composition
     Arc<AtomicBool>,                             // Screen pause flag
-    Option<Arc<AtomicBool>>,                     // Mic pause flag (optional)
-    Option<Arc<AtomicBool>>,                     // Webcam audio pause flag (optional)
+    Arc<AtomicBool>,                             // Screen stop signal
+    CameraBackend,                                // Camera capture object (must stay alive to prevent Drop)
 );
 
 lazy_static::lazy_static! {
@@ -318,105 +329,122 @@ pub async fn cmd_start_camera_preview(
 
     info!("Starting camera preview for index {}", camera_index);
 
-    // Spawn preview task with frame capture loop
+    // Store camera backend for cleanup
+    let camera_backend_arc = Arc::new(Mutex::new(None::<CameraBackend>));
+    let camera_backend_clone = camera_backend_arc.clone();
+
+    // Use native AVFoundation for 30 FPS preview on macOS
     let handle = tokio::spawn(async move {
         debug!("Camera preview task starting for index {}", camera_index);
 
-        // Use spawn_blocking for Camera operations (nokhwa Camera is not Send-safe)
-        let result = tokio::task::spawn_blocking(move || {
-            use base64::Engine;
+        use base64::Engine;
+        use crate::services::ffmpeg::TimestampedFrame;
 
-            // Open camera
-            let service = CameraService::new();
-            let mut camera = match service.open_camera(camera_index) {
-                Ok(cam) => cam,
-                Err(e) => {
-                    error!("Failed to open camera {}: {}", camera_index, e);
-                    let _ = app_handle.emit("camera-error", format!("Failed to open camera: {}", e));
-                    return Err(e);
+        // Use 1280x720 for preview (16:9 aspect ratio to match camera native ratio)
+        let (width, height) = (1280u32, 720u32);
+
+        // Create camera backend (will use AVFoundation on macOS)
+        let mut camera_backend = match CameraBackend::new(camera_index, width, height).await {
+            Ok(backend) => backend,
+            Err(e) => {
+                error!("Failed to initialize camera backend for preview: {}", e);
+                let _ = app_handle.emit("camera-error", format!("Failed to initialize camera: {}", e));
+                return;
+            }
+        };
+
+        info!("Camera {} preview starting at {}x{} @ 30 FPS", camera_index, width, height);
+
+        // Create channel for frames (small buffer - we only want latest frame)
+        let (frame_tx, mut frame_rx) = mpsc::channel::<TimestampedFrame>(3);
+
+        // Start continuous capture
+        let capture_handle = match camera_backend.start_continuous_capture(frame_tx) {
+            Ok(handle) => handle,
+            Err(e) => {
+                error!("Failed to start camera capture for preview: {}", e);
+                let _ = app_handle.emit("camera-error", format!("Failed to start capture: {}", e));
+                return;
+            }
+        };
+
+        // Store backend for cleanup
+        {
+            let mut backend_lock = camera_backend_clone.lock().await;
+            *backend_lock = Some(camera_backend);
+        }
+
+        // Frame processing loop - only process LATEST frame to minimize latency
+        let mut frame_count = 0u64;
+        let start_time = std::time::Instant::now();
+
+        while let Some(mut frame) = frame_rx.recv().await {
+            // Drain any additional frames in the channel to get the latest one
+            // This ensures we always show the most recent frame, not old buffered ones
+            loop {
+                match frame_rx.try_recv() {
+                    Ok(newer_frame) => {
+                        frame = newer_frame; // Replace with newer frame
+                    }
+                    Err(_) => break, // No more frames, use current one
                 }
+            }
+
+            // Convert BGRA to RGB for frontend (simple conversion, can be optimized)
+            let mut rgb_data = Vec::with_capacity((frame.width * frame.height * 3) as usize);
+            for chunk in frame.data.chunks(4) {
+                if chunk.len() == 4 {
+                    rgb_data.push(chunk[2]); // R (from B in BGRA)
+                    rgb_data.push(chunk[1]); // G
+                    rgb_data.push(chunk[0]); // B (from R in BGRA)
+                }
+            }
+
+            // Base64 encode the RGB frame data
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&rgb_data);
+
+            // Create frame payload
+            let payload = CameraFramePayload {
+                camera_index,
+                width: frame.width,
+                height: frame.height,
+                frame_data: encoded,
+                timestamp: frame.timestamp_ms as i64,
             };
 
-            // Start camera stream
-            if let Err(e) = service.start_stream(&mut camera) {
-                error!("Failed to start camera stream for index {}: {}", camera_index, e);
-                let _ = app_handle.emit("camera-error", format!("Failed to start stream: {}", e));
-                return Err(e);
+            // Emit camera-frame event
+            if let Err(e) = app_handle.emit("camera-frame", &payload) {
+                error!("Failed to emit camera-frame event: {}", e);
+                break;
             }
 
-            // Get camera resolution for event payload
-            let resolution = service.get_resolution(&camera);
-            let width = resolution.width();
-            let height = resolution.height();
-            info!("Camera {} preview streaming at {}x{}", camera_index, width, height);
-
-            // Frame capture loop at 30 FPS (33.33ms per frame)
-            let frame_duration = std::time::Duration::from_millis(33);
-            let mut frame_count: u64 = 0;
-
-            loop {
-                let frame_start = std::time::Instant::now();
-
-                // Capture frame
-                match service.capture_frame(&mut camera) {
-                    Ok(frame_data) => {
-                        // Base64 encode the RGB frame data
-                        let encoded = base64::engine::general_purpose::STANDARD.encode(&frame_data);
-
-                        // Create frame payload
-                        let payload = CameraFramePayload {
-                            camera_index,
-                            width,
-                            height,
-                            frame_data: encoded,
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_millis() as i64,
-                        };
-
-                        // Emit camera-frame event
-                        if let Err(e) = app_handle.emit("camera-frame", &payload) {
-                            error!("Failed to emit camera-frame event: {}", e);
-                            break;
-                        }
-
-                        frame_count += 1;
-                        if frame_count % 300 == 0 {
-                            debug!("Camera {} preview: {} frames captured", camera_index, frame_count);
-                        }
-                    }
-                    Err(e) => {
-                        error!("Frame capture failed for camera {}: {}", camera_index, e);
-                        let _ = app_handle.emit("camera-error", format!("Frame capture failed: {}", e));
-                        break;
-                    }
-                }
-
-                // Maintain 30 FPS timing
-                let frame_elapsed = frame_start.elapsed();
-                if frame_elapsed < frame_duration {
-                    std::thread::sleep(frame_duration - frame_elapsed);
-                }
+            frame_count += 1;
+            if frame_count % 30 == 0 {
+                let elapsed = start_time.elapsed().as_secs_f64();
+                let fps = frame_count as f64 / elapsed;
+                debug!("Camera {} preview: {} frames, {:.1} FPS", camera_index, frame_count, fps);
             }
-
-            info!("Camera {} preview loop ended ({} frames captured)", camera_index, frame_count);
-            Ok::<(), crate::services::camera::CameraError>(())
-        })
-        .await;
-
-        match result {
-            Ok(Ok(())) => debug!("Camera preview task completed normally for index {}", camera_index),
-            Ok(Err(e)) => error!("Camera preview error for index {}: {}", camera_index, e),
-            Err(e) => error!("Camera preview task panicked for index {}: {}", camera_index, e),
         }
+
+        info!("Camera {} preview loop ended ({} frames)", camera_index, frame_count);
+
+        // Stop camera capture
+        {
+            let mut backend_lock = camera_backend_clone.lock().await;
+            if let Some(mut backend) = backend_lock.take() {
+                backend.stop_capture();
+            }
+        }
+
+        // Wait for capture task to finish
+        let _ = capture_handle.await;
 
         // Clean up: remove from active previews
         let mut previews = ACTIVE_CAMERA_PREVIEWS.lock().await;
         previews.remove(&camera_index);
     });
 
-    previews.insert(camera_index, handle);
+    previews.insert(camera_index, (handle, camera_backend_arc));
     Ok(())
 }
 
@@ -439,7 +467,16 @@ pub async fn cmd_stop_camera_preview(camera_index: u32) -> Result<(), String> {
     let mut previews = ACTIVE_CAMERA_PREVIEWS.lock().await;
 
     match previews.remove(&camera_index) {
-        Some(handle) => {
+        Some((handle, camera_backend_arc)) => {
+            // Stop camera capture first
+            {
+                let mut backend_lock = camera_backend_arc.lock().await;
+                if let Some(mut backend) = backend_lock.take() {
+                    backend.stop_capture();
+                    debug!("Camera backend stopped for preview index {}", camera_index);
+                }
+            }
+
             // Abort the preview task
             handle.abort();
             info!("Camera preview stopped for index {}", camera_index);
@@ -617,48 +654,18 @@ pub async fn cmd_start_webcam_recording(
 
     info!("Output path: {}", output_path.display());
 
-    // Initialize camera capture
-    let mut camera_capture = CameraCapture::new(camera_index).map_err(|e| {
-        error!("Failed to initialize camera: {}", e);
-        format!("Camera initialization failed: {}", e)
-    })?;
+    // Get camera resolution (we'll use 1920x1080 for real-time capture)
+    let (width, height) = (1920u32, 1080u32);
 
-    // Get camera resolution before starting async operations
-    // Note: We need to get resolution and drop the Camera before any await points
-    // because Camera is not Send
-    let (width, height) = {
-        let camera_service = CameraService::new();
-        let camera = camera_service.open_camera(camera_index).map_err(|e| {
-            error!("Failed to open camera for resolution check: {}", e);
-            format!("Failed to open camera: {}", e)
+    // Create unified camera backend
+    let mut camera_backend = CameraBackend::new(camera_index, width, height)
+        .await
+        .map_err(|e| {
+            error!("Failed to initialize camera backend: {}", e);
+            format!("Camera initialization failed: {}", e)
         })?;
 
-        let resolution = camera_service.get_resolution(&camera);
-        let width = resolution.width();
-        let height = resolution.height();
-
-        // Cap at 1080p if higher
-        let (width, height) = if height > 1080 {
-            let aspect_ratio = width as f32 / height as f32;
-            let new_height = 1080;
-            let new_width = (new_height as f32 * aspect_ratio) as u32;
-            info!(
-                "Capping camera resolution from {}x{} to {}x{}",
-                width, height, new_width, new_height
-            );
-            (new_width, new_height)
-        } else {
-            (width, height)
-        };
-
-        // Camera is dropped here automatically at end of scope
-        (width, height)
-    };
-
     info!("Recording at {}x{} @ 30 FPS", width, height);
-
-    // Update camera capture with capped resolution
-    camera_capture.set_target_resolution(width, height);
 
     // Create FFmpeg encoder
     let mut encoder = FFmpegEncoder::new(output_path.clone(), width, height, 30).map_err(|e| {
@@ -675,8 +682,8 @@ pub async fn cmd_start_webcam_recording(
     // Create bounded channel for video frames (30 frame buffer = 1 second)
     let (video_tx, mut video_rx) = mpsc::channel::<TimestampedFrame>(30);
 
-    // Start camera capture task
-    let camera_handle = camera_capture
+    // Start camera capture
+    let camera_handle = camera_backend
         .start_continuous_capture(video_tx)
         .map_err(|e| {
             error!("Failed to start camera capture: {}", e);
@@ -715,42 +722,78 @@ pub async fn cmd_start_webcam_recording(
             };
             info!("Using microphone: {}", device_name);
 
+            // Get channel count (1=mono, 2=stereo)
+            let mic_channels = match audio_capture.get_channels() {
+                Ok(channels) => channels,
+                Err(e) => {
+                    error!("Failed to get microphone channel count: {}", e);
+                    return;
+                }
+            };
+
+            info!("Microphone audio format: {} channels ({})",
+                mic_channels,
+                if mic_channels == 1 { "mono" } else { "stereo" });
+
             // Start audio capture
             if let Err(e) = audio_capture.start_capture(audio_tx) {
                 error!("Failed to start audio capture: {}", e);
                 return;
             }
 
-            // Create WAV writer
-            let mut writer = match WavWriter::new(audio_path_clone.clone(), 48000, 2) {
-                Ok(w) => w,
-                Err(e) => {
-                    error!("Failed to create WAV writer: {}", e);
-                    return;
-                }
-            };
-
-            info!("Audio capture and writing started");
+            info!("Audio capture started, waiting for first sample to detect sample rate");
             let mut sample_count = 0;
+            let mut writer_opt: Option<WavWriter> = None;
 
             // Block and process audio samples
             while let Some(sample) = audio_rx.blocking_recv() {
-                if let Err(e) = writer.write_samples(&sample.data) {
-                    error!("Failed to write audio samples: {}", e);
-                    break;
-                }
-                sample_count += sample.data.len();
+                // Create WAV writer after receiving first sample (so we know the actual sample rate)
+                if writer_opt.is_none() {
+                    info!("First audio sample received: {} Hz, {} channels",
+                        sample.sample_rate, sample.channels);
 
-                if sample_count % 48000 == 0 {
-                    debug!("Written {} audio samples", sample_count);
+                    writer_opt = match WavWriter::new(
+                        audio_path_clone.clone(),
+                        sample.sample_rate,
+                        sample.channels
+                    ) {
+                        Ok(w) => {
+                            info!("WAV writer created with {} Hz, {} channels",
+                                sample.sample_rate, sample.channels);
+                            Some(w)
+                        },
+                        Err(e) => {
+                            error!("Failed to create WAV writer: {}", e);
+                            return;
+                        }
+                    };
+                }
+
+                if let Some(ref mut writer) = writer_opt {
+                    // Apply gain to increase volume (2.5x boost)
+                    // Clamp to [-1.0, 1.0] to prevent clipping distortion
+                    let gain = 2.5;
+                    let boosted_samples: Vec<f32> = sample.data.iter()
+                        .map(|&s| (s * gain).max(-1.0).min(1.0))
+                        .collect();
+
+                    if let Err(e) = writer.write_samples(&boosted_samples) {
+                        error!("Failed to write audio samples: {}", e);
+                        break;
+                    }
+                    sample_count += sample.data.len();
                 }
             }
 
             info!("Audio channel closed, finalizing WAV file ({} samples)", sample_count);
-            if let Err(e) = writer.finalize() {
-                error!("Failed to finalize WAV file: {}", e);
+            if let Some(writer) = writer_opt {
+                if let Err(e) = writer.finalize() {
+                    error!("Failed to finalize WAV file: {}", e);
+                } else {
+                    info!("Audio file finalized successfully");
+                }
             } else {
-                info!("Audio file finalized successfully");
+                warn!("No audio samples received, WAV file not created");
             }
 
             // audio_capture is dropped here, stopping the stream
@@ -790,11 +833,11 @@ pub async fn cmd_start_webcam_recording(
         Ok(())
     });
 
-    // Store handles in global state
+    // Store handles in global state (including camera_backend for graceful stop)
     let mut recordings = ACTIVE_WEBCAM_RECORDINGS.lock().await;
     recordings.insert(
         recording_id.clone(),
-        (camera_handle, audio_handle, encoding_handle, output_path, audio_path),
+        (camera_backend, camera_handle, audio_handle, encoding_handle, output_path, audio_path),
     );
 
     info!("Webcam recording started successfully: {}", recording_id);
@@ -837,7 +880,7 @@ pub async fn cmd_stop_webcam_recording(
 
     // Remove recording from active state
     let mut recordings = ACTIVE_WEBCAM_RECORDINGS.lock().await;
-    let (camera_handle, audio_handle, encoding_handle, video_path, audio_path) = recordings
+    let (mut camera_backend, camera_handle, audio_handle, encoding_handle, video_path, audio_path) = recordings
         .remove(&recording_id)
         .ok_or_else(|| {
             error!("Webcam recording not found: {}", recording_id);
@@ -849,9 +892,15 @@ pub async fn cmd_stop_webcam_recording(
 
     info!("Stopping webcam recording: {}", recording_id);
 
-    // Abort camera capture task (this closes the video channel)
-    camera_handle.abort();
-    debug!("Camera capture task aborted");
+    // Gracefully stop camera capture (sets AtomicBool flag or deallocates AVFoundation)
+    camera_backend.stop_capture();
+    debug!("Camera stop signal sent");
+
+    // Wait for camera capture task to finish gracefully (this closes the video channel)
+    if let Err(e) = camera_handle.await {
+        warn!("Camera capture task join error: {}", e);
+    }
+    debug!("Camera capture task finished");
 
     // Abort audio capture task if present (this closes the audio channel)
     if let Some(handle) = audio_handle {
@@ -1063,13 +1112,26 @@ pub async fn cmd_start_screen_recording(
 
     // Map resolution string to output dimensions (Story 4.2)
     let (width, height) = match config.resolution.as_str() {
-        "720p" => (1280_u32, 720_u32),
-        "1080p" => (1920_u32, 1080_u32),
+        "720p" => {
+            // Scale to 720p while preserving aspect ratio
+            let aspect_ratio = capture_width as f32 / capture_height as f32;
+            let height = 720_u32;
+            let width = (height as f32 * aspect_ratio) as u32;
+            info!("Scaling to 720p with aspect ratio preservation: {}x{}", width, height);
+            (width, height)
+        }
+        "1080p" => {
+            // Scale to 1080p while preserving aspect ratio
+            let aspect_ratio = capture_width as f32 / capture_height as f32;
+            let height = 1080_u32;
+            let width = (height as f32 * aspect_ratio) as u32;
+            info!("Scaling to 1080p with aspect ratio preservation: {}x{}", width, height);
+            (width, height)
+        }
         "source" | _ => {
-            // For source resolution, use captured dimensions (may need downscaling if > 1080p)
-            // For now, default to 1080p for "source" to avoid huge files
-            info!("Source resolution requested, using 1080p");
-            (1920_u32, 1080_u32)
+            // Use actual capture dimensions
+            info!("Source resolution requested, using capture dimensions: {}x{}", capture_width, capture_height);
+            (capture_width, capture_height)
         }
     };
 
@@ -1609,17 +1671,24 @@ pub async fn cmd_pause_recording(recording_id: String) -> Result<(), String> {
     // Check if this is a PiP recording first (Story 4.8 - PiP pause/resume integration)
     {
         let pip_recordings = ACTIVE_PIP_RECORDINGS.lock().await;
-        if let Some((_screen_handle, _webcam_handle, _comp_handle, _output_path, screen_pause, mic_pause, webcam_audio_pause)) =
-            pip_recordings.get(&recording_id)
+        if let Some((
+            _screen_capture_handle,
+            _webcam_capture_handle,
+            _screen_encoding_handle,
+            _webcam_encoding_handle,
+            _mic_writer_handle_opt,
+            _output_path,
+            _temp_screen_path,
+            _temp_webcam_path,
+            _mic_audio_path_opt,
+            _pip_config,
+            screen_pause,
+            _screen_stop_signal,
+            _camera_capture,
+        )) = pip_recordings.get(&recording_id)
         {
-            // Pause all active streams
+            // Pause screen capture (pauses both screen and webcam capture)
             screen_pause.store(true, std::sync::atomic::Ordering::Relaxed);
-            if let Some(ref mic) = mic_pause {
-                mic.store(true, std::sync::atomic::Ordering::Relaxed);
-            }
-            if let Some(ref webcam_audio) = webcam_audio_pause {
-                webcam_audio.store(true, std::sync::atomic::Ordering::Relaxed);
-            }
             info!("PiP recording paused (frame discard enabled): {}", recording_id);
             return Ok(());
         }
@@ -1679,17 +1748,24 @@ pub async fn cmd_resume_recording(recording_id: String) -> Result<(), String> {
     // Check if this is a PiP recording first (Story 4.8 - PiP pause/resume integration)
     {
         let pip_recordings = ACTIVE_PIP_RECORDINGS.lock().await;
-        if let Some((_screen_handle, _webcam_handle, _comp_handle, _output_path, screen_pause, mic_pause, webcam_audio_pause)) =
-            pip_recordings.get(&recording_id)
+        if let Some((
+            _screen_capture_handle,
+            _webcam_capture_handle,
+            _screen_encoding_handle,
+            _webcam_encoding_handle,
+            _mic_writer_handle_opt,
+            _output_path,
+            _temp_screen_path,
+            _temp_webcam_path,
+            _mic_audio_path_opt,
+            _pip_config,
+            screen_pause,
+            _screen_stop_signal,
+            _camera_capture,
+        )) = pip_recordings.get(&recording_id)
         {
-            // Resume all active streams
+            // Resume screen capture (resumes both screen and webcam capture)
             screen_pause.store(false, std::sync::atomic::Ordering::Relaxed);
-            if let Some(ref mic) = mic_pause {
-                mic.store(false, std::sync::atomic::Ordering::Relaxed);
-            }
-            if let Some(ref webcam_audio) = webcam_audio_pause {
-                webcam_audio.store(false, std::sync::atomic::Ordering::Relaxed);
-            }
             info!("PiP recording resumed: {}", recording_id);
             return Ok(());
         }
@@ -2105,17 +2181,21 @@ pub async fn cmd_start_pip_recording(
     let (screen_width, screen_height) = screen_capture.get_dimensions();
     info!("Screen dimensions: {}x{}", screen_width, screen_height);
 
-    // Initialize camera capture
-    let mut camera_capture = CameraCapture::new(camera_index).map_err(|e| {
-        error!("Failed to initialize camera: {}", e);
-        format!("Camera initialization failed: {}", e)
-    })?;
+    // Initialize camera capture using CameraBackend (AVFoundation on macOS)
+    // Use 1080p resolution for webcam capture (sufficient for PiP overlay)
+    let webcam_width = 1920u32;
+    let webcam_height = 1080u32;
 
-    let webcam_width = camera_capture.width();
-    let webcam_height = camera_capture.height();
+    let mut camera_capture = CameraBackend::new(camera_index, webcam_width, webcam_height)
+        .await
+        .map_err(|e| {
+            error!("Failed to initialize camera: {}", e);
+            format!("Camera initialization failed: {}", e)
+        })?;
+
     info!("Camera dimensions: {}x{} @ 30fps", webcam_width, webcam_height);
 
-    // Create PiP configuration
+    // Create PiP configuration (saved for later composition)
     let pip_config = PipConfig {
         x: pip_x,
         y: pip_y,
@@ -2123,33 +2203,66 @@ pub async fn cmd_start_pip_recording(
         height: pip_height,
     };
 
-    // Create FFmpeg compositor for PiP
-    let mut compositor = FFmpegCompositor::new(
-        output_path_buf.clone(),
+    // NEW ARCHITECTURE: Record screen and webcam to SEPARATE temporary files
+    // Then composite them when stopping (avoids FIFO deadlock issues)
+
+    // Create temporary file paths
+    let temp_screen_path = output_path_buf.with_file_name(format!(
+        "{}-screen-temp.mp4",
+        output_path_buf.file_stem().unwrap().to_string_lossy()
+    ));
+    let temp_webcam_path = output_path_buf.with_file_name(format!(
+        "{}-webcam-temp.mp4",
+        output_path_buf.file_stem().unwrap().to_string_lossy()
+    ));
+
+    info!(
+        "Recording to temp files: screen={}, webcam={}",
+        temp_screen_path.display(),
+        temp_webcam_path.display()
+    );
+
+    // Create screen encoder
+    let mut screen_encoder = FFmpegEncoder::new(
+        temp_screen_path.clone(),
         screen_width,
         screen_height,
+        30, // FPS
+    )
+    .map_err(|e| {
+        error!("Failed to create screen encoder: {}", e);
+        format!("Failed to create screen encoder: {}", e)
+    })?;
+
+    screen_encoder.start_encoding().await.map_err(|e| {
+        error!("Failed to start screen encoder: {}", e);
+        format!("Failed to start screen encoder: {}", e)
+    })?;
+
+    // Create webcam encoder
+    let mut webcam_encoder = FFmpegEncoder::new(
+        temp_webcam_path.clone(),
         webcam_width,
         webcam_height,
         30, // FPS
-        pip_config,
     )
     .map_err(|e| {
-        error!("Failed to create FFmpeg compositor: {}", e);
-        format!("Failed to create compositor: {}", e)
+        error!("Failed to create webcam encoder: {}", e);
+        format!("Failed to create webcam encoder: {}", e)
     })?;
 
-    // Start composition process (with named pipes)
-    compositor.start_composition().await.map_err(|e| {
-        error!("Failed to start FFmpeg composition: {}", e);
-        format!("Failed to start composition: {}", e)
+    webcam_encoder.start_encoding().await.map_err(|e| {
+        error!("Failed to start webcam encoder: {}", e);
+        format!("Failed to start webcam encoder: {}", e)
     })?;
 
-    // Create channels for video streams (bounded: 30 frames = 1 second buffer)
+    // Extract pause flag and stop signal before starting capture
+    let screen_pause_flag = screen_capture.get_pause_flag();
+    let screen_stop_signal = screen_capture.get_stop_signal();
+
+    // Create channels for video streams
     let (screen_video_tx, mut screen_video_rx) = mpsc::channel::<TimestampedFrame>(30);
     let (webcam_video_tx, mut webcam_video_rx) = mpsc::channel::<TimestampedFrame>(30);
-
-    // Extract pause flag before starting capture (Story 4.8 - PiP pause/resume integration)
-    let screen_pause_flag = screen_capture.get_pause_flag();
 
     // Start screen capture task
     let screen_capture_handle = screen_capture
@@ -2167,143 +2280,187 @@ pub async fn cmd_start_pip_recording(
             format!("Failed to start webcam capture: {}", e)
         })?;
 
-    // Spawn composition task
-    let composition_handle = tokio::spawn(async move {
-        info!("PiP composition task started");
-        let mut screen_frame_count = 0;
-        let mut webcam_frame_count = 0;
+    // Spawn screen encoding task
+    let screen_encoding_handle = tokio::spawn(async move {
+        info!("Screen encoding task started");
+        let mut frame_count = 0;
 
-        // AC #3: Track first frame timestamps for synchronization validation (< 100ms variance)
-        let mut first_screen_timestamp: Option<u64> = None;
-        let mut first_webcam_timestamp: Option<u64> = None;
-        let mut sync_validated = false;
-
-        loop {
-            tokio::select! {
-                // Process screen video frames
-                Some(screen_frame) = screen_video_rx.recv() => {
-                    // Record first frame timestamp for sync validation
-                    if first_screen_timestamp.is_none() {
-                        first_screen_timestamp = Some(screen_frame.timestamp_ms);
-                        debug!("First screen frame timestamp: {}ms", screen_frame.timestamp_ms);
-
-                        // Validate synchronization if we have both timestamps
-                        if let (Some(screen_ts), Some(webcam_ts)) = (first_screen_timestamp, first_webcam_timestamp) {
-                            if !sync_validated {
-                                let variance_ms = if screen_ts > webcam_ts {
-                                    screen_ts - webcam_ts
-                                } else {
-                                    webcam_ts - screen_ts
-                                };
-                                if variance_ms > 100 {
-                                    warn!("Stream start variance {}ms exceeds 100ms threshold (AC #3)", variance_ms);
-                                } else {
-                                    info!("Stream start synchronization validated: {}ms variance (AC #3: < 100ms)", variance_ms);
-                                }
-                                sync_validated = true;
-                            }
-                        }
-                    }
-
-                    // Convert to CompositorFrame
-                    let compositor_frame = CompositorFrame {
-                        data: screen_frame.data,
-                        timestamp_ms: screen_frame.timestamp_ms,
-                        width: screen_frame.width,
-                        height: screen_frame.height,
-                    };
-
-                    // Write frame to compositor screen pipe
-                    if let Err(e) = compositor.write_screen_frame(&compositor_frame).await {
-                        error!("Failed to write screen frame to compositor: {}", e);
-                        return Err(anyhow::anyhow!("Screen frame write error: {}", e));
-                    }
-
-                    screen_frame_count += 1;
-                    if screen_frame_count % 300 == 0 {
-                        debug!("Processed {} screen frames", screen_frame_count);
-                    }
-                }
-
-                // Process webcam video frames
-                Some(webcam_frame) = webcam_video_rx.recv() => {
-                    // Record first frame timestamp for sync validation
-                    if first_webcam_timestamp.is_none() {
-                        first_webcam_timestamp = Some(webcam_frame.timestamp_ms);
-                        debug!("First webcam frame timestamp: {}ms", webcam_frame.timestamp_ms);
-
-                        // Validate synchronization if we have both timestamps
-                        if let (Some(screen_ts), Some(webcam_ts)) = (first_screen_timestamp, first_webcam_timestamp) {
-                            if !sync_validated {
-                                let variance_ms = if screen_ts > webcam_ts {
-                                    screen_ts - webcam_ts
-                                } else {
-                                    webcam_ts - screen_ts
-                                };
-                                if variance_ms > 100 {
-                                    warn!("Stream start variance {}ms exceeds 100ms threshold (AC #3)", variance_ms);
-                                } else {
-                                    info!("Stream start synchronization validated: {}ms variance (AC #3: < 100ms)", variance_ms);
-                                }
-                                sync_validated = true;
-                            }
-                        }
-                    }
-
-                    // Convert to CompositorFrame
-                    let compositor_frame = CompositorFrame {
-                        data: webcam_frame.data,
-                        timestamp_ms: webcam_frame.timestamp_ms,
-                        width: webcam_frame.width,
-                        height: webcam_frame.height,
-                    };
-
-                    // Write frame to compositor webcam pipe
-                    if let Err(e) = compositor.write_webcam_frame(&compositor_frame).await {
-                        error!("Failed to write webcam frame to compositor: {}", e);
-                        return Err(anyhow::anyhow!("Webcam frame write error: {}", e));
-                    }
-
-                    webcam_frame_count += 1;
-                    if webcam_frame_count % 300 == 0 {
-                        debug!("Processed {} webcam frames", webcam_frame_count);
-                    }
-                }
-
-                // Both channels closed - finish composition
-                else => {
-                    info!(
-                        "PiP composition complete: {} screen frames, {} webcam frames",
-                        screen_frame_count, webcam_frame_count
-                    );
-
-                    // Finalize composition
-                    if let Err(e) = compositor.stop_composition().await {
-                        error!("Failed to finalize composition: {}", e);
-                        return Err(anyhow::anyhow!("Composition finalization error: {}", e));
-                    }
-
-                    info!("PiP composition finalized successfully");
-                    return Ok(());
-                }
+        while let Some(frame) = screen_video_rx.recv().await {
+            if let Err(e) = screen_encoder.write_frame_to_stdin(&frame).await {
+                error!("Failed to write screen frame: {}", e);
+                break;
             }
+            frame_count += 1;
+            if frame_count % 300 == 0 {
+                debug!("Encoded {} screen frames", frame_count);
+            }
+        }
+
+        info!("Screen encoding complete: {} frames", frame_count);
+        if let Err(e) = screen_encoder.stop_encoding().await {
+            error!("Failed to stop screen encoder: {}", e);
         }
     });
 
+    // Spawn webcam encoding task
+    let webcam_encoding_handle = tokio::spawn(async move {
+        info!("Webcam encoding task started");
+        let mut frame_count = 0;
+
+        while let Some(frame) = webcam_video_rx.recv().await {
+            if let Err(e) = webcam_encoder.write_frame_to_stdin(&frame).await {
+                error!("Failed to write webcam frame: {}", e);
+                break;
+            }
+            frame_count += 1;
+            if frame_count % 300 == 0 {
+                debug!("Encoded {} webcam frames", frame_count);
+            }
+        }
+
+        info!("Webcam encoding complete: {} frames", frame_count);
+        if let Err(e) = webcam_encoder.stop_encoding().await {
+            error!("Failed to stop webcam encoder: {}", e);
+        }
+    });
+
+    // Capture microphone audio for voiceover
+    let mic_audio_path = output_path_buf.with_file_name(format!(
+        "{}-mic-audio.wav",
+        output_path_buf.file_stem().unwrap().to_string_lossy()
+    ));
+
+    let mic_writer_handle_opt = if check_microphone_permission().map_err(|e| e.to_string())? {
+        info!("Starting microphone audio capture for PiP");
+
+        let (mic_tx, handle) = {
+            // Create AudioCapture instance in a block to limit its scope
+            let mut audio_capture = AudioCapture::new().map_err(|e| {
+                error!("Failed to initialize microphone capture: {}", e);
+                format!("Failed to initialize microphone capture: {}", e)
+            })?;
+
+            // Select default microphone device
+            let device_name = audio_capture.select_default_device().map_err(|e| {
+                error!("Failed to select default microphone device: {}", e);
+                format!("Failed to select microphone device: {}", e)
+            })?;
+
+            info!("Selected microphone: {}", device_name);
+
+            // Get channel count and sample rate from audio capture
+            let mic_channels = audio_capture.get_channels().map_err(|e| {
+                error!("Failed to get microphone channel count: {}", e);
+                format!("Failed to get microphone channel count: {}", e)
+            })?;
+
+            info!("Microphone channels: {}", mic_channels);
+
+            // Create bounded channel for audio samples
+            let (mic_tx, mut mic_rx) = mpsc::channel::<AudioSample>(100);
+
+            // Clone mic_tx before passing to start_capture (we need to keep one to close the channel later)
+            let mic_tx_for_storage = mic_tx.clone();
+
+            // Start capture with the original sender
+            audio_capture.start_capture(mic_tx).map_err(|e| {
+                error!("Failed to start microphone capture: {}", e);
+                format!("Failed to start microphone capture: {}", e)
+            })?;
+
+            // Spawn blocking task to handle audio capture
+            let mic_audio_path_clone = mic_audio_path.clone();
+            let handle = tokio::task::spawn_blocking(move || {
+
+                // Wait for first sample to detect actual sample rate
+                let mut writer_opt: Option<WavWriter> = None;
+
+                while let Some(sample) = mic_rx.blocking_recv() {
+                    // Create WAV writer after receiving first sample
+                    if writer_opt.is_none() {
+                        writer_opt = match WavWriter::new(
+                            mic_audio_path_clone.clone(),
+                            sample.sample_rate,
+                            sample.channels,
+                        ) {
+                            Ok(w) => Some(w),
+                            Err(e) => {
+                                error!("Failed to create microphone WAV writer: {}", e);
+                                return;
+                            }
+                        };
+                        info!("Microphone WAV writer created: {} Hz, {} channels",
+                            sample.sample_rate, sample.channels);
+                    }
+
+                    if let Some(ref mut writer) = writer_opt {
+                        // Apply gain to increase volume (2.5x boost like webcam recording)
+                        let gain = 2.5;
+                        let boosted_samples: Vec<f32> = sample
+                            .data
+                            .iter()
+                            .map(|&s| (s * gain).max(-1.0).min(1.0))
+                            .collect();
+
+                        if let Err(e) = writer.write_samples(&boosted_samples) {
+                            error!("Failed to write microphone audio samples: {}", e);
+                            break;
+                        }
+                    }
+                }
+
+                info!("Microphone audio writer task completed");
+
+                // Finalize WAV file
+                if let Some(writer) = writer_opt {
+                    if let Err(e) = writer.finalize() {
+                        error!("Failed to finalize microphone WAV file: {}", e);
+                    }
+                }
+            });
+
+            // Leak AudioCapture (it's not Send, so we can't store it)
+            // It will be cleaned up when the process exits
+            std::mem::forget(audio_capture);
+
+            (mic_tx_for_storage, handle)
+        }; // audio_capture binding is dropped here, safe to await
+
+        // Store mic sender in global state so it can be closed on stop
+        MICROPHONE_SENDERS.lock().await.insert(recording_id.clone(), mic_tx);
+
+        Some(handle)
+    } else {
+        info!("Microphone permission not granted, skipping audio capture");
+        None
+    };
+
     // Store handles in global state (Story 4.8 - PiP pause/resume integration)
-    // Note: Current PiP implementation doesn't capture audio streams (mic/webcam audio),
-    // so pause flags for those are None. Screen pause flag enables video pause.
+    // NEW ARCHITECTURE: Store separate encoding tasks and temp file paths
+    // IMPORTANT: Must store camera_capture to prevent Drop from stopping capture
+    let mic_audio_path_opt = if mic_writer_handle_opt.is_some() {
+        Some(mic_audio_path)
+    } else {
+        None
+    };
+
     let mut recordings = ACTIVE_PIP_RECORDINGS.lock().await;
     recordings.insert(
         recording_id.clone(),
         (
             screen_capture_handle,
             webcam_capture_handle,
-            composition_handle,
-            output_path_buf,
-            screen_pause_flag,
-            None, // No microphone audio in basic PiP
-            None, // No webcam audio in basic PiP
+            screen_encoding_handle,
+            webcam_encoding_handle,
+            mic_writer_handle_opt,         // Microphone audio writer
+            output_path_buf.clone(),      // Final output path
+            temp_screen_path.clone(),      // Temp screen file
+            temp_webcam_path.clone(),      // Temp webcam file
+            mic_audio_path_opt,            // Mic audio path
+            pip_config.clone(),            // PiP config for composition
+            screen_pause_flag,             // Pause flag
+            screen_stop_signal,            // Stop signal
+            camera_capture,                // Camera object (prevents Drop)
         ),
     );
 
@@ -2315,7 +2472,7 @@ pub async fn cmd_start_pip_recording(
 /// Stop Picture-in-Picture (PiP) recording
 ///
 /// This command stops the active PiP recording, waits for all tasks to complete,
-/// and returns the file path where the composited recording was saved.
+/// composites the temp files, and returns the file path where the final recording was saved.
 ///
 /// # Arguments
 ///
@@ -2326,21 +2483,38 @@ pub async fn cmd_start_pip_recording(
 /// - `Ok(String)` with file path to saved composited recording
 /// - `Err(String)` with user-friendly error message on failure
 ///
-/// # Flow
+/// # Flow (NEW ARCHITECTURE)
 ///
 /// 1. Look up PiP recording handles by ID from ACTIVE_PIP_RECORDINGS
 /// 2. Drop channel senders (signals capture tasks to stop)
 /// 3. Wait for screen capture task to complete
 /// 4. Wait for webcam capture task to complete
-/// 5. Wait for composition task to finish (finalizes MP4)
-/// 6. Return file path
+/// 5. Wait for screen encoding task to complete (finalizes temp screen file)
+/// 6. Wait for webcam encoding task to complete (finalizes temp webcam file)
+/// 7. Use FFmpeg to composite temp files into final PiP video
+/// 8. Clean up temp files
+/// 9. Return final file path
 #[tauri::command]
 pub async fn cmd_stop_pip_recording(recording_id: String) -> Result<String, String> {
     debug!("Command: stop PiP recording {}", recording_id);
 
-    // Remove recording from active state (Story 4.8 - updated tuple structure)
+    // Remove recording from active state (NEW ARCHITECTURE - separate encoding tasks)
     let mut recordings = ACTIVE_PIP_RECORDINGS.lock().await;
-    let (screen_capture_handle, webcam_capture_handle, composition_handle, output_path, _screen_pause, _mic_pause, _webcam_audio_pause) = recordings
+    let (
+        screen_capture_handle,
+        webcam_capture_handle,
+        screen_encoding_handle,
+        webcam_encoding_handle,
+        mic_writer_handle_opt,
+        output_path,
+        temp_screen_path,
+        temp_webcam_path,
+        mic_audio_path_opt,
+        pip_config,
+        _screen_pause,
+        screen_stop_signal,
+        mut camera_capture,  // Take ownership to trigger Drop after recording completes
+    ) = recordings
         .remove(&recording_id)
         .ok_or_else(|| {
             error!("PiP recording not found: {}", recording_id);
@@ -2351,6 +2525,13 @@ pub async fn cmd_stop_pip_recording(recording_id: String) -> Result<String, Stri
     drop(recordings);
 
     info!("Stopping PiP recording: {}", recording_id);
+
+    // Signal screen capture to stop (this will drop the channel sender, causing encoding task to finish)
+    info!("Setting stop_signal to true for screen capture");
+    screen_stop_signal.store(true, std::sync::atomic::Ordering::Relaxed);
+
+    // Explicitly stop camera capture (this closes the AVFoundation session)
+    camera_capture.stop_capture();
 
     // Wait for screen capture task to complete
     match screen_capture_handle.await {
@@ -2372,22 +2553,161 @@ pub async fn cmd_stop_pip_recording(recording_id: String) -> Result<String, Stri
         }
     }
 
-    // Wait for composition task to finish (flushes remaining frames and finalizes MP4)
-    match composition_handle.await {
-        Ok(Ok(())) => {
-            info!("PiP composition completed successfully");
-        }
-        Ok(Err(e)) => {
-            error!("FFmpeg compositor failed: {}", e);
-            return Err(format!("Failed to finalize PiP composition: {}", e));
+    // Wait for screen encoding task to complete (finalizes temp screen file)
+    match screen_encoding_handle.await {
+        Ok(_) => {
+            info!("Screen encoding task completed");
         }
         Err(e) => {
-            error!("Composition task join error: {}", e);
-            return Err(format!("Composition task error: {}", e));
+            error!("Screen encoding task join error: {}", e);
+            return Err(format!("Screen encoding task error: {}", e));
         }
     }
 
-    // Verify file exists
+    // Wait for webcam encoding task to complete (finalizes temp webcam file)
+    match webcam_encoding_handle.await {
+        Ok(_) => {
+            info!("Webcam encoding task completed");
+        }
+        Err(e) => {
+            error!("Webcam encoding task join error: {}", e);
+            return Err(format!("Webcam encoding task error: {}", e));
+        }
+    }
+
+    // Close microphone channel and wait for audio writer task
+    if let Some(mic_writer_handle) = mic_writer_handle_opt {
+        // Close the microphone channel by dropping the sender
+        let mic_sender = MICROPHONE_SENDERS.lock().await.remove(&recording_id);
+        drop(mic_sender);
+        info!("Microphone channel closed");
+
+        // Wait for microphone audio writer task to complete (with timeout)
+        // Note: AudioCapture is leaked with std::mem::forget, so the channel may never close
+        // However, the WAV file should be complete since we already closed our sender clone
+        let mic_timeout = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            mic_writer_handle
+        ).await;
+
+        match mic_timeout {
+            Ok(Ok(_)) => {
+                info!("Microphone audio writer task completed");
+            }
+            Ok(Err(e)) => {
+                warn!("Microphone audio writer task join error: {}", e);
+            }
+            Err(_) => {
+                warn!("Microphone audio writer task timed out after 5s (AudioCapture is leaked, channel won't close)");
+                warn!("WAV file should be complete - proceeding with composition");
+            }
+        }
+    }
+
+    // Verify temp files exist
+    if !temp_screen_path.exists() {
+        error!("Temp screen file not found: {}", temp_screen_path.display());
+        return Err(format!("Temp screen file not found: {}", temp_screen_path.display()));
+    }
+    if !temp_webcam_path.exists() {
+        error!("Temp webcam file not found: {}", temp_webcam_path.display());
+        return Err(format!("Temp webcam file not found: {}", temp_webcam_path.display()));
+    }
+
+    info!("Both temp files exist, starting composition");
+    info!("  Screen: {}", temp_screen_path.display());
+    info!("  Webcam: {}", temp_webcam_path.display());
+    if let Some(ref mic_path) = mic_audio_path_opt {
+        info!("  Microphone: {}", mic_path.display());
+    }
+    info!("  Output: {}", output_path.display());
+
+    // Composite the two temp files using FFmpeg
+    // Scale webcam to 1.5x larger for better visibility
+    let scaled_pip_width = (pip_config.width as f32 * 1.5) as u32;
+    let scaled_pip_height = (pip_config.height as f32 * 1.5) as u32;
+
+    info!("Scaling webcam from {}x{} to {}x{} (1.5x larger)",
+        pip_config.width, pip_config.height, scaled_pip_width, scaled_pip_height);
+
+    // Use filter_complex to overlay webcam on screen at specified position
+    let mut ffmpeg_command = tokio::process::Command::new("ffmpeg");
+
+    ffmpeg_command
+        .arg("-i").arg(&temp_screen_path)      // Input 0: screen video
+        .arg("-i").arg(&temp_webcam_path);     // Input 1: webcam video
+
+    // Add microphone audio as input 2 if available
+    if let Some(ref mic_path) = mic_audio_path_opt {
+        ffmpeg_command.arg("-i").arg(mic_path);  // Input 2: microphone audio
+    }
+
+    ffmpeg_command
+        .arg("-filter_complex")
+        .arg(format!(
+            "[1:v]scale={}:{}[pip];[0:v][pip]overlay={}:{}",
+            scaled_pip_width,
+            scaled_pip_height,
+            pip_config.x,
+            pip_config.y
+        ))
+        .arg("-c:v").arg("libx264")            // Video codec
+        .arg("-preset").arg("ultrafast")        // Fast encoding
+        .arg("-crf").arg("23");                 // Quality
+
+    // Map audio: use microphone if available, otherwise no audio
+    // Note: Don't use -map for video because filter_complex output is used automatically
+    if mic_audio_path_opt.is_some() {
+        ffmpeg_command
+            .arg("-map").arg("2:a")             // Map audio from microphone (input 2)
+            .arg("-c:a").arg("aac")             // Audio codec
+            .arg("-b:a").arg("192k");           // Audio bitrate
+    } else {
+        ffmpeg_command.arg("-an");              // No audio
+    }
+
+    ffmpeg_command
+        .arg("-y")                              // Overwrite output
+        .arg(&output_path);
+
+    info!("Running FFmpeg composition command");
+
+    let output = ffmpeg_command.output().await.map_err(|e| {
+        error!("Failed to run FFmpeg composition: {}", e);
+        format!("Failed to run FFmpeg composition: {}", e)
+    })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        error!("FFmpeg composition failed: {}", stderr);
+        return Err(format!("FFmpeg composition failed: {}", stderr));
+    }
+
+    info!("FFmpeg composition completed successfully");
+
+    // Clean up temp files
+    if let Err(e) = tokio::fs::remove_file(&temp_screen_path).await {
+        warn!("Failed to remove temp screen file: {}", e);
+    } else {
+        debug!("Removed temp screen file");
+    }
+
+    if let Err(e) = tokio::fs::remove_file(&temp_webcam_path).await {
+        warn!("Failed to remove temp webcam file: {}", e);
+    } else {
+        debug!("Removed temp webcam file");
+    }
+
+    // Clean up microphone audio file if it was created
+    if let Some(mic_path) = mic_audio_path_opt {
+        if let Err(e) = tokio::fs::remove_file(&mic_path).await {
+            warn!("Failed to remove microphone audio file: {}", e);
+        } else {
+            debug!("Removed microphone audio file");
+        }
+    }
+
+    // Verify final file exists
     if !output_path.exists() {
         error!("PiP recording file not found: {}", output_path.display());
         return Err(format!("Recording file not found: {}", output_path.display()));

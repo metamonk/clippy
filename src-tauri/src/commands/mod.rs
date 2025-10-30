@@ -6,6 +6,7 @@ pub mod performance;
 pub mod composition;
 pub mod timeline_render;
 pub mod ai_analysis;
+pub mod test_avfoundation_camera;
 
 pub use media::cmd_import_media;
 pub use export::{ExportState, cmd_start_export, cmd_get_export_progress, cmd_cancel_export};
@@ -68,3 +69,4 @@ pub use timeline_render::{
     cmd_clear_timeline_cache,
 };
 pub use ai_analysis::cmd_analyze_recording;
+pub use test_avfoundation_camera::test_avfoundation_camera;

@@ -372,10 +372,11 @@ impl CameraCapture {
 
         // Spawn blocking capture task (Camera is not Send)
         let handle = tokio::task::spawn_blocking(move || {
-            // Open camera at its native highest resolution
-            // We'll downscale in software to the target resolution
+            // Open camera at 1080p for real-time capture
+            // Note: nokhwa's synchronous capture is slow (~400ms per frame)
+            // For true 30 FPS, we need native AVFoundation implementation
             let requested = RequestedFormat::new::<RgbFormat>(
-                RequestedFormatType::AbsoluteHighestResolution
+                RequestedFormatType::HighestResolution(Resolution::new(width, height))
             );
             let index = CameraIndex::Index(camera_index);
 
@@ -408,13 +409,10 @@ impl CameraCapture {
             let frame_interval = std::time::Duration::from_millis(33); // ~30 FPS
             let mut next_frame_time = std::time::Instant::now();
 
-            // Create a runtime for frame sending
-            let rt = tokio::runtime::Handle::current();
-
             let mut loop_count = 0;
             loop {
                 loop_count += 1;
-                if loop_count % 30 == 1 {
+                if loop_count <= 5 || loop_count % 30 == 1 {
                     info!("Capture loop iteration {} (at {:?})", loop_count, recording_start.elapsed());
                 }
 
@@ -425,6 +423,9 @@ impl CameraCapture {
                 }
 
                 // Wait until next frame time
+                if loop_count <= 5 {
+                    info!("Waiting for next frame time (iteration {})", loop_count);
+                }
                 let now = std::time::Instant::now();
                 if now < next_frame_time {
                     std::thread::sleep(next_frame_time - now);
@@ -432,27 +433,45 @@ impl CameraCapture {
                 next_frame_time = next_frame_time + frame_interval;
 
                 // Capture frame and decode to RGB
+                if loop_count <= 5 {
+                    info!("Capturing frame {} from camera", loop_count);
+                }
                 let rgb_image = match camera.frame().and_then(|frame| frame.decode_image::<RgbFormat>()) {
-                    Ok(img) => img,
+                    Ok(img) => {
+                        if loop_count <= 5 {
+                            info!("Successfully captured and decoded frame {}", loop_count);
+                        }
+                        img
+                    }
                     Err(e) => {
-                        warn!("Failed to capture and decode camera frame: {}", e);
+                        warn!("Failed to capture and decode camera frame {}: {}", loop_count, e);
                         continue;
                     }
                 };
 
                 // Downscale if needed (actual resolution != target resolution)
                 let rgb_data = if actual_width != width || actual_height != height {
-                    // Need to downscale
+                    // Need to downscale - use Nearest for maximum speed
+                    // Even Triangle is too slow (2+ seconds per frame for 4K→1080p)
+                    if loop_count <= 5 {
+                        info!("Downscaling frame {} from {}x{} to {}x{}", loop_count, actual_width, actual_height, width, height);
+                    }
                     use image::imageops::FilterType;
                     let resized = image::imageops::resize(
                         &rgb_image,
                         width,
                         height,
-                        FilterType::Lanczos3
+                        FilterType::Nearest  // No interpolation - just pick nearest pixel (fastest)
                     );
+                    if loop_count <= 5 {
+                        info!("Downscaling frame {} complete", loop_count);
+                    }
                     resized.into_raw()
                 } else {
                     // No scaling needed
+                    if loop_count <= 5 {
+                        info!("No downscaling needed for frame {}", loop_count);
+                    }
                     rgb_image.into_raw()
                 };
 
@@ -482,14 +501,21 @@ impl CameraCapture {
                     height,
                 };
 
-                // Send frame through channel (blocking if full - backpressure)
-                if rt.block_on(frame_tx.send(frame)).is_err() {
-                    info!("Frame channel closed, stopping camera capture");
-                    break;
+                // Send frame through channel (use blocking_send for blocking thread)
+                if loop_count <= 5 {
+                    info!("About to send frame {} to channel", loop_count);
                 }
-
-                if loop_count % 30 == 0 {
-                    info!("Successfully sent frame {} to encoder", loop_count);
+                match frame_tx.blocking_send(frame) {
+                    Ok(_) => {
+                        if loop_count <= 5 || loop_count % 30 == 0 {
+                            info!("Successfully sent frame {} to encoder", loop_count);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Frame channel send error on frame {}: {}", loop_count, e);
+                        info!("Frame channel closed, stopping camera capture");
+                        break;
+                    }
                 }
             }
 

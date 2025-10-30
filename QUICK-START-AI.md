@@ -35,9 +35,10 @@ npm run tauri build
 3. **Enable microphone** in settings
 4. Record 30-60 seconds while talking
 5. Click "Stop Recording"
-6. Click **"Analyze with AI ✨"** button
-7. Wait 15-30 seconds
-8. Show off the results! 🎉
+6. Find the video in Media Library (left panel)
+7. **Hover** over the thumbnail → Click purple **✨ Sparkles** button
+8. Wait 15-30 seconds
+9. Show off the results! 🎉
 
 ---
 

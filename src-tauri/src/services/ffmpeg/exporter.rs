@@ -359,7 +359,7 @@ impl VideoExporter {
 
         // Video encoding preset for H.264
         if video_codec == "libx264" {
-            command.arg("-preset").arg("medium");
+            command.arg("-preset").arg("faster");
             command.arg("-crf").arg("23"); // Constant rate factor for quality
         }
 

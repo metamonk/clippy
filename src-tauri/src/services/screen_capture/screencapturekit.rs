@@ -593,24 +593,39 @@ impl ScreenCapture {
             }
         }
 
-        // Get actual display dimensions from ScreenCaptureKit
+        // Get actual display/window dimensions from ScreenCaptureKit
         let (width, height) = {
             match SCShareableContent::get() {
                 Ok(content) => {
-                    let displays = content.displays();
-                    if displays.is_empty() {
-                        warn!("No displays found, using default 1920x1080");
-                        (1920, 1080)
+                    // If window_id is provided, get window dimensions instead of display
+                    if let Some(wid) = window_id {
+                        let windows = content.windows();
+                        if let Some(window) = windows.iter().find(|w| w.window_id() == wid) {
+                            let w = window.get_frame().size.width as usize;
+                            let h = window.get_frame().size.height as usize;
+                            info!("Detected window dimensions for ID {}: {}x{}", wid, w, h);
+                            (w, h)
+                        } else {
+                            warn!("Window ID {} not found, using default 1920x1080", wid);
+                            (1920, 1080)
+                        }
                     } else {
-                        let display = &displays[0];
-                        let w = display.width();
-                        let h = display.height();
-                        debug!("Detected display dimensions: {}x{}", w, h);
-                        (w as usize, h as usize)
+                        // Get display dimensions for fullscreen capture
+                        let displays = content.displays();
+                        if displays.is_empty() {
+                            warn!("No displays found, using default 1920x1080");
+                            (1920, 1080)
+                        } else {
+                            let display = &displays[0];
+                            let w = display.width();
+                            let h = display.height();
+                            debug!("Detected display dimensions: {}x{}", w, h);
+                            (w as usize, h as usize)
+                        }
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to get display dimensions: {:?}, using default 1920x1080", e);
+                    warn!("Failed to get dimensions: {:?}, using default 1920x1080", e);
                     (1920, 1080)
                 }
             }

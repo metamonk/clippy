@@ -355,9 +355,9 @@ impl AudioCapture {
 
             // Send sample (non-blocking)
             if let Err(e) = sample_tx.try_send(audio_sample) {
-                warn!("Failed to send audio sample: {}", e);
-            } else if count <= 3 {
-                info!("Audio sample #{} sent successfully to channel", count);
+                if count == 1 {
+                    warn!("Failed to send audio sample: {}", e);
+                }
             }
         };
 

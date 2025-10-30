@@ -1,10 +1,11 @@
-import { Film, Trash2 } from "lucide-react";
+import { Film, Trash2, Sparkles } from "lucide-react";
 import React, { useState } from "react";
 import type { MediaFile } from "@/types/media";
 import { cn } from "@/lib/utils";
 import { usePlayerStore } from "@/stores/playerStore";
 import { useMediaLibraryStore } from "@/stores/mediaLibraryStore";
 import { useDragStore } from "@/stores/dragStore";
+import { AiInsightsPanel } from "@/components/recording/AiInsightsPanel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,6 +51,7 @@ export function MediaItem({ mediaFile }: MediaItemProps) {
   const isSelected = currentVideo?.id === mediaFile.id;
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [thumbnailError, setThumbnailError] = useState(false);
+  const [showAiInsights, setShowAiInsights] = useState(false);
 
   const handleClick = () => {
     // Focus Context System (ADR-007): setCurrentVideo automatically sets focusContext='source' → mode='preview'
@@ -74,8 +76,9 @@ export function MediaItem({ mediaFile }: MediaItemProps) {
     // Only start drag on left mouse button
     if (e.button !== 0) return;
 
-    // Don't start drag if clicking on delete button
-    if ((e.target as HTMLElement).closest('button[aria-label="Delete video"]')) {
+    // Don't start drag if clicking on action buttons
+    if ((e.target as HTMLElement).closest('button[aria-label="Delete video"]') ||
+        (e.target as HTMLElement).closest('button[aria-label="Analyze with AI"]')) {
       return;
     }
 
@@ -125,17 +128,33 @@ export function MediaItem({ mediaFile }: MediaItemProps) {
             </div>
           )}
 
-          {/* Delete button - appears on hover */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowDeleteDialog(true);
-            }}
-            className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-            aria-label="Delete video"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          {/* Action buttons - appear on hover */}
+          <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* AI Analysis button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAiInsights(true);
+              }}
+              className="p-1.5 bg-purple-500 text-white rounded-md hover:bg-purple-600"
+              aria-label="Analyze with AI"
+              title="Analyze with AI"
+            >
+              <Sparkles className="h-4 w-4" />
+            </button>
+
+            {/* Delete button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDeleteDialog(true);
+              }}
+              className="p-1.5 bg-red-500 text-white rounded-md hover:bg-red-600"
+              aria-label="Delete video"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* File metadata */}
@@ -175,6 +194,14 @@ export function MediaItem({ mediaFile }: MediaItemProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* AI Insights Panel */}
+      {showAiInsights && (
+        <AiInsightsPanel
+          audioPath={mediaFile.filePath}
+          onClose={() => setShowAiInsights(false)}
+        />
+      )}
     </>
   );
 }
