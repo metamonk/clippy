@@ -150,8 +150,8 @@ impl TimelineRenderer {
     /// Build FFmpeg filter_complex for timeline rendering
     ///
     /// This generates a complex filter that:
-    /// 1. Concatenates clips within each video track
-    /// 2. Overlays tracks on top of each other (Track 1 = bottom, Track N = top)
+    /// 1. Creates a black background for the full timeline duration
+    /// 2. Overlays each clip at its exact timeline position
     ///
     /// # Arguments
     ///
@@ -176,128 +176,95 @@ impl TimelineRenderer {
 
         let mut filter_parts = Vec::new();
 
-        // Step 1: Process each video track independently
-        let mut track_labels = Vec::new();
+        // Step 1: Create black background for full timeline duration
+        let duration_seconds = timeline.total_duration as f64 / 1000.0;
+        filter_parts.push(format!(
+            "color=black:s={}x{}:d={}:r=30[bg]",
+            self.canvas_size.width,
+            self.canvas_size.height,
+            duration_seconds
+        ));
+
+        // Step 2: Prepare all clips (trim and scale)
+        let mut clip_labels = Vec::new();
 
         for track in &video_tracks {
-            let track_num = track.track_number;
-            let is_bottom_track = track_num == 1;
-
-            if track.clips.is_empty() {
-                continue;
-            }
-
-            if track.clips.len() == 1 {
-                // Single clip: Just trim and scale
-                let clip = &track.clips[0];
+            for (clip_idx, clip) in track.clips.iter().enumerate() {
                 let input_idx = input_map
-                    .get(&(track_num, 0))
-                    .ok_or_else(|| anyhow!("Missing input index for track {} clip 0", track_num))?;
+                    .get(&(track.track_number, clip_idx))
+                    .ok_or_else(|| {
+                        anyhow!("Missing input index for track {} clip {}", track.track_number, clip_idx)
+                    })?;
 
                 let trim_start = clip.trim_in as f64 / 1000.0;
                 let trim_duration = (clip.trim_out - clip.trim_in) as f64 / 1000.0;
+                let clip_label = format!("t{}c{}", track.track_number, clip_idx);
 
-                if is_bottom_track {
+                // Trim clip to its trim points and reset PTS
+                if track.track_number == 1 {
                     // Bottom track: Scale to canvas with padding
                     filter_parts.push(format!(
-                        "[{}:v]trim=start={}:duration={},setpts=PTS-STARTPTS,scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black[track{}]",
+                        "[{}:v]trim=start={}:duration={},setpts=PTS-STARTPTS,scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black[{}]",
                         input_idx, trim_start, trim_duration,
                         self.canvas_size.width, self.canvas_size.height,
                         self.canvas_size.width, self.canvas_size.height,
-                        track_num
+                        clip_label
                     ));
                 } else {
                     // Upper tracks: Scale for PiP
                     let pip_w = self.canvas_size.width / 2;
                     let pip_h = self.canvas_size.height / 2;
                     filter_parts.push(format!(
-                        "[{}:v]trim=start={}:duration={},setpts=PTS-STARTPTS,scale={}:{}:force_original_aspect_ratio=decrease[track{}]",
-                        input_idx, trim_start, trim_duration, pip_w, pip_h, track_num
+                        "[{}:v]trim=start={}:duration={},setpts=PTS-STARTPTS,scale={}:{}:force_original_aspect_ratio=decrease[{}]",
+                        input_idx, trim_start, trim_duration, pip_w, pip_h, clip_label
                     ));
                 }
-            } else {
-                // Multiple clips: Concatenate them
-                let mut concat_inputs = Vec::new();
 
-                for (clip_idx, clip) in track.clips.iter().enumerate() {
-                    let input_idx = input_map
-                        .get(&(track_num, clip_idx))
-                        .ok_or_else(|| {
-                            anyhow!("Missing input index for track {} clip {}", track_num, clip_idx)
-                        })?;
-
-                    let trim_start = clip.trim_in as f64 / 1000.0;
-                    let trim_duration = (clip.trim_out - clip.trim_in) as f64 / 1000.0;
-
-                    let label = format!("t{}c{}", track_num, clip_idx);
-
-                    if is_bottom_track {
-                        filter_parts.push(format!(
-                            "[{}:v]trim=start={}:duration={},setpts=PTS-STARTPTS,scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black[{}]",
-                            input_idx, trim_start, trim_duration,
-                            self.canvas_size.width, self.canvas_size.height,
-                            self.canvas_size.width, self.canvas_size.height,
-                            label
-                        ));
-                    } else {
-                        let pip_w = self.canvas_size.width / 2;
-                        let pip_h = self.canvas_size.height / 2;
-                        filter_parts.push(format!(
-                            "[{}:v]trim=start={}:duration={},setpts=PTS-STARTPTS,scale={}:{}:force_original_aspect_ratio=decrease[{}]",
-                            input_idx, trim_start, trim_duration, pip_w, pip_h, label
-                        ));
-                    }
-
-                    concat_inputs.push(label);
-                }
-
-                // Concatenate all clips in this track
-                let concat_str = concat_inputs
-                    .iter()
-                    .map(|l| format!("[{}]", l))
-                    .collect::<Vec<_>>()
-                    .join("");
-
-                filter_parts.push(format!(
-                    "{}concat=n={}:v=1:a=0[track{}]",
-                    concat_str,
-                    concat_inputs.len(),
-                    track_num
+                clip_labels.push((
+                    clip_label,
+                    clip.start_time as f64 / 1000.0,  // Timeline start time in seconds
+                    trim_duration,  // Clip duration in seconds
+                    track.track_number,
                 ));
             }
-
-            track_labels.push(format!("track{}", track_num));
         }
 
-        // Step 2: Overlay tracks (Track 1 = bottom, Track N = top)
-        if track_labels.len() == 1 {
-            // Single track: Just output it
-            filter_parts.push(format!("[{}]copy[vout]", track_labels[0]));
-        } else {
-            // Multiple tracks: Overlay them
-            let mut current_label = track_labels[0].clone();
+        // Step 3: Overlay clips onto background at their timeline positions
+        // Sort by track number (bottom to top) for proper layering
+        clip_labels.sort_by_key(|(_, _, _, track_num)| *track_num);
 
-            for i in 1..track_labels.len() {
-                let overlay_label = &track_labels[i];
-                let output_label = if i == track_labels.len() - 1 {
-                    "vout".to_string()
-                } else {
-                    format!("overlay{}", i)
-                };
+        let mut current_label = "bg".to_string();
 
-                // Default PiP position: top-right corner with 20px margin
+        for (i, (clip_label, start_time, duration, track_num)) in clip_labels.iter().enumerate() {
+            let end_time = start_time + duration;
+            let output_label = if i == clip_labels.len() - 1 {
+                "vout".to_string()
+            } else {
+                format!("tmp{}", i)
+            };
+
+            // Calculate overlay position (PiP positioning for upper tracks)
+            let (x, y) = if *track_num == 1 {
+                // Bottom track: centered (0, 0 works because it's same size as canvas)
+                (0, 0)
+            } else {
+                // Upper tracks: top-right corner with margin
                 let margin = 20;
                 let pip_w = self.canvas_size.width / 2;
-                let x = self.canvas_size.width - pip_w - margin;
-                let y = margin;
+                (
+                    (self.canvas_size.width - pip_w - margin) as i32,
+                    margin as i32,
+                )
+            };
 
-                filter_parts.push(format!(
-                    "[{}][{}]overlay=x={}:y={}:format=auto[{}]",
-                    current_label, overlay_label, x, y, output_label
-                ));
+            // Overlay clip at its exact timeline position using enable parameter
+            // enable='between(t,start,end)' shows the overlay only during that time range
+            filter_parts.push(format!(
+                "[{}][{}]overlay=x={}:y={}:enable='between(t,{},{})':shortest=0[{}]",
+                current_label, clip_label, x, y, start_time, end_time, output_label
+            ));
 
-                current_label = output_label;
-            }
+            current_label = output_label;
         }
 
         Ok(filter_parts.join("; "))
