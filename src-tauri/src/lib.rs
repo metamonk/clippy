@@ -8,6 +8,7 @@ pub mod utils;
 pub mod test_utils;
 
 use std::fs;
+use tauri::Manager;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use commands::{
     cmd_import_media,
@@ -280,8 +281,23 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::Exit => {
+                // Clean up timeline cache on app exit
+                tracing::info!(event = "app_exit", "Cleaning up timeline cache");
 
-    tracing::info!(event = "app_shutdown", "Application shutting down");
+                let timeline_renderer_state: tauri::State<commands::TimelineRendererState> = app_handle.state();
+                let renderer = timeline_renderer_state.0.lock().unwrap();
+                if let Err(e) = renderer.clear_cache() {
+                    tracing::warn!(error = %e, "Failed to clear timeline cache on exit");
+                } else {
+                    tracing::info!("Timeline cache cleared successfully on exit");
+                }
+
+                tracing::info!(event = "app_shutdown", "Application shutting down");
+            }
+            _ => {}
+        });
 }

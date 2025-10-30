@@ -18,14 +18,18 @@ import { Slider } from "@/components/ui/slider";
  * - "Last interaction wins" - intelligent mode switching based on content
  */
 export function PlayerControls() {
-  const { isPlaying, currentTime, duration, togglePlayPause, seek, setFocusContext, focusContext, currentVideo } =
+  const { isPlaying, currentTime, duration, togglePlayPause, seek, setFocusContext, focusContext, currentVideo, mode } =
     usePlayerStore();
 
   // Subscribe to timeline to detect if there are clips for auto-mode switching
   const tracks = useTimelineStore((state) => state.tracks);
+  const timelineDuration = useTimelineStore((state) => state.totalDuration);
 
   // Check if timeline has any clips for intelligent mode switching
   const hasTimelineClips = tracks.some(track => track.clips.length > 0);
+
+  // Use timeline duration in timeline mode, otherwise use video duration
+  const displayDuration = mode === 'timeline' ? timelineDuration / 1000 : duration;
 
   // Handle play/pause with intelligent mode switching (ADR-007)
   const handlePlayPause = () => {
@@ -50,7 +54,7 @@ export function PlayerControls() {
 
   // Handle slider seek
   const handleSliderChange = (value: number[]) => {
-    const newTime = (value[0] / 100) * duration;
+    const newTime = (value[0] / 100) * displayDuration;
     seek(newTime);
   };
 
@@ -63,7 +67,7 @@ export function PlayerControls() {
   };
 
   // Calculate progress percentage
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0;
 
   // Keyboard shortcuts: Space, Arrow keys, Home, End
   useEffect(() => {
@@ -95,10 +99,10 @@ export function PlayerControls() {
           e.preventDefault();
           if (e.shiftKey) {
             // Frame forward (1/30s for 30fps)
-            seek(Math.min(duration, currentTime + 1 / 30));
+            seek(Math.min(displayDuration, currentTime + 1 / 30));
           } else {
             // 5s forward
-            seek(Math.min(duration, currentTime + 5));
+            seek(Math.min(displayDuration, currentTime + 5));
           }
           break;
         case "Home":
@@ -107,14 +111,14 @@ export function PlayerControls() {
           break;
         case "End":
           e.preventDefault();
-          seek(duration);
+          seek(displayDuration);
           break;
       }
     };
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, [handlePlayPause, seek, currentTime, duration]);
+  }, [handlePlayPause, seek, currentTime, displayDuration]);
 
   return (
     <div
@@ -158,7 +162,7 @@ export function PlayerControls() {
       <div className="flex items-center gap-2 text-sm text-gray-600 min-w-[120px]">
         <span className="font-mono">{formatTime(currentTime)}</span>
         <span>/</span>
-        <span className="font-mono">{formatTime(duration)}</span>
+        <span className="font-mono">{formatTime(displayDuration)}</span>
       </div>
 
       {/* Progress Slider */}
@@ -170,7 +174,7 @@ export function PlayerControls() {
           step={0.1}
           className="cursor-pointer"
           aria-label="Video progress"
-          aria-valuetext={`${Math.round(progress)}% - ${formatTime(currentTime)} of ${formatTime(duration)}`}
+          aria-valuetext={`${Math.round(progress)}% - ${formatTime(currentTime)} of ${formatTime(displayDuration)}`}
         />
       </div>
     </div>
