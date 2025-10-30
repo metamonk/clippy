@@ -89,17 +89,18 @@ export const usePlayerStore = create<PlayerStore>()(
       sourceVideo: null,
 
       setCurrentVideo: (video) =>
-        set({
+        set((state) => ({
           currentVideo: video,
           sourceVideo: video,
           focusContext: 'source',
           mode: 'preview',
           isPlaying: false,
           currentTime: 0,
-          duration: 0,
+          // Only reset duration if we're actually changing videos
+          duration: video?.id === state.currentVideo?.id ? state.duration : 0,
           playheadPosition: 0,
           seekTarget: null,
-        }),
+        })),
 
       togglePlayPause: () =>
         set((state) => ({
