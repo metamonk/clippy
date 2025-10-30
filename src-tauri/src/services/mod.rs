@@ -6,6 +6,7 @@ pub mod permissions;
 pub mod screen_capture;
 pub mod recording;
 pub mod segment_renderer;
+pub mod timeline_renderer;
 pub mod composition_analyzer;
 pub mod performance_monitor;
 pub mod segment_preloader;
@@ -18,6 +19,7 @@ pub use permissions::{check_screen_recording_permission, request_screen_recordin
 pub use screen_capture::ScreenCapture;
 pub use recording::{FrameSynchronizer, SyncMetrics};
 pub use segment_renderer::{SegmentRenderer, Segment, VideoLayer, SegmentType, CanvasSize};
+pub use timeline_renderer::TimelineRenderer;
 pub use composition_analyzer::CompositionAnalyzer;
 pub use performance_monitor::{FpsCounter, PerformanceMetrics};
 pub use segment_preloader::{SegmentPreloader, BufferStatus, SegmentPriority};

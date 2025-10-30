@@ -106,7 +106,7 @@ pub struct Track {
 }
 
 /// Track type enum
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum TrackType {
     Video,

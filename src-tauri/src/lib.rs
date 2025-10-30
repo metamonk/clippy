@@ -54,6 +54,8 @@ use commands::{
     get_buffer_status,
     cmd_render_segment,
     cmd_classify_segment_type,
+    cmd_render_timeline,
+    cmd_clear_timeline_cache,
 };
 
 /// Initialize logging system with file output to ~/Library/Logs/clippy/app.log
@@ -135,22 +137,32 @@ pub fn run() {
         "Application starting"
     );
 
-    // Initialize segment cache directory (Story 5.8 Task 2)
-    let cache_dir = dirs::home_dir()
+    // Initialize cache directories (Story 5.8 Task 2)
+    let cache_base_dir = dirs::home_dir()
         .expect("Could not determine home directory")
         .join("Library")
         .join("Caches")
-        .join("com.clippy.app")
-        .join("segments");
+        .join("com.clippy.app");
 
-    if let Err(e) = fs::create_dir_all(&cache_dir) {
+    // Segment cache for hybrid pre-rendering (old approach)
+    let segment_cache_dir = cache_base_dir.join("segments");
+    if let Err(e) = fs::create_dir_all(&segment_cache_dir) {
         tracing::warn!(error = %e, "Failed to create segment cache directory");
     } else {
-        tracing::info!(cache_dir = ?cache_dir, "Segment cache directory initialized");
+        tracing::info!(cache_dir = ?segment_cache_dir, "Segment cache directory initialized");
     }
 
-    // Initialize SegmentRenderer for composition rendering
-    let segment_renderer = services::SegmentRenderer::new(cache_dir.clone());
+    // Timeline cache for full timeline pre-rendering (new approach)
+    let timeline_cache_dir = cache_base_dir.join("timelines");
+    if let Err(e) = fs::create_dir_all(&timeline_cache_dir) {
+        tracing::warn!(error = %e, "Failed to create timeline cache directory");
+    } else {
+        tracing::info!(cache_dir = ?timeline_cache_dir, "Timeline cache directory initialized");
+    }
+
+    // Initialize renderers
+    let segment_renderer = services::SegmentRenderer::new(segment_cache_dir.clone());
+    let timeline_renderer = services::TimelineRenderer::new(timeline_cache_dir.clone());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -158,8 +170,9 @@ pub fn run() {
         .manage(commands::ExportState::new())
         .manage(commands::MpvPlayerState(std::sync::Arc::new(std::sync::Mutex::new(None))))
         .manage(commands::FpsCounterState(std::sync::Arc::new(std::sync::Mutex::new(services::FpsCounter::new()))))
-        .manage(commands::SegmentPreloaderState(std::sync::Arc::new(tokio::sync::Mutex::new(services::SegmentPreloader::new(cache_dir)))))
+        .manage(commands::SegmentPreloaderState(std::sync::Arc::new(tokio::sync::Mutex::new(services::SegmentPreloader::new(segment_cache_dir)))))
         .manage(commands::SegmentRendererState(std::sync::Arc::new(std::sync::Mutex::new(segment_renderer))))
+        .manage(commands::TimelineRendererState(std::sync::Arc::new(std::sync::Mutex::new(timeline_renderer))))
         .invoke_handler(tauri::generate_handler![
             greet,
             cmd_import_media,
@@ -205,7 +218,9 @@ pub fn run() {
             reset_fps_counter,
             get_buffer_status,
             cmd_render_segment,
-            cmd_classify_segment_type
+            cmd_classify_segment_type,
+            cmd_render_timeline,
+            cmd_clear_timeline_cache
         ])
         .setup(|app| {
             use tauri::menu::*;

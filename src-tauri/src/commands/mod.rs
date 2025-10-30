@@ -4,6 +4,7 @@ pub mod mpv;
 pub mod recording;
 pub mod performance;
 pub mod composition;
+pub mod timeline_render;
 
 pub use media::cmd_import_media;
 pub use export::{ExportState, cmd_start_export, cmd_get_export_progress, cmd_cancel_export};
@@ -58,4 +59,9 @@ pub use composition::{
     SegmentRendererState,
     cmd_render_segment,
     cmd_classify_segment_type,
+};
+pub use timeline_render::{
+    TimelineRendererState,
+    cmd_render_timeline,
+    cmd_clear_timeline_cache,
 };
