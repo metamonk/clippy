@@ -5,7 +5,6 @@ import { usePlayerStore } from "@/stores/playerStore";
 import { useTimelineStore } from "@/stores/timelineStore";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { PlayerControls } from "@/components/player/PlayerControls";
-import { findClipAtTime } from "@/lib/timeline/clipOperations";
 
 export const PreviewPanel = forwardRef<HTMLDivElement>((_props, ref) => {
   const currentVideo = usePlayerStore((state) => state.currentVideo);
@@ -17,14 +16,10 @@ export const PreviewPanel = forwardRef<HTMLDivElement>((_props, ref) => {
   let videoSrc: string | null = null;
 
   if (mode === 'timeline') {
-    // Timeline mode: Find and load the clip at current playhead position
-    // Search through all tracks to find a clip at the playhead
-    let clipAtPlayhead = null;
-    for (const track of tracks) {
-      clipAtPlayhead = findClipAtTime(track, playheadPosition);
-      if (clipAtPlayhead) break;
-    }
-    videoSrc = clipAtPlayhead?.filePath || null;
+    // Timeline mode: VideoPlayer renders entire timeline internally
+    // Just check if we have any tracks with clips
+    const hasContent = tracks.some(track => track.clips && track.clips.length > 0);
+    videoSrc = hasContent ? 'timeline' : null; // Sentinel value for timeline mode
   } else {
     // Preview mode: Load the selected library video
     videoSrc = currentVideo ? currentVideo.filePath : null;
@@ -58,7 +53,7 @@ export const PreviewPanel = forwardRef<HTMLDivElement>((_props, ref) => {
           <Play className="w-12 h-12 text-gray-400" />
           <p className="text-gray-600 text-center text-sm">
             {mode === 'timeline'
-              ? 'No clip at current position. Move playhead to a clip on the timeline.'
+              ? 'No clips on timeline. Add clips from the media library.'
               : 'No video loaded. Select a file from the media library to preview.'}
           </p>
         </div>
