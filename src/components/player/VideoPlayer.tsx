@@ -326,8 +326,13 @@ export function VideoPlayer({
             return;
           }
 
-          // Start requestAnimationFrame loop to sync playhead with MPV during playback
+          // Poll MPV time at 30fps (33ms) for better performance
+          // Using setTimeout instead of requestAnimationFrame to control polling rate
+          let isUpdating = false;
           const updatePlayhead = async () => {
+            if (isUpdating) return;
+            isUpdating = true;
+
             try {
               // Get current time from MPV
               const timeResponse = await invoke<MpvResponse>('mpv_get_time');
@@ -348,7 +353,8 @@ export function VideoPlayer({
               console.error('[VideoPlayer] Failed to update playhead:', error);
             }
 
-            animationFrameRef.current = requestAnimationFrame(updatePlayhead);
+            isUpdating = false;
+            animationFrameRef.current = window.setTimeout(updatePlayhead, 33);
           };
 
           updatePlayhead();
@@ -356,9 +362,9 @@ export function VideoPlayer({
           // Pause playback
           await invoke<MpvResponse>('mpv_pause');
 
-          // Cancel animation frame
+          // Cancel timer
           if (animationFrameRef.current) {
-            cancelAnimationFrame(animationFrameRef.current);
+            clearTimeout(animationFrameRef.current);
             animationFrameRef.current = null;
           }
         }
@@ -371,7 +377,7 @@ export function VideoPlayer({
 
     return () => {
       if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+        clearTimeout(animationFrameRef.current);
         animationFrameRef.current = null;
       }
     };
@@ -418,7 +424,9 @@ export function VideoPlayer({
       }
     };
 
-    frameUpdateIntervalRef.current = window.setInterval(updateFrame, 100);
+    // Capture frames at 5fps (200ms) for better performance
+    // This is preview-only; exports are full quality
+    frameUpdateIntervalRef.current = window.setInterval(updateFrame, 200);
 
     return () => {
       if (frameUpdateIntervalRef.current) {

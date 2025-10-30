@@ -59,16 +59,17 @@ impl FpsCounter {
     pub fn record_frame(&mut self) {
         let now = Instant::now();
 
-        // Check for frame drop (gap > 33ms = 2 frames at 60 FPS)
+        // Check for frame drop (gap > 50ms = ~3 frames at 30 FPS)
+        // Threshold increased for preview performance; exports are unaffected
         if let Some(last_frame) = self.last_frame_time {
             let gap = now.duration_since(last_frame);
-            if gap.as_millis() > 33 {
+            if gap.as_millis() > 50 {
                 self.dropped_frames += 1;
                 self.drop_times.push_back(now);
 
                 // Log frame drop with structured logging (Story 5.8 AC #4: Subtask 3.3)
                 tracing::warn!(
-                    "Frame drop detected: {}ms gap (expected <33ms), total drops: {}",
+                    "Frame drop detected: {}ms gap (expected <50ms), total drops: {}",
                     gap.as_millis(),
                     self.dropped_frames
                 );
