@@ -30,15 +30,18 @@ export function PlayerControls() {
   // Handle play/pause with intelligent mode switching (ADR-007)
   const handlePlayPause = () => {
     // SMART AUTO-DETECTION:
-    // 1. If user just selected a library video (focusContext='source' and currentVideo exists), play that
-    // 2. Otherwise, if timeline has clips, play timeline composition
-    // 3. Otherwise, stay in current mode
+    // 1. If user just interacted with timeline (focusContext='timeline'), play timeline composition
+    // 2. Otherwise if user selected a library video (focusContext='source' and currentVideo exists), play that
+    // 3. Otherwise if timeline has clips, switch to timeline and play composition
+    // 4. Otherwise stay in current mode
 
-    if (focusContext === 'source' && currentVideo) {
+    if (focusContext === 'timeline') {
+      // User clicked/dragged on timeline - play timeline composition
+      // (mode already set to 'timeline' by Timeline/Playhead components)
+    } else if (focusContext === 'source' && currentVideo) {
       // User selected a library video - keep preview mode
-      // Don't switch to timeline mode
     } else if (hasTimelineClips) {
-      // No library video selected but timeline has clips - play timeline composition
+      // No explicit focus, but timeline has clips - default to timeline playback
       setFocusContext('timeline');
     }
 

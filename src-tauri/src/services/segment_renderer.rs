@@ -38,7 +38,7 @@
 //!   -map "[vout]" output.mp4
 //! ```
 
-use crate::models::timeline::{Clip, ClipTransform};
+use crate::models::timeline::Clip;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -515,6 +515,7 @@ impl SegmentRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::timeline::ClipTransform;
 
     /// Test helper: Create a test clip
     fn create_test_clip(file_path: &str, duration_ms: u64) -> Clip {

@@ -52,6 +52,8 @@ use commands::{
     record_playback_frame,
     reset_fps_counter,
     get_buffer_status,
+    cmd_render_segment,
+    cmd_classify_segment_type,
 };
 
 /// Initialize logging system with file output to ~/Library/Logs/clippy/app.log
@@ -147,6 +149,9 @@ pub fn run() {
         tracing::info!(cache_dir = ?cache_dir, "Segment cache directory initialized");
     }
 
+    // Initialize SegmentRenderer for composition rendering
+    let segment_renderer = services::SegmentRenderer::new(cache_dir.clone());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -154,6 +159,7 @@ pub fn run() {
         .manage(commands::MpvPlayerState(std::sync::Arc::new(std::sync::Mutex::new(None))))
         .manage(commands::FpsCounterState(std::sync::Arc::new(std::sync::Mutex::new(services::FpsCounter::new()))))
         .manage(commands::SegmentPreloaderState(std::sync::Arc::new(tokio::sync::Mutex::new(services::SegmentPreloader::new(cache_dir)))))
+        .manage(commands::SegmentRendererState(std::sync::Arc::new(std::sync::Mutex::new(segment_renderer))))
         .invoke_handler(tauri::generate_handler![
             greet,
             cmd_import_media,
@@ -197,7 +203,9 @@ pub fn run() {
             get_playback_fps,
             record_playback_frame,
             reset_fps_counter,
-            get_buffer_status
+            get_buffer_status,
+            cmd_render_segment,
+            cmd_classify_segment_type
         ])
         .setup(|app| {
             use tauri::menu::*;

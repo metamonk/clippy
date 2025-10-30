@@ -1,11 +1,13 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Group, Rect, Text, Line, Circle } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Clip } from '@/types/timeline';
 import { calculateClipPosition, formatTimeSimple } from '@/lib/timeline/timeUtils';
 import { TIMELINE_DEFAULTS } from '@/types/timeline';
 import { useTimelineStore } from '@/stores/timelineStore';
+import { usePlayerStore } from '@/stores/playerStore';
 import { validateFadeDuration } from '@/lib/timeline/clipOperations';
+import { findSnapTargets, applySnap } from '@/lib/timeline/snapUtils';
 
 // Story 3.3: Vertical drag threshold ratio for determining inter-track moves
 const VERTICAL_DRAG_THRESHOLD_RATIO = 0.5;
@@ -43,13 +45,23 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   onSelect,
   isSelected = false,
 }) => {
-  const { updateClip, setSelectedClip, moveClip, moveClipToTrack, setHoveredTrack, tracks, setClipFadeIn, setClipFadeOut } = useTimelineStore();
+  const { updateClip, moveClip, moveClipToTrack, setHoveredTrack, tracks, setClipFadeIn, setClipFadeOut, totalDuration, viewConfig } = useTimelineStore();
+
+  // Subscribe to player store for timeline mode switching and playhead control
+  const setFocusContext = usePlayerStore((state) => state.setFocusContext);
+  const setPlayheadPosition = usePlayerStore((state) => state.setPlayheadPosition);
 
   // Handle clip selection
-  const handleClipClick = () => {
-    setSelectedClip(clip.id);
+  const handleClipClick = useCallback(() => {
+    // ADR-007: Switch to timeline mode when clicking a clip
+    setFocusContext('timeline');
+
+    // Move playhead to the clip's start position so preview shows this clip
+    setPlayheadPosition(clip.startTime);
+
+    // Select the clip (this also calls onSelect via Timeline's setSelectedClip)
     onSelect?.(clip.id);
-  };
+  }, [clip.id, clip.startTime, setFocusContext, setPlayheadPosition, onSelect]);
 
   // Hover states for trim handles
   const [leftHandleHover, setLeftHandleHover] = useState(false);
@@ -58,6 +70,12 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   // Story 3.10: Hover states for fade handles
   const [leftFadeHandleHover, setLeftFadeHandleHover] = useState(false);
   const [rightFadeHandleHover, setRightFadeHandleHover] = useState(false);
+
+  // Track if we're currently dragging (for visual feedback only)
+  const [isDraggingClip, setIsDraggingClip] = useState(false);
+
+  // Track the visual drag position (for smooth dragging without collision)
+  const [dragPosition, setDragPosition] = useState<number | null>(null);
 
   // Track dragging state for trim handles
   const dragStateRef = useRef<{
@@ -80,11 +98,13 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
     startX: number;
     startY: number;
     originalStartTime: number;
+    currentDragPosition: number | null;
   }>({
     isDragging: false,
     startX: 0,
     startY: 0,
     originalStartTime: 0,
+    currentDragPosition: null,
   });
 
   // Story 3.10: Track fade handle dragging state
@@ -109,8 +129,23 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   // Adjust the timeline position by the trimIn amount
   const adjustedStartTime = clip.startTime + clip.trimIn;
 
+  // Use dragPosition when dragging for smooth visual feedback, otherwise use actual position
+  const displayStartTime = dragPosition !== null ? dragPosition + clip.trimIn : adjustedStartTime;
+
   // Calculate position and width based on the VISIBLE portion
-  const { x, width } = calculateClipPosition(adjustedStartTime, visualDuration, pixelsPerSecond);
+  const { x, width } = calculateClipPosition(displayStartTime, visualDuration, pixelsPerSecond);
+
+  // Check for NaN values that could cause rendering issues
+  if (isNaN(x) || isNaN(yPosition)) {
+    console.error('[TimelineClip] NaN detected!', {
+      x,
+      yPosition,
+      displayStartTime,
+      visualDuration,
+      pixelsPerSecond,
+      clip,
+    });
+  }
 
   // Extract filename from path
   const filename = clip.filePath.split('/').pop() || 'Unknown';
@@ -126,6 +161,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
   const fillColor = isSelected ? '#5588ff' : '#4a4a4a';
   const strokeColor = isSelected ? '#ffffff' : '#666666';
   const textColor = '#ffffff';
+  const opacity = isDraggingClip ? 0.8 : 1; // Slight transparency when dragging
   // const trimmedRegionColor = '#2a2a2a'; // TODO: Use for visual trim regions
 
   // Story 4.7: Multi-audio track indicator colors
@@ -222,28 +258,125 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
     e.cancelBubble = true;
 
     repositionDragRef.current = {
-      isDragging: true,
+      isDragging: false, // Don't set to true until we detect actual movement
       startX: e.evt.clientX,
       startY: e.evt.clientY,
       originalStartTime: clip.startTime,
     };
 
-    // Add window-level mouse move and mouse up listeners
+    // Note: setIsDraggingClip is NOT called here - only after detecting movement
+
+    // Add window-level event listeners for drag interaction
+    const handleKeyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key === 'Escape' && repositionDragRef.current.isDragging) {
+        // Cancel the drag - reset to original position
+        repositionDragRef.current.isDragging = false;
+        repositionDragRef.current.currentDragPosition = null; // Clear ref
+        setIsDraggingClip(false);
+        setHoveredTrack(null);
+        setDragPosition(null); // Clear visual drag position
+
+        // Remove event listeners
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener('keydown', handleKeyDown);
+      }
+    };
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!repositionDragRef.current.isDragging) return;
+      const deltaX = moveEvent.clientX - repositionDragRef.current.startX;
+      const deltaY = moveEvent.clientY - repositionDragRef.current.startY;
+
+      // Only start dragging if mouse moves more than 3 pixels (prevents accidental drags on click)
+      if (!repositionDragRef.current.isDragging) {
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        if (distance > 3) {
+          repositionDragRef.current.isDragging = true;
+          setIsDraggingClip(true);
+        } else {
+          return; // Not enough movement yet
+        }
+      }
+
+      // Real-time horizontal repositioning while dragging
+      const deltaTime = (deltaX / pixelsPerSecond) * 1000;
+      let newStartTime = Math.max(0, repositionDragRef.current.originalStartTime + deltaTime);
+
+      // Optional snapping - only snap when close to targets (like CapCut)
+      const clipDuration = clip.trimOut - clip.trimIn;
+      const newEndTime = newStartTime + clipDuration;
+
+      // Only apply snapping if we're within a reasonable distance (10 pixels)
+      const snapDistancePixels = 10; // pixels on screen
+      const snapDistanceMs = (snapDistancePixels / pixelsPerSecond) * 1000;
+
+      const timeline = { tracks, totalDuration };
+      const snapTargets = findSnapTargets(
+        timeline,
+        clip.id, // exclude current clip
+        1.0, // zoom level
+        pixelsPerSecond
+      );
+
+      // Try snapping both start and end of the clip with tighter threshold
+      const startSnapResult = applySnap(
+        newStartTime,
+        snapTargets,
+        snapDistanceMs, // Distance-based threshold
+        true
+      );
+
+      const endSnapResult = applySnap(
+        newEndTime,
+        snapTargets,
+        snapDistanceMs, // Distance-based threshold
+        true
+      );
+
+      // Use whichever snap is stronger (closer to a snap point)
+      const startSnapDistance = Math.abs(startSnapResult.snappedPosition - newStartTime);
+      const endSnapDistance = Math.abs(endSnapResult.snappedPosition - newEndTime);
+
+      if (startSnapResult.snapIndicator && (!endSnapResult.snapIndicator || startSnapDistance <= endSnapDistance)) {
+        // Snap to start
+        newStartTime = startSnapResult.snappedPosition;
+      } else if (endSnapResult.snapIndicator) {
+        // Snap to end (adjust start time to align the end)
+        newStartTime = endSnapResult.snappedPosition - clipDuration;
+      }
+
+      // Update visual position only (no collision detection during drag for smooth movement)
+      // Store will be updated with collision resolution on mouse up
+      repositionDragRef.current.currentDragPosition = newStartTime; // Store in ref for closure access
+      setDragPosition(newStartTime); // Store in state for visual updates
 
       // Calculate which track is being hovered based on Y position
-      const targetTrackIndex = Math.floor((moveEvent.clientY - yPosition) / trackHeight);
-      const targetTrack = tracks[targetTrackIndex];
+      // Get the stage's container position to convert clientY to relative Y
+      const stage = e.target.getStage();
+      const container = stage?.container();
+      const rect = container?.getBoundingClientRect();
+
+      if (!rect) return;
+
+      // Convert mouse Y to position relative to timeline container
+      const relativeY = moveEvent.clientY - rect.top;
+
+      // Calculate target track index (accounting for ruler height)
+      const yInTracksArea = relativeY - viewConfig.rulerHeight;
+      const targetTrackIndex = Math.floor(yInTracksArea / trackHeight);
+
+      // Clamp to valid track range
+      const clampedTrackIndex = Math.max(0, Math.min(targetTrackIndex, tracks.length - 1));
+      const targetTrack = tracks[clampedTrackIndex];
 
       if (targetTrack && targetTrack.id !== trackId) {
         // Inter-track hover detected - check for collision
         const clipDuration = clip.trimOut - clip.trimIn;
-        const clipEnd = clip.startTime + clipDuration;
+        const clipEnd = newStartTime + clipDuration;
 
         const hasCollision = targetTrack.clips.some((existingClip) => {
           const existingEnd = existingClip.startTime + (existingClip.trimOut - existingClip.trimIn);
-          return !(clipEnd <= existingClip.startTime || clip.startTime >= existingEnd);
+          return !(clipEnd <= existingClip.startTime || newStartTime >= existingEnd);
         });
 
         // Update hover state with collision info (Story 3.3 Review M-1)
@@ -255,11 +388,18 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
     };
 
     const handleMouseUp = (upEvent: MouseEvent) => {
+      // Clean up event listeners regardless of whether drag occurred
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('keydown', handleKeyDown);
+
+      // If no actual drag occurred (mouse didn't move 3+ pixels), just return
       if (!repositionDragRef.current.isDragging) {
         return;
       }
 
       repositionDragRef.current.isDragging = false;
+      setIsDraggingClip(false);
 
       const deltaX = upEvent.clientX - repositionDragRef.current.startX;
       const deltaY = upEvent.clientY - repositionDragRef.current.startY;
@@ -272,32 +412,44 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
 
       if (isVerticalDrag) {
         // Inter-track move detected
-        const targetTrackIndex = Math.floor((upEvent.clientY - yPosition) / trackHeight);
-        const targetTrack = tracks[targetTrackIndex];
+        // Get the stage's container position to convert clientY to relative Y
+        const stage = e.target.getStage();
+        const container = stage?.container();
+        const rect = container?.getBoundingClientRect();
 
-        if (targetTrack && targetTrack.id !== trackId) {
-          const success = moveClipToTrack(clip.id, targetTrack.id);
+        if (rect) {
+          // Convert mouse Y to position relative to timeline container
+          const relativeY = upEvent.clientY - rect.top;
 
-          // Story 3.3 Review M-2: If inter-track move fails, preserve horizontal movement
-          if (!success && Math.abs(deltaX) > 5) {
-            const deltaTime = (deltaX / pixelsPerSecond) * 1000;
-            const newStartTime = Math.max(0, repositionDragRef.current.originalStartTime + deltaTime);
-            moveClip(clip.id, newStartTime, true); // Record history on successful horizontal move
+          // Calculate target track index (accounting for ruler height)
+          const yInTracksArea = relativeY - viewConfig.rulerHeight;
+          const targetTrackIndex = Math.floor(yInTracksArea / trackHeight);
+
+          // Clamp to valid track range
+          const clampedTrackIndex = Math.max(0, Math.min(targetTrackIndex, tracks.length - 1));
+          const targetTrack = tracks[clampedTrackIndex];
+
+          if (targetTrack && targetTrack.id !== trackId) {
+            moveClipToTrack(clip.id, targetTrack.id);
           }
         }
-      } else if (Math.abs(deltaX) > 5) {
-        // Horizontal repositioning only
-        const deltaTime = (deltaX / pixelsPerSecond) * 1000;
-        const newStartTime = Math.max(0, repositionDragRef.current.originalStartTime + deltaTime);
-        moveClip(clip.id, newStartTime, true); // Story 3.3 Review H-1: Record history only on drag completion
+      } else if (repositionDragRef.current.currentDragPosition !== null) {
+        // Horizontal move - apply smart collision resolution and record history
+        // The moveClip function will find the nearest valid position
+        const finalDragPosition = repositionDragRef.current.currentDragPosition;
+        moveClip(clip.id, finalDragPosition, true); // Apply collision resolution and record history
       }
 
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      // Clear the drag position to return to store-based positioning
+      repositionDragRef.current.currentDragPosition = null;
+      setDragPosition(null);
+
+      // Event listeners already cleaned up at the top of this function
     };
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('keydown', handleKeyDown);
   };
 
   // Story 3.10: Fade-in handle drag handlers
@@ -398,6 +550,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
         onTap={handleClipClick}
         onMouseDown={handleClipMouseDown}
         cursor="move"
+        opacity={opacity}
       />
 
       {/* Left trim handle (only show when selected) */}

@@ -3,6 +3,7 @@ pub mod export;
 pub mod mpv;
 pub mod recording;
 pub mod performance;
+pub mod composition;
 
 pub use media::cmd_import_media;
 pub use export::{ExportState, cmd_start_export, cmd_get_export_progress, cmd_cancel_export};
@@ -52,4 +53,9 @@ pub use performance::{
     record_playback_frame,
     reset_fps_counter,
     get_buffer_status,
+};
+pub use composition::{
+    SegmentRendererState,
+    cmd_render_segment,
+    cmd_classify_segment_type,
 };

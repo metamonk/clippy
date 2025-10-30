@@ -6,7 +6,7 @@ import { useCompositionStore } from "@/stores/compositionStore";
 import { useDevSettingsStore } from "@/stores/devSettingsStore";
 import { toast } from "sonner";
 import { setMpvVolume, applyMpvFadeFilters, clearMpvAudioFilters } from "@/lib/tauri/mpv";
-import { analyzeTimelineGaps, isTimeInGap } from "@/lib/timeline/gapAnalyzer";
+import { analyzeTimelineGaps, areAllTracksInGap, type TimelineGapAnalysis } from "@/lib/timeline/gapAnalyzer";
 import { getPlaybackFps, recordPlaybackFrame, resetFpsCounter, type PerformanceMetrics } from "@/lib/tauri/performance";
 
 /**
@@ -61,6 +61,24 @@ export function VideoPlayer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastSrcRef = useRef<string>("");
   const lastFrameTimeRef = useRef<number>(0); // For gap playhead tracking (Story 5.4 AC#5)
+
+  // Cache gap analysis to avoid recalculating on every frame (performance optimization)
+  const gapAnalysisCache = useRef<TimelineGapAnalysis | null>(null);
+  const gapAnalysisCacheKey = useRef<string>('');
+
+  // Track rendered segment playback (Story 5.8: Multi-track composition)
+  const renderedSegmentRef = useRef<{
+    isPlayingSegment: boolean;
+    segmentStartTime: number; // Timeline position where segment starts (ms)
+    segmentDuration: number; // Duration of the segment (ms)
+  }>({
+    isPlayingSegment: false,
+    segmentStartTime: 0,
+    segmentDuration: 0,
+  });
+
+  // Track currently loaded clip (for single-track transitions)
+  const loadedClipRef = useRef<string | null>(null);
 
   const {
     setDuration,
@@ -129,8 +147,12 @@ export function VideoPlayer({
         setVideoLoaded(false);
         setVideoDimensions(null);
 
-        // MPV uses raw filesystem paths directly
-        // Backend waits for FileLoaded event before returning
+        // Clear rendered segment tracking when loading a new video
+        renderedSegmentRef.current.isPlayingSegment = false;
+        loadedClipRef.current = null;
+
+        // MPV's loadfile with 'replace' mode automatically stops the current file
+        // The backend now properly ignores EndFile events from the replace operation
         const loadResponse = await invoke<MpvResponse>('mpv_load_file', {
           filePath: src,
         });
@@ -214,6 +236,184 @@ export function VideoPlayer({
     performSeek();
   }, [seekTarget, videoLoaded, setCurrentTime, setPlayheadPosition, mode, clearSeekTarget]);
 
+  // ADR-008: Multi-track composition rendering (Hybrid Smart Segment Pre-Rendering)
+  // Detect when activeClips requires multi-track composition and render segment
+  // Also handle single-track playback when transitioning from multi-track
+  useEffect(() => {
+    if (mode !== 'timeline') return;
+    if (!mpvInitialized) return; // Only require MPV to be initialized, not videoLoaded
+
+    const videoClips = activeClips.filter(ac => ac.trackType === 'video');
+
+    // No video clips active - this is a gap or empty timeline
+    if (videoClips.length === 0) {
+      console.log('[VideoPlayer] No active video clips at current position');
+      return;
+    }
+
+    const isMultiTrack = videoClips.length > 1;
+
+    if (isMultiTrack) {
+      console.log(`[VideoPlayer] Multi-track composition detected: ${videoClips.length} video tracks active`);
+
+      const renderAndLoadSegment = async () => {
+        try {
+          // Get current playhead position from store (not from dependencies to avoid re-running on every frame)
+          const currentPlayhead = usePlayerStore.getState().playheadPosition;
+
+          // Prevent re-rendering if we're already playing a segment at this position
+          if (renderedSegmentRef.current.isPlayingSegment &&
+              Math.abs(renderedSegmentRef.current.segmentStartTime - currentPlayhead) < 100) {
+            console.log('[VideoPlayer] Already playing segment at this position, skipping re-render');
+            return;
+          }
+
+          console.log('[VideoPlayer] Rendering multi-track segment...');
+
+          // Classify segment type
+          const classifyResponse = await invoke<any>('cmd_classify_segment_type', {
+            activeClips: activeClips,
+          });
+
+          if (!classifyResponse.success) {
+            throw new Error(classifyResponse.message);
+          }
+
+          console.log('[VideoPlayer] Segment classified as:', classifyResponse.data.segment_type);
+
+          if (classifyResponse.data.segment_type === 'complex') {
+            // Calculate segment duration based on shortest remaining clip duration
+            // The segment should last until the first clip ends (composition changes)
+            const segmentDuration = Math.min(...videoClips.map(vc => {
+              const clipStart = vc.clip.startTime;
+              const clipDuration = vc.clip.trimOut - vc.clip.trimIn;
+              const clipEnd = clipStart + clipDuration;
+              const remainingDuration = clipEnd - currentPlayhead;
+              return remainingDuration;
+            }));
+
+            console.log('[VideoPlayer] Segment duration:', segmentDuration, 'ms');
+
+            // Render the segment
+            // Note: Rust backend expects u64 integers, so convert to integers
+            const renderResponse = await invoke<any>('cmd_render_segment', {
+              activeClips: activeClips,
+              startTime: Math.floor(currentPlayhead),
+              duration: Math.floor(segmentDuration),
+            });
+
+            if (!renderResponse.success) {
+              throw new Error(renderResponse.message);
+            }
+
+            const segmentPath = renderResponse.data.output_path;
+            console.log('[VideoPlayer] Segment rendered:', segmentPath);
+
+            // Track that we're playing a rendered segment
+            renderedSegmentRef.current = {
+              isPlayingSegment: true,
+              segmentStartTime: currentPlayhead,
+              segmentDuration: segmentDuration,
+            };
+
+            // Load rendered segment into MPV
+            const loadResponse = await invoke<MpvResponse>('mpv_load_file', {
+              filePath: segmentPath,
+            });
+
+            if (!loadResponse.success) {
+              throw new Error(loadResponse.message);
+            }
+
+            console.log('[VideoPlayer] Rendered segment loaded into MPV successfully');
+
+            // Mark video as loaded for playback loop
+            setVideoLoaded(true);
+
+            // Start playback if player is in playing state
+            const currentlyPlaying = usePlayerStore.getState().isPlaying;
+            if (currentlyPlaying) {
+              await invoke<MpvResponse>('mpv_play');
+            }
+          }
+        } catch (error) {
+          console.error('[VideoPlayer] Failed to render multi-track segment:', error);
+          // Clear segment tracking on error
+          renderedSegmentRef.current.isPlayingSegment = false;
+          toast.error('Failed to render multi-track composition', {
+            description: String(error),
+            duration: 5000,
+          });
+        }
+      };
+
+      renderAndLoadSegment();
+    } else if (videoClips.length === 1) {
+      // Single-track: load the clip's file directly (Hybrid Smart Segment)
+      const singleClip = videoClips[0];
+      const clipFilePath = singleClip.clip.filePath;
+
+      const loadSingleClip = async () => {
+        try {
+          // Check if we need to load a different clip or transition from segment
+          const needsLoad =
+            renderedSegmentRef.current.isPlayingSegment || // Transitioning from multi-track segment
+            loadedClipRef.current !== clipFilePath; // Different clip file
+
+          if (!needsLoad) {
+            console.log('[VideoPlayer] Clip already loaded:', clipFilePath);
+            return; // Already playing the correct clip
+          }
+
+          console.log('[VideoPlayer] Loading single-track clip:', clipFilePath, 'relativeTime:', singleClip.relativeTime + 'ms');
+
+          // Clear segment tracking if transitioning from multi-track
+          if (renderedSegmentRef.current.isPlayingSegment) {
+            console.log('[VideoPlayer] Transitioning from multi-track to single-track');
+            renderedSegmentRef.current.isPlayingSegment = false;
+          }
+
+          // Load the single clip's file
+          const loadResponse = await invoke<MpvResponse>('mpv_load_file', {
+            filePath: clipFilePath,
+          });
+
+          if (!loadResponse.success) {
+            throw new Error(loadResponse.message);
+          }
+
+          // Track which clip is loaded
+          loadedClipRef.current = clipFilePath;
+
+          // Mark video as loaded for playback loop
+          setVideoLoaded(true);
+
+          console.log('[VideoPlayer] Single clip loaded, seeking to relative time:', singleClip.relativeTime);
+
+          // Seek to the correct position within the clip
+          const clipRelativeTime = singleClip.relativeTime / 1000; // Convert ms to seconds
+          await invoke<MpvResponse>('mpv_seek', {
+            timeSeconds: clipRelativeTime,
+          });
+
+          // Resume playback if playing
+          const currentlyPlaying = usePlayerStore.getState().isPlaying;
+          if (currentlyPlaying) {
+            await invoke<MpvResponse>('mpv_play');
+          }
+        } catch (error) {
+          console.error('[VideoPlayer] Failed to load single clip:', error);
+          toast.error('Failed to load clip', {
+            description: String(error),
+            duration: 5000,
+          });
+        }
+      };
+
+      loadSingleClip();
+    }
+  }, [activeClips, mode, mpvInitialized]); // Only trigger on activeClips change, not every playhead update
+
   // Poll for time updates when video is loaded (needed for MPV since there's no DOM event)
   useEffect(() => {
     if (!videoLoaded) return;
@@ -241,17 +441,9 @@ export function VideoPlayer({
 
     if (!videoLoaded) return;
 
-    let targetTimeMs = playheadPosition;
-
-    // Constrain scrubbing to trim boundaries if a clip is selected
-    if (selectedClip) {
-      const clipStartTime = selectedClip.startTime;
-      const clipTrimIn = clipStartTime + selectedClip.trimIn;
-      const clipTrimOut = clipStartTime + selectedClip.trimOut;
-
-      // Clamp playhead to [trimIn, trimOut] range
-      targetTimeMs = Math.max(clipTrimIn, Math.min(clipTrimOut, targetTimeMs));
-    }
+    // In timeline mode, playhead moves freely through entire timeline
+    // (clip selection is for editing purposes only, not playback restriction)
+    const targetTimeMs = playheadPosition;
 
     // Convert playhead position (ms) to seconds
     const targetTimeSeconds = targetTimeMs / 1000;
@@ -314,7 +506,34 @@ export function VideoPlayer({
                   return; // Skip this frame if MPV time unavailable
                 }
                 const currentVideoTime = timeResponse.data.time;
-                currentTimeMs = currentVideoTime * 1000;
+
+                // Story 5.8: Calculate timeline position based on playback mode
+                if (renderedSegmentRef.current.isPlayingSegment) {
+                  // Playing rendered multi-track segment: offset by segment start time
+                  const segmentTimeMs = currentVideoTime * 1000;
+                  currentTimeMs = renderedSegmentRef.current.segmentStartTime + segmentTimeMs;
+
+                  // Check if segment has ended
+                  if (segmentTimeMs >= renderedSegmentRef.current.segmentDuration) {
+                    console.log('[VideoPlayer] Rendered segment ended, clearing tracking');
+                    renderedSegmentRef.current.isPlayingSegment = false;
+                    // Continue to the next part of timeline
+                    currentTimeMs = renderedSegmentRef.current.segmentStartTime + renderedSegmentRef.current.segmentDuration;
+                  }
+                } else {
+                  // Playing single clip in timeline mode: offset by clip's start time
+                  const compositionState = useCompositionStore.getState();
+                  const currentActiveClips = compositionState.activeClips.filter(ac => ac.trackType === 'video');
+
+                  if (currentActiveClips.length === 1) {
+                    // Single clip: timeline position = clip start + MPV time
+                    const activeClip = currentActiveClips[0];
+                    currentTimeMs = activeClip.clip.startTime + (currentVideoTime * 1000);
+                  } else {
+                    // Fallback: use MPV time directly (shouldn't happen in timeline mode)
+                    currentTimeMs = currentVideoTime * 1000;
+                  }
+                }
               }
 
                 // Only update playhead in timeline mode
@@ -324,27 +543,9 @@ export function VideoPlayer({
                   // Update composition time (this triggers clip query updates)
                   setCompositionTime(currentTimeMs);
 
-                  // Check if we have a selected clip with trim boundaries
-                  if (selectedClip) {
-                    const clipStartTime = selectedClip.startTime;
-                    const clipTrimIn = clipStartTime + selectedClip.trimIn;
-                    const clipTrimOut = clipStartTime + selectedClip.trimOut;
-
-                    // If playback exceeds trimOut boundary, stop playback
-                    if (currentTimeMs >= clipTrimOut) {
-                      usePlayerStore.getState().pause();
-                      setPlayheadPosition(clipTrimOut);
-                      await invoke<MpvResponse>('mpv_pause');
-                      return;
-                    }
-
-                    // Clamp playhead to trim boundaries
-                    const clampedPosition = Math.max(clipTrimIn, Math.min(clipTrimOut, currentTimeMs));
-                    setPlayheadPosition(clampedPosition);
-                  } else {
-                    // No trim boundaries, update normally
-                    setPlayheadPosition(currentTimeMs);
-                  }
+                  // Timeline mode: playhead flows freely through entire timeline
+                  // Clip selection is for editing only, not playback restriction
+                  setPlayheadPosition(currentTimeMs);
 
                   // Story 5.4 AC#1, AC#2: Handle gaps with black frame rendering
                   const timelineState = useTimelineStore.getState();
@@ -353,14 +554,21 @@ export function VideoPlayer({
                     totalDuration: timelineState.totalDuration,
                   };
 
-                  // Analyze timeline for gaps
-                  const gapAnalysis = analyzeTimelineGaps(timeline);
-                  const currentGap = isTimeInGap(currentTimeMs, gapAnalysis.gaps);
+                  // Cache gap analysis - only recalculate when timeline structure changes
+                  const cacheKey = `${timeline.tracks.length}-${timeline.totalDuration}-${timeline.tracks.map(t => t.clips.length).join(',')}`;
+                  if (gapAnalysisCacheKey.current !== cacheKey) {
+                    gapAnalysisCache.current = analyzeTimelineGaps(timeline);
+                    gapAnalysisCacheKey.current = cacheKey;
+                  }
 
-                  if (currentGap) {
+                  // Only show black frame if ALL tracks are in a gap (not just one empty track)
+                  // This allows multi-track compositions where some tracks may be empty
+                  const allTracksInGap = areAllTracksInGap(currentTimeMs, timeline);
+
+                  if (allTracksInGap) {
                     // In gap - pause MPV and render black frame (Story 5.4 AC#2)
                     if (!isInGap) {
-                      console.log(`[VideoPlayer] Entering gap at ${currentTimeMs}ms (${currentGap.startTime}-${currentGap.endTime})`);
+                      console.log(`[VideoPlayer] Entering gap at ${currentTimeMs}ms (all tracks empty)`);
                       setIsInGap(true);
 
                       // Pause MPV during gap to prevent audio/video from continuing
@@ -379,100 +587,27 @@ export function VideoPlayer({
                     }
                   }
 
-                  // Story 5.3 AC#1, AC#2, AC#3: Automatic clip switching
-                  // Detect when current clip ends and load next clip
-                  const handleClipEnd = async () => {
-                    try {
-                      const transitionStartTime = performance.now();
+                  // Story 5.3: Clip transitions now handled by the activeClips effect (lines 242-401)
+                  // This old logic is disabled to prevent conflicts with the new effect-based approach
 
-                      // Get currently active video clips
-                      const videoClips = activeClips.filter(ac => ac.trackType === 'video');
-                      if (videoClips.length === 0) return;
+                  // Check if timeline has ended (Story 5.3 AC#7)
+                  const timelineEnded = useCompositionStore.getState().isEndOfTimeline(currentTimeMs);
+                  if (timelineEnded && usePlayerStore.getState().isPlaying) {
+                    console.log('[VideoPlayer] End of timeline reached, stopping playback');
 
-                      // For now, focus on single-track playback (first video track)
-                      const currentActiveClip = videoClips[0];
-                      const clipEnd = currentActiveClip.clip.startTime +
-                        (currentActiveClip.clip.trimOut - currentActiveClip.clip.trimIn);
+                    // Stop playback
+                    usePlayerStore.getState().pause();
+                    await invoke<MpvResponse>('mpv_pause');
 
-                      // Check if we're within 100ms of clip end (threshold for preemptive switching)
-                      const timeToClipEnd = clipEnd - currentTimeMs;
-                      if (timeToClipEnd <= 100 && timeToClipEnd > -100) {
-                        // Get next clip on same track
-                        const nextClip = useCompositionStore.getState().getNextClip(
-                          currentActiveClip.clip,
-                          currentActiveClip.trackId
-                        );
+                    // Reset playhead to timeline start
+                    setPlayheadPosition(0);
+                    setCompositionTime(0);
 
-                        if (nextClip) {
-                          console.log(
-                            `[VideoPlayer] Clip ending at ${clipEnd}ms, loading next clip: ${nextClip.id}`
-                          );
-
-                          // Load next clip
-                          const loadResponse = await invoke<MpvResponse>('mpv_load_file', {
-                            filePath: nextClip.filePath,
-                          });
-
-                          if (!loadResponse.success) {
-                            throw new Error(loadResponse.message);
-                          }
-
-                          // Story 5.3 AC#4, AC#5: Seek to clip's trimIn position
-                          // MPV loads the full file, but we want to start at the trimIn point
-                          const clipStartSeconds = nextClip.trimIn / 1000; // Convert ms to seconds
-
-                          // Seek to start position (respecting trim)
-                          await invoke<MpvResponse>('mpv_seek', {
-                            timeSeconds: clipStartSeconds,
-                          });
-
-                          // Start playback immediately
-                          await invoke<MpvResponse>('mpv_play');
-
-                          const transitionEndTime = performance.now();
-                          const transitionLatency = transitionEndTime - transitionStartTime;
-
-                          // Log transition latency for AC#3 (<100ms requirement)
-                          console.log(
-                            `[VideoPlayer] Clip transition completed in ${transitionLatency.toFixed(2)}ms`
-                          );
-
-                          if (transitionLatency > 100) {
-                            console.warn(
-                              `⚠️ Clip transition exceeded 100ms target: ${transitionLatency.toFixed(2)}ms`
-                            );
-                          }
-                        } else {
-                          // No next clip - check if timeline has ended (Story 5.3 AC#7)
-                          const timelineEnded = useCompositionStore.getState().isEndOfTimeline(currentTimeMs);
-                          if (timelineEnded) {
-                            console.log('[VideoPlayer] End of timeline reached, stopping playback');
-
-                            // Stop playback
-                            usePlayerStore.getState().pause();
-                            await invoke<MpvResponse>('mpv_pause');
-
-                            // Reset playhead to timeline start
-                            setPlayheadPosition(0);
-                            setCompositionTime(0);
-
-                            // Show completion toast
-                            toast.success('Playback complete', {
-                              description: 'Timeline playback finished',
-                            });
-                          }
-                        }
-                      }
-                    } catch (error) {
-                      console.error('[VideoPlayer] Error in clip transition:', error);
-                      toast.error('Clip transition failed', {
-                        description: String(error),
-                      });
-                    }
-                  };
-
-                  // Check for clip transitions
-                  await handleClipEnd();
+                    // Show completion toast
+                    toast.success('Playback complete', {
+                      description: 'Timeline playback finished',
+                    });
+                  }
                 }
                 // In preview mode, playhead stays at 0 and doesn't move
             } catch (error) {

@@ -91,7 +91,7 @@ export function MediaItem({ mediaFile }: MediaItemProps) {
         onClick={handleClick}
         onMouseDown={handleMouseDown}
         className={cn(
-          "relative group flex flex-col gap-2 p-3 rounded-lg shadow-sm border-2 transition-all cursor-grab active:cursor-grabbing",
+          "relative group flex flex-col gap-2 p-3 rounded-lg shadow-sm border-2 transition-all cursor-pointer hover:cursor-grab active:cursor-grabbing",
           isSelected
             ? "border-blue-500 bg-blue-50"
             : "border-gray-200 bg-white hover:bg-gray-50"

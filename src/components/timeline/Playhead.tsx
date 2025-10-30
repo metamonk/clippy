@@ -28,6 +28,7 @@ export const Playhead: React.FC<PlayheadProps> = ({
   const playheadPosition = usePlayerStore((state) => state.playheadPosition);
   const setPlayheadPosition = usePlayerStore((state) => state.setPlayheadPosition);
   const seek = usePlayerStore((state) => state.seek);
+  const setFocusContext = usePlayerStore((state) => state.setFocusContext);
 
   const isDragging = useRef(false);
 
@@ -37,7 +38,9 @@ export const Playhead: React.FC<PlayheadProps> = ({
   // Handle drag start
   const handleDragStart = useCallback(() => {
     isDragging.current = true;
-  }, []);
+    // ADR-007: Switch to timeline mode when interacting with timeline
+    setFocusContext('timeline');
+  }, [setFocusContext]);
 
   // Handle drag move - update playhead position during drag
   const handleDragMove = useCallback(

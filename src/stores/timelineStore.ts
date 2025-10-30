@@ -405,20 +405,89 @@ export const useTimelineStore = create<TimelineState>()(
           return false;
         }
 
-        // Check for collision at new position on same track
+        // Calculate clip duration
         const clipDuration = clip.trimOut - clip.trimIn;
         const newEndTime = newStartTime + clipDuration;
 
-        const hasCollision = sourceTrack.clips.some((existingClip) => {
-          if (existingClip.id === clipId) return false; // Ignore self
+        // Find the nearest valid position (no overlaps with any clip)
+        let validStartTime = Math.max(0, newStartTime);
 
-          const existingEnd = existingClip.startTime + (existingClip.trimOut - existingClip.trimIn);
+        // Sort other clips by start time
+        const otherClips = sourceTrack.clips
+          .filter(c => c.id !== clipId)
+          .sort((a, b) => a.startTime - b.startTime);
 
-          // Check for overlap
-          return !(newEndTime <= existingClip.startTime || newStartTime >= existingEnd);
-        });
+        // Helper function to check if a position would collide with any clip
+        const hasCollisionAt = (startTime: number): boolean => {
+          const endTime = startTime + clipDuration;
+          return otherClips.some(otherClip => {
+            const otherStart = otherClip.startTime;
+            const otherEnd = otherClip.startTime + (otherClip.trimOut - otherClip.trimIn);
+            return endTime > otherStart && startTime < otherEnd;
+          });
+        };
 
-        if (hasCollision) {
+        // If desired position has collision, find all valid gaps and choose closest
+        if (hasCollisionAt(validStartTime)) {
+          // Build list of all possible valid positions (gaps between clips)
+          const validPositions: number[] = [];
+
+          // Position before first clip (if there's space)
+          if (otherClips.length > 0) {
+            const beforeFirst = otherClips[0].startTime - clipDuration;
+            if (beforeFirst >= 0 && !hasCollisionAt(beforeFirst)) {
+              validPositions.push(beforeFirst);
+            }
+          }
+
+          // Gaps between clips
+          for (let i = 0; i < otherClips.length - 1; i++) {
+            const currentClip = otherClips[i];
+            const nextClip = otherClips[i + 1];
+
+            const currentEnd = currentClip.startTime + (currentClip.trimOut - currentClip.trimIn);
+            const gapStart = currentEnd;
+            const gapEnd = nextClip.startTime;
+            const gapSize = gapEnd - gapStart;
+
+            // Check if our clip fits in this gap
+            if (gapSize >= clipDuration && !hasCollisionAt(gapStart)) {
+              validPositions.push(gapStart);
+            }
+          }
+
+          // Position after last clip
+          if (otherClips.length > 0) {
+            const lastClip = otherClips[otherClips.length - 1];
+            const afterLast = lastClip.startTime + (lastClip.trimOut - lastClip.trimIn);
+            if (!hasCollisionAt(afterLast)) {
+              validPositions.push(afterLast);
+            }
+          }
+
+          // If no valid positions found, place at the end
+          if (validPositions.length === 0 && otherClips.length > 0) {
+            const lastClip = otherClips[otherClips.length - 1];
+            validStartTime = lastClip.startTime + (lastClip.trimOut - lastClip.trimIn);
+          } else if (validPositions.length > 0) {
+            // Choose the valid position closest to desired position
+            validStartTime = validPositions.reduce((closest, pos) => {
+              const distToPos = Math.abs(newStartTime - pos);
+              const distToClosest = Math.abs(newStartTime - closest);
+              return distToPos < distToClosest ? pos : closest;
+            });
+          } else if (otherClips.length === 0) {
+            // No other clips, use the desired position
+            validStartTime = Math.max(0, newStartTime);
+          }
+        }
+
+        // Final clamp to ensure non-negative
+        validStartTime = Math.max(0, validStartTime);
+
+        // Don't update if position didn't change significantly
+        const delta = Math.abs(validStartTime - clip.startTime);
+        if (delta < 0.1) {
           return false;
         }
 
@@ -437,7 +506,7 @@ export const useTimelineStore = create<TimelineState>()(
                   clips: track.clips
                     .map((c) => {
                       if (c.id === clipId) {
-                        return { ...c, startTime: newStartTime };
+                        return { ...c, startTime: validStartTime };
                       }
                       return c;
                     })

@@ -24,6 +24,8 @@ export interface ActiveClip {
   clip: Clip;
   /** Track ID containing this clip */
   trackId: string;
+  /** Track number (1-based: Track 1, Track 2, etc.) for z-index ordering */
+  trackNumber: number;
   /** Track type (video or audio) */
   trackType: 'video' | 'audio';
   /** Time offset within the clip in milliseconds */
@@ -152,6 +154,7 @@ export const useCompositionStore = create<CompositionState>()(
               activeClips.push({
                 clip,
                 trackId: track.id,
+                trackNumber: track.trackNumber,
                 trackType: track.trackType,
                 relativeTime: time - clipStart,
               });

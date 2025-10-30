@@ -3,7 +3,7 @@
 //! This module provides a Rust-side helper for testing composition playback
 //! by mimicking the frontend compositionStore logic and using MPV for rendering.
 
-use crate::models::timeline::{Clip, Timeline, Track, TrackType};
+use crate::models::timeline::{Clip, Timeline, TrackType};
 use crate::services::mpv_player::MpvPlayer;
 use anyhow::{Context, Result};
 use std::path::Path;

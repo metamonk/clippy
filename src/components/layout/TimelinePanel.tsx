@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Timeline } from "@/components/timeline/Timeline";
 import { TrackManagementControls } from "@/components/timeline/TrackManagementControls";
+import { ZoomControls } from "@/components/timeline/ZoomControls";
 
 export const TimelinePanel = forwardRef<HTMLDivElement>((_props, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -40,6 +41,9 @@ export const TimelinePanel = forwardRef<HTMLDivElement>((_props, ref) => {
     >
       {/* Track Management Toolbar */}
       <TrackManagementControls />
+
+      {/* Zoom Controls */}
+      <ZoomControls />
 
       {/* Timeline Canvas */}
       <div ref={containerRef} className="flex-1 w-full min-h-0">

@@ -149,9 +149,6 @@ pub struct SegmentPreloader {
     /// Segment renderer for FFmpeg pre-rendering
     segment_renderer: Arc<SegmentRenderer>,
 
-    /// Cache directory for pre-rendered segments
-    cache_dir: PathBuf,
-
     /// Lookahead window in milliseconds (default 500ms)
     lookahead_ms: u64,
 
@@ -187,8 +184,7 @@ impl SegmentPreloader {
     pub fn new(cache_dir: PathBuf) -> Self {
         Self {
             render_queue: Arc::new(Mutex::new(BinaryHeap::new())),
-            segment_renderer: Arc::new(SegmentRenderer::new(cache_dir.clone())),
-            cache_dir,
+            segment_renderer: Arc::new(SegmentRenderer::new(cache_dir)),
             lookahead_ms: 500, // 500ms lookahead (AC #3)
             analyzer: CompositionAnalyzer::new(),
             cached_segments: Arc::new(RwLock::new(HashMap::new())),
@@ -541,32 +537,6 @@ impl SegmentPreloader {
         info!(
             "Eviction complete: cache size now {}MB",
             *total_size / 1_048_576
-        );
-
-        Ok(())
-    }
-
-    /// Track a newly cached segment for LRU eviction (Story 5.8 AC #5)
-    async fn track_cached_segment(&self, segment_id: &str, cache_path: &PathBuf) -> Result<()> {
-        // Get file size
-        let file_size = tokio::fs::metadata(cache_path)
-            .await
-            .map(|m| m.len())
-            .unwrap_or(0);
-
-        // Update total cache size
-        let mut cache_size = self.cache_size_bytes.write().await;
-        *cache_size += file_size;
-
-        // Add to LRU queue (most recently used at the back)
-        let mut lru = self.lru_queue.lock().await;
-        lru.push_back(segment_id.to_string());
-
-        debug!(
-            "Tracked segment {} ({}MB), total cache: {}MB",
-            segment_id,
-            file_size / 1_048_576,
-            *cache_size / 1_048_576
         );
 
         Ok(())

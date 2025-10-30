@@ -29,14 +29,14 @@ interface TimelineProps {
  */
 export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) => {
   const stageRef = useRef<Konva.Stage>(null);
-  const [selectedClipId, setSelectedClipId] = useState<string | undefined>();
 
   // Subscribe to timeline store
   const tracks = useTimelineStore((state) => state.tracks);
   const totalDuration = useTimelineStore((state) => state.totalDuration);
   const viewConfig = useTimelineStore((state) => state.viewConfig);
   // const addClip = useTimelineStore((state) => state.addClip); // TODO: Use when adding clips from UI
-  const storeSelectedClipId = useTimelineStore((state) => state.selectedClipId);
+  const selectedClipId = useTimelineStore((state) => state.selectedClipId);
+  const setSelectedClip = useTimelineStore((state) => state.setSelectedClip);
   const getClip = useTimelineStore((state) => state.getClip);
   const resetTrim = useTimelineStore((state) => state.resetTrim);
   const splitClip = useTimelineStore((state) => state.splitClip); // Story 3.4 AC#1
@@ -49,9 +49,11 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
   const playheadPosition = usePlayerStore((state) => state.playheadPosition);
   const setPlayheadPosition = usePlayerStore((state) => state.setPlayheadPosition);
   const seek = usePlayerStore((state) => state.seek);
+  const setFocusContext = usePlayerStore((state) => state.setFocusContext);
 
   // Story 3.3 AC#5: Keyboard shortcut for undo (Cmd+Z / Ctrl+Z)
   // Story 3.4 AC#1: Keyboard shortcut for split (Cmd+B / Ctrl+B)
+  // ESC: Deselect clip
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd+Z (macOS) or Ctrl+Z (Windows/Linux) - Undo
@@ -70,11 +72,17 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
           splitClip(clipAtPlayhead.id, playheadPosition);
         }
       }
+
+      // ESC - Deselect clip
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSelectedClip(null);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, splitClip, playheadPosition]);
+  }, [undo, splitClip, playheadPosition, setSelectedClip]);
 
   // Calculate timeline dimensions
   const minTimelineWidth = Math.max(
@@ -84,7 +92,7 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
 
   const timelineHeight = viewConfig.rulerHeight + tracks.length * viewConfig.trackHeight;
 
-  // Handle click on timeline to seek
+  // Handle click on timeline to seek and deselect clips
   const handleStageClick = useCallback(
     (e: KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage();
@@ -101,13 +109,19 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
       // Convert pixel position to milliseconds
       const clickPositionMs = Math.max(0, pixelsToMs(pointerPosition.x, viewConfig.pixelsPerSecond));
 
+      // ADR-007: Switch to timeline mode when interacting with timeline
+      setFocusContext('timeline');
+
+      // Deselect any selected clip when clicking empty space
+      setSelectedClip(null);
+
       // Update playhead position
       setPlayheadPosition(clickPositionMs);
 
       // Seek video player (convert ms to seconds)
       seek(clickPositionMs / 1000);
     },
-    [viewConfig.pixelsPerSecond, setPlayheadPosition, seek]
+    [viewConfig.pixelsPerSecond, setPlayheadPosition, seek, setFocusContext, setSelectedClip]
   );
 
   // Story 3.4 AC#6: Find clip at playhead position
@@ -127,10 +141,10 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
 
   // Handle reset trim button click
   const handleResetTrim = useCallback(() => {
-    if (storeSelectedClipId) {
-      resetTrim(storeSelectedClipId);
+    if (selectedClipId) {
+      resetTrim(selectedClipId);
     }
-  }, [storeSelectedClipId, resetTrim]);
+  }, [selectedClipId, resetTrim]);
 
   // Story 3.4 AC#1: Handle split button click
   const handleSplit = useCallback(() => {
@@ -141,7 +155,7 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
   }, [findClipAtPlayhead, splitClip, playheadPosition]);
 
   // Check if selected clip has been trimmed
-  const selectedClip = storeSelectedClipId ? getClip(storeSelectedClipId) : null;
+  const selectedClip = selectedClipId ? getClip(selectedClipId) : null;
   const showResetButton = selectedClip && (
     selectedClip.trimIn > 0 || selectedClip.trimOut < selectedClip.duration
   );
@@ -226,15 +240,8 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
         ref={stageRef}
         onClick={handleStageClick}
       >
+        {/* Tracks Layer - render first (behind ruler) */}
         <Layer>
-          {/* Time Ruler */}
-          <TimeRuler
-            width={minTimelineWidth}
-            height={viewConfig.rulerHeight}
-            durationMs={totalDuration || 60000}
-            pixelsPerSecond={viewConfig.pixelsPerSecond}
-          />
-
           {/* Tracks */}
           {tracks.map((track, index) => (
             <TimelineTrack
@@ -245,7 +252,7 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
               trackHeight={viewConfig.trackHeight}
               pixelsPerSecond={viewConfig.pixelsPerSecond}
               selectedClipId={selectedClipId}
-              onClipSelect={setSelectedClipId}
+              onClipSelect={setSelectedClip}
             />
           ))}
 
@@ -268,6 +275,16 @@ export const Timeline: React.FC<TimelineProps> = ({ width, height: _height }) =>
           {/* Playhead (rendered last to be on top) */}
           <Playhead
             height={timelineHeight}
+            pixelsPerSecond={viewConfig.pixelsPerSecond}
+          />
+        </Layer>
+
+        {/* Ruler Layer - render on top so it's never obscured by clips */}
+        <Layer listening={false}>
+          <TimeRuler
+            width={minTimelineWidth}
+            height={viewConfig.rulerHeight}
+            durationMs={totalDuration || 60000}
             pixelsPerSecond={viewConfig.pixelsPerSecond}
           />
         </Layer>

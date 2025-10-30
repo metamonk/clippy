@@ -387,3 +387,273 @@ Story 5.2 successfully establishes the foundation for timeline composition playb
 
 **Modified Files:**
 - `src/components/player/VideoPlayer.tsx` - Integrated composition state for timeline mode
+
+## Change Log
+
+- **2025-10-29:** Story created and implemented
+- **2025-10-30:** Senior Developer Review (AI) appended - APPROVED
+
+---
+
+# Senior Developer Review (AI)
+
+**Reviewer:** zeno
+**Date:** 2025-10-30
+**Outcome:** ✅ **APPROVED**
+
+## Summary
+
+Story 5.2 successfully implements composition state management as the foundation for timeline playback. The implementation demonstrates excellent architectural alignment with ADR-007 (playback mode separation), comprehensive test coverage (53/53 tests passing), and production-ready code quality. All 8 acceptance criteria are fully satisfied with forward-looking additions for Stories 5.3 and 5.5.
+
+**Key Strengths:**
+- Complete state separation between preview and composition modes
+- Robust multi-track clip query system with proper boundary logic
+- Exceptional test coverage (176% of expected - 53 tests vs 30 spec'd)
+- Performance monitoring integrated (16ms threshold warnings)
+- Forward-compatible API additions for upcoming stories
+
+**Recommendation:** Approve and proceed to Story 5.3 (Sequential Clip Playback)
+
+## Key Findings
+
+### ✅ High-Priority Strengths
+
+1. **Architecture Compliance - EXCELLENT**
+   - **ADR-007 (Playback Modes):** Perfect separation - composition state only activates when `playerStore.mode === 'timeline'`
+   - **ADR-003 (Zustand):** Correct usage with devtools middleware, immutable updates
+   - **ADR-005 (Time Units):** All timestamps in milliseconds as required
+   - **Files:** `compositionStore.ts:38-86`, `VideoPlayer.tsx:194`, `VideoPlayer.tsx:325`
+
+2. **Boundary Logic Implementation - CORRECT**
+   - Inclusive start (`time >= clipStart`), exclusive end (`time < clipEnd`) consistently applied
+   - Handles overlapping clips on different tracks correctly
+   - Proper handling of clip boundaries at exact timestamps
+   - **Files:** `compositionStore.ts:151`, `compositionStore.ts:255`
+
+3. **Performance Measurement - ROBUST**
+   - `performance.now()` measurement before/after state updates
+   - Warnings logged when exceeding 16ms threshold (60 FPS target)
+   - Test validation confirms <16ms for simple timelines
+   - **Files:** `compositionStore.ts:110-135`, `compositionStore.test.ts:432-445`
+
+4. **Forward Compatibility - EXCELLENT**
+   - `getClipAtTime()` and `getNextClip()` added for Story 5.3 (sequential playback)
+   - `getActiveAudioClips()` added for Story 5.5 (multi-track audio mixing)
+   - `isEndOfTimeline()` supports Story 5.3 AC#7 (timeline end detection)
+   - **Files:** `compositionStore.ts:60-79`, `compositionStore.test.ts:458-654`
+
+### 🟡 Medium-Priority Observations
+
+1. **Test Coverage Exceeds Requirements - POSITIVE**
+   - **Expected:** 30 tests (based on story notes)
+   - **Actual:** 53 tests passing
+   - **Coverage includes:** Story 5.3 prep (18 tests), Story 5.5 prep (9 tests), edge cases
+   - **Impact:** Low (Positive) - Better than spec'd, demonstrates thoroughness
+   - **Action:** None required
+
+2. **Performance Testing with Large Timelines - DEFERRED**
+   - Current tests validate performance with 4-clip timelines
+   - Tests with 100+ clips not automated (manual testing recommended)
+   - **Impact:** Low - Simple timelines complete in <1ms, complexity scales linearly
+   - **Action:** Defer to Story 5.8 (Performance Optimization) - acceptable for foundation story
+   - **Files:** `compositionStore.test.ts:433-445`
+
+3. **Gap Detection Returns Boolean - SIMPLE**
+   - `detectGaps()` returns `boolean` instead of gap metadata (start time, duration)
+   - **Impact:** Low - Satisfies AC#5 requirement, simple approach works for Story 5.4
+   - **Rationale:** Black frame rendering (Story 5.4) only needs boolean check
+   - **Action:** None required - current implementation sufficient
+   - **Files:** `compositionStore.ts:203-206`
+
+### 🔵 Low-Priority Polish Items
+
+1. **VideoPlayer Gap Logging - DEBUG ARTIFACT**
+   - Gap detection logs to console (preparation for Story 5.4)
+   - **Impact:** Low - Development artifact, harmless
+   - **Action:** Consider removing debug logs in Story 5.4 when black frame rendering implemented
+   - **Files:** `VideoPlayer.tsx` (inferred from story notes)
+
+2. **Clip Duration Calculation - CONSISTENT**
+   - Duration calculated as `trimOut - trimIn` throughout codebase
+   - Correctly accounts for trimmed clips vs full clip duration
+   - **Impact:** None - Correct implementation
+   - **Files:** `compositionStore.ts:147`, `compositionStore.ts:216`
+
+3. **DevTools Middleware - CORRECTLY ENABLED**
+   - Zustand devtools enabled for debugging
+   - Action names provided for all state updates
+   - **Impact:** Positive - Excellent debugging experience
+   - **Files:** `compositionStore.ts:99-334`
+
+## Acceptance Criteria Coverage
+
+| AC # | Criterion | Status | Evidence |
+|------|-----------|--------|----------|
+| **1** | New `compositionStore.ts` created with TypeScript interfaces | ✅ SATISFIED | `compositionStore.ts:1-336` - Store created with `RenderState`, `ActiveClip`, `CompositionState` interfaces |
+| **2** | State tracks: `currentCompositionTime`, `activeClips`, `activeTracks`, `renderState` | ✅ SATISFIED | `compositionStore.ts:38-52` - All required fields present plus `nextBoundaryTime` for optimization |
+| **3** | `VideoPlayer` checks `mode === 'timeline'` and uses composition state | ✅ SATISFIED | `VideoPlayer.tsx:194`, `VideoPlayer.tsx:325` - Mode check implemented, `setCompositionTime()` called |
+| **4** | Clip switching logic triggers at clip boundaries | ✅ SATISFIED | `compositionStore.ts:208-236` - `getNextClipBoundary()` finds boundaries, state updates at boundaries |
+| **5** | Gap detection identifies timeline regions without clips | ✅ SATISFIED | `compositionStore.ts:203-206` - Returns boolean, empty array handled correctly |
+| **6** | Multi-track clip queries return all clips at given time | ✅ SATISFIED | `compositionStore.ts:139-163` - Iterates all tracks, returns `ActiveClip[]` with track context |
+| **7** | Unit tests for composition state transitions | ✅ SATISFIED | `compositionStore.test.ts:1-742` - 53 tests passing, covers all state transitions + edge cases |
+| **8** | Performance: state updates < 16ms (60 FPS target) | ✅ SATISFIED | `compositionStore.ts:110-135` - Performance measured with warnings, tests validate <16ms |
+
+**Summary:** 8/8 Acceptance Criteria Satisfied ✅
+
+## Test Coverage and Gaps
+
+### Test Execution Results
+- **Test Suite:** `src/stores/compositionStore.test.ts`
+- **Tests Passed:** 53/53 ✅
+- **Duration:** 8ms execution time
+- **Coverage:** 176% of expected (53 actual vs 30 spec'd)
+
+### Test Categories Covered
+
+| Category | Tests | Status | Notes |
+|----------|-------|--------|-------|
+| Initial State | 1 | ✅ | Validates default values |
+| Active Clips Query (AC#4, #6) | 5 | ✅ | Single/multiple clips, boundaries, relative time |
+| Gap Detection (AC#5) | 4 | ✅ | In-gap, with-clips, before-clips, after-clips |
+| Update Active Clips (AC#4) | 4 | ✅ | State changes, gap transitions, boundary updates, performance warnings |
+| Boundary Detection (AC#4) | 5 | ✅ | Start boundaries, end boundaries, overlapping tracks |
+| Multi-track Scenarios (AC#6) | 3 | ✅ | 2 tracks, 4 tracks, track type validation |
+| Render State | 2 | ✅ | State transitions |
+| Reset | 1 | ✅ | State reset validation |
+| Edge Cases | 3 | ✅ | Empty timeline, sparse gaps, overlapping clips |
+| Performance (AC#8) | 2 | ✅ | Update duration, boundary caching |
+| Story 5.3 Prep | 18 | ✅ | `getClipAtTime`, `getNextClip`, `isEndOfTimeline` |
+| Story 5.5 Prep | 9 | ✅ | `getActiveAudioClips`, audio metadata |
+
+### Test Quality Assessment
+
+**Strengths:**
+- Comprehensive boundary condition testing (inclusive start, exclusive end)
+- Multi-track testing with 2-4 tracks
+- Edge cases well covered (empty timeline, gaps, overlaps)
+- Performance validation integrated
+- Forward-looking tests for Stories 5.3 and 5.5
+
+**Observations:**
+- Large timeline performance (100+ clips) not automated - acceptable for foundation story
+- Performance tests use simple timelines (4 clips) - sufficient for validation
+
+## Architectural Alignment
+
+### ✅ ADR Compliance
+
+| ADR | Requirement | Compliance | Evidence |
+|-----|-------------|------------|----------|
+| **ADR-007** | Playback mode separation | ✅ FULL | `VideoPlayer.tsx:194`, `VideoPlayer.tsx:325` - Mode check before composition state usage |
+| **ADR-003** | Zustand with devtools | ✅ FULL | `compositionStore.ts:98-334` - Devtools middleware, immutable updates |
+| **ADR-005** | Milliseconds for time | ✅ FULL | All timestamps in milliseconds (`currentCompositionTime`, `relativeTime`, etc.) |
+
+### State Management Patterns
+
+**Correct Implementations:**
+- ✅ Immutable updates (no direct state mutation)
+- ✅ Devtools middleware with action names
+- ✅ Performance measurement integrated
+- ✅ Selector-friendly structure (flat state, derived queries)
+
+**Query Strategy:**
+- ✅ Direct read from `timelineStore.getState()` - no data duplication
+- ✅ Composition store maintains only playback cursor and active clip cache
+- ✅ Boundary caching for optimization (`nextBoundaryTime`)
+
+### Integration Points Validated
+
+| Integration | Status | Notes |
+|-------------|--------|-------|
+| `timelineStore` | ✅ | Read-only queries, no timeline state mutation |
+| `playerStore` | ✅ | Mode coordination via `playerStore.mode` |
+| `VideoPlayer` | ✅ | Composition state used when `mode === 'timeline'` |
+
+## Security Notes
+
+**No Security Concerns Identified** ✅
+
+This story implements state management logic with no external inputs, file I/O, or network operations.
+
+**Input Validation:**
+- Time values queried from internal state (no user input)
+- Track IDs validated (returns null for invalid IDs)
+- Clip data sourced from `timelineStore` (already validated)
+
+## Best-Practices and References
+
+### Zustand State Management
+- **Documentation:** https://zustand.docs.pmnd.rs/
+- **Version:** 4.x (latest stable)
+- **Pattern Followed:** Middleware composition with devtools
+- **Compliance:** ✅ FULL
+
+### Performance Measurement
+- **API:** Browser Performance API (`performance.now()`)
+- **Pattern:** Measure-warn pattern for development builds
+- **Target:** 60 FPS = 16.67ms per frame (NFR001)
+- **Implementation:** ✅ CORRECT
+
+### TypeScript Best Practices
+- **Strict Mode:** Enabled (inferred from types)
+- **Interface Design:** Clear, well-documented interfaces
+- **Type Safety:** No `any` types, proper generic usage
+- **Compliance:** ✅ EXCELLENT
+
+### Testing with Vitest
+- **Documentation:** https://vitest.dev/
+- **Version:** 2.x (latest)
+- **Pattern:** Describe blocks, beforeEach setup, comprehensive assertions
+- **Coverage:** ✅ EXCELLENT (53 tests, all passing)
+
+## Action Items
+
+**No Critical or High-Priority Action Items** ✅
+
+### 🟡 Medium-Priority Enhancements (Optional)
+
+1. **Consider Large Timeline Performance Testing (Deferred to Story 5.8)**
+   - **Description:** Add automated performance tests with 100+ clips
+   - **Rationale:** Validate linear scaling hypothesis with complex timelines
+   - **Priority:** Medium
+   - **Suggested Owner:** Story 5.8 implementer
+   - **Target:** Story 5.8 (Performance Optimization)
+   - **Files:** `compositionStore.test.ts` (add new performance test suite)
+
+### 🔵 Low-Priority Polish (Post-Epic 5)
+
+2. **Remove Debug Logging from VideoPlayer (Story 5.4)**
+   - **Description:** Clean up gap detection console logs when black frame rendering implemented
+   - **Rationale:** Development artifacts should be removed or gated behind dev mode
+   - **Priority:** Low
+   - **Suggested Owner:** Story 5.4 implementer
+   - **Target:** Story 5.4 (Gap Handling)
+   - **Files:** `VideoPlayer.tsx` (search for gap detection logs)
+
+---
+
+## Review Conclusion
+
+**Final Recommendation:** ✅ **APPROVE**
+
+Story 5.2 delivers a robust, well-tested foundation for timeline composition playback. The implementation exceeds requirements with forward-compatible APIs for Stories 5.3 and 5.5, comprehensive test coverage (53 tests vs 30 expected), and excellent architectural alignment with ADR-007, ADR-003, and ADR-005.
+
+**Quality Indicators:**
+- ✅ All 8 acceptance criteria satisfied
+- ✅ 53/53 tests passing (176% of expected coverage)
+- ✅ Performance monitoring integrated
+- ✅ Zero security concerns
+- ✅ Production-ready code quality
+- ✅ Forward-compatible API design
+
+**Ready for Production:** Yes ✅
+**Ready for Story 5.3:** Yes ✅
+
+**Confidence Level:** Very High (95%+) - No blockers, no critical issues, comprehensive testing
+
+---
+
+**Next Steps:**
+1. Mark Story 5.2 as DONE ✅
+2. Proceed to Story 5.3: Sequential Clip Playback (Single Track)
+3. Leverage `getClipAtTime()` and `getNextClip()` APIs added in this story

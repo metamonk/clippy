@@ -11,6 +11,7 @@ import { useDragStore } from "@/stores/dragStore";
 import { useMediaLibraryStore } from "@/stores/mediaLibraryStore";
 import { useTimelineStore } from "@/stores/timelineStore";
 import { pixelsToMs } from "@/lib/timeline/timeUtils";
+import { findSnapTargets, applySnap } from "@/lib/timeline/snapUtils";
 
 export function MainLayout() {
   const mediaLibraryRef = useRef<HTMLDivElement>(null);
@@ -110,8 +111,15 @@ export function MainLayout() {
         return;
       }
 
-      // Check if mouse is over timeline
-      const timelineRect = timelineRef.current.getBoundingClientRect();
+      // Get the actual timeline canvas container (not the outer panel with toolbars)
+      const timelineContainer = timelineRef.current.querySelector('.timeline-container');
+      if (!timelineContainer) {
+        endDrag();
+        return;
+      }
+
+      const timelineRect = (timelineContainer as HTMLElement).getBoundingClientRect();
+
       const isOverTimeline =
         e.clientX >= timelineRect.left &&
         e.clientX <= timelineRect.right &&
@@ -121,17 +129,39 @@ export function MainLayout() {
       if (isOverTimeline) {
         // Get media file
         const mediaFile = getMediaFile(draggedMediaFileId);
+
         if (!mediaFile || tracks.length === 0) {
           endDrag();
           return;
         }
 
-        // Calculate drop position relative to timeline
-        const dropX = e.clientX - timelineRect.left;
+        // Calculate drop position relative to timeline canvas
+        const scrollLeft = (timelineContainer as HTMLElement).scrollLeft || 0;
+
+        const dropX = e.clientX - timelineRect.left + scrollLeft;
         const dropY = e.clientY - timelineRect.top;
 
         // Convert X position to timeline time
-        const dropTimeMs = pixelsToMs(dropX, viewConfig.pixelsPerSecond);
+        let dropTimeMs = pixelsToMs(dropX, viewConfig.pixelsPerSecond);
+
+        // Find snap targets and apply snapping
+        const timeline = { tracks, totalDuration };
+        const snapTargets = findSnapTargets(
+          timeline,
+          '', // no clip to exclude (this is a new clip)
+          1.0, // zoom level
+          viewConfig.pixelsPerSecond
+        );
+
+        // Apply snap to clip edges and grid
+        const snapResult = applySnap(
+          dropTimeMs,
+          snapTargets,
+          50, // tighter threshold for precise edge alignment
+          true // snap enabled
+        );
+
+        dropTimeMs = snapResult.snappedPosition;
 
         // Story 3.1 AC#3: Calculate target track from Y position
         // Account for time ruler at top, then determine which track based on Y position
@@ -142,10 +172,77 @@ export function MainLayout() {
         const clampedTrackIndex = Math.max(0, Math.min(trackIndex, tracks.length - 1));
         const targetTrack = tracks[clampedTrackIndex];
 
-        // Add clip to timeline
+        // Check for collisions and find nearest valid position
+        const newClipDuration = mediaFile.duration;
+        let validStartTime = Math.max(0, dropTimeMs);
+
+        // Sort existing clips by start time
+        const existingClips = targetTrack.clips.sort((a, b) => a.startTime - b.startTime);
+
+        // Helper function to check if a position would collide with any clip
+        const hasCollisionAt = (startTime: number): boolean => {
+          const endTime = startTime + newClipDuration;
+          return existingClips.some(clip => {
+            const clipStart = clip.startTime;
+            const clipEnd = clip.startTime + (clip.trimOut - clip.trimIn);
+            return endTime > clipStart && startTime < clipEnd;
+          });
+        };
+
+        // If desired position has collision, find all valid gaps
+        if (hasCollisionAt(validStartTime)) {
+          const validPositions: number[] = [];
+
+          // Position before first clip
+          if (existingClips.length > 0) {
+            const beforeFirst = existingClips[0].startTime - newClipDuration;
+            if (beforeFirst >= 0 && !hasCollisionAt(beforeFirst)) {
+              validPositions.push(beforeFirst);
+            }
+          }
+
+          // Gaps between clips
+          for (let i = 0; i < existingClips.length - 1; i++) {
+            const currentClip = existingClips[i];
+            const nextClip = existingClips[i + 1];
+
+            const currentEnd = currentClip.startTime + (currentClip.trimOut - currentClip.trimIn);
+            const gapStart = currentEnd;
+            const gapEnd = nextClip.startTime;
+            const gapSize = gapEnd - gapStart;
+
+            if (gapSize >= newClipDuration && !hasCollisionAt(gapStart)) {
+              validPositions.push(gapStart);
+            }
+          }
+
+          // Position after last clip
+          if (existingClips.length > 0) {
+            const lastClip = existingClips[existingClips.length - 1];
+            const afterLast = lastClip.startTime + (lastClip.trimOut - lastClip.trimIn);
+            if (!hasCollisionAt(afterLast)) {
+              validPositions.push(afterLast);
+            }
+          }
+
+          // Choose closest valid position to drop point
+          if (validPositions.length > 0) {
+            validStartTime = validPositions.reduce((closest, pos) => {
+              const distToPos = Math.abs(dropTimeMs - pos);
+              const distToClosest = Math.abs(dropTimeMs - closest);
+              return distToPos < distToClosest ? pos : closest;
+            });
+          } else if (existingClips.length > 0) {
+            // No gaps found, place after last clip
+            const lastClip = existingClips[existingClips.length - 1];
+            validStartTime = lastClip.startTime + (lastClip.trimOut - lastClip.trimIn);
+          }
+        }
+
+        // Add clip to timeline at valid position
         addClip(targetTrack.id, {
           filePath: mediaFile.filePath,
-          startTime: Math.max(0, dropTimeMs),
+          startTime: Math.max(0, validStartTime),
           duration: mediaFile.duration,
           trimIn: 0,
           trimOut: mediaFile.duration,

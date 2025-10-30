@@ -53,7 +53,8 @@ impl MpvPlayer {
             .map_err(|e| anyhow!("Failed to load file {}: {:?}", file_path, e))?;
 
         // Wait for FileLoaded event
-        // With vo=null, VideoReconfig doesn't fire, but FileLoaded is sufficient
+        // Note: loadfile with "replace" triggers EndFile for previous file, then FileLoaded for new file
+        // We must ignore EndFile events and only wait for FileLoaded
         let start_time = std::time::Instant::now();
         let timeout_secs = 5.0;
 
@@ -70,8 +71,11 @@ impl MpvPlayer {
                         info!("[MPV] File loaded successfully (FileLoaded event received)");
                         return Ok(());
                     }
-                    Ok(Event::EndFile(_reason)) => {
-                        return Err(anyhow!("File loading failed - EndFile event received"));
+                    Ok(Event::EndFile(reason)) => {
+                        // EndFile during loadfile is expected (replacing previous file)
+                        // Only treat as error if it's an explicit error reason
+                        debug!("[MPV] EndFile event during load (reason: {:?}) - continuing to wait for FileLoaded", reason);
+                        // Continue waiting for FileLoaded event
                     }
                     Ok(event) => {
                         // Log other events for debugging
@@ -160,9 +164,37 @@ impl MpvPlayer {
     pub fn stop(&self) -> Result<()> {
         info!("[MPV] Stopping playback");
 
-        let mpv = self.mpv.lock().unwrap();
+        let mut mpv = self.mpv.lock().unwrap();
         mpv.command("stop", &[])
             .map_err(|e| anyhow!("Failed to stop playback: {:?}", e))?;
+
+        // Drain the EndFile event triggered by stop() to prevent it from
+        // interfering with subsequent load_file() calls
+        let start_time = std::time::Instant::now();
+        let timeout_secs = 1.0;
+
+        loop {
+            let remaining_timeout = timeout_secs - start_time.elapsed().as_secs_f64();
+            if remaining_timeout <= 0.0 {
+                debug!("[MPV] Timeout waiting for EndFile event after stop");
+                break;
+            }
+
+            if let Some(event_result) = mpv.wait_event(remaining_timeout) {
+                match event_result {
+                    Ok(Event::EndFile(_reason)) => {
+                        debug!("[MPV] EndFile event consumed after stop");
+                        break;
+                    }
+                    Ok(event) => {
+                        debug!("[MPV] Received event while stopping: {:?}", event);
+                    }
+                    Err(e) => {
+                        debug!("[MPV] Event polling during stop: {:?}", e);
+                    }
+                }
+            }
+        }
 
         debug!("[MPV] Playback stopped");
         Ok(())
