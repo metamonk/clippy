@@ -1,4 +1,5 @@
-use crate::models::{ExportConfig, ExportProgress, Timeline, Clip};
+use crate::models::{ExportConfig, ExportProgress, Timeline};
+use crate::services::timeline_renderer::TimelineRenderer;
 use anyhow::{Context, Result};
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel};
@@ -114,12 +115,35 @@ impl VideoExporter {
             "Output path validated and canonicalized"
         );
 
-        // Build FFmpeg command
-        let mut ffmpeg = self.build_export_command(timeline, config)?;
+        // Step 1: Use TimelineRenderer to render timeline to temp file
+        tracing::info!("Rendering timeline using TimelineRenderer...");
+
+        // Create timeline cache directory (same as in lib.rs)
+        let timeline_cache_dir = dirs::home_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?
+            .join("Library")
+            .join("Caches")
+            .join("com.clippy.app")
+            .join("timelines");
+
+        std::fs::create_dir_all(&timeline_cache_dir)
+            .context("Failed to create timeline cache directory")?;
+
+        let renderer = TimelineRenderer::new(timeline_cache_dir);
+        let rendered_timeline_path = renderer.render_timeline(timeline, None)?;
+
+        tracing::info!(
+            event = "timeline_rendered_for_export",
+            rendered_path = %rendered_timeline_path.display(),
+            "Timeline rendered successfully, starting transcode"
+        );
+
+        // Step 2: Transcode rendered timeline to user's desired export format
+        let mut ffmpeg = self.build_export_command(timeline, config, &rendered_timeline_path)?;
 
         tracing::debug!(
             event = "ffmpeg_command_built",
-            "FFmpeg command constructed successfully"
+            "FFmpeg export command constructed successfully"
         );
 
         // Spawn FFmpeg process with event handler
@@ -302,222 +326,29 @@ impl VideoExporter {
     /// Build FFmpeg command for timeline export
     fn build_export_command(
         &self,
-        timeline: &Timeline,
+        _timeline: &Timeline,
         config: &ExportConfig,
+        rendered_timeline_path: &Path,
     ) -> Result<FfmpegCommand> {
-        // For MVP: Export single-track timeline with simple concatenation
-        // Future: Support multi-track with filter_complex
-
-        // Get video clips from first video track
-        let video_track = timeline.video_tracks()
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("No video track found in timeline"))?;
-
-        if video_track.clips.is_empty() {
-            return Err(anyhow::anyhow!("No clips in video track"));
-        }
-
+        // Use TimelineRenderer's output as input, transcode to desired export format
         tracing::debug!(
-            event = "building_ffmpeg_command",
-            clip_count = video_track.clips.len(),
-            "Building FFmpeg export command"
+            event = "building_export_command",
+            rendered_path = %rendered_timeline_path.display(),
+            "Building FFmpeg export command from rendered timeline"
         );
 
-        // Start building FFmpeg command
         let mut command = FfmpegCommand::new();
 
-        // For single clip: use simple trim + encode
-        if video_track.clips.len() == 1 {
-            let clip = &video_track.clips[0];
-            self.add_single_clip_encoding(&mut command, clip, config)?;
-        } else {
-            // Multiple clips: use concat demuxer
-            self.add_multi_clip_encoding(&mut command, &video_track.clips, config)?;
-        }
+        // Input: rendered timeline file from TimelineRenderer
+        command.arg("-i").arg(rendered_timeline_path);
+
+        // Apply encoding settings
+        self.add_encoding_params(&mut command, config);
+
+        // Output file
+        command.arg(&config.output_path);
 
         Ok(command)
-    }
-
-    /// Add FFmpeg parameters for single clip export
-    fn add_single_clip_encoding(
-        &self,
-        command: &mut FfmpegCommand,
-        clip: &Clip,
-        config: &ExportConfig,
-    ) -> Result<()> {
-        // Validate clip file exists
-        if !Path::new(&clip.file_path).exists() {
-            return Err(anyhow::anyhow!("Clip file not found: {}", clip.file_path));
-        }
-
-        // Calculate trim duration (convert ms to seconds for FFmpeg)
-        let trim_start_sec = clip.trim_in as f64 / 1000.0;
-        let trim_duration_sec = (clip.trim_out - clip.trim_in) as f64 / 1000.0;
-
-        tracing::debug!(
-            event = "single_clip_export",
-            file_path = %clip.file_path,
-            trim_start_sec = trim_start_sec,
-            trim_duration_sec = trim_duration_sec,
-            "Configuring single clip export"
-        );
-
-        // Seek to trim start position
-        command.arg("-ss").arg(format!("{:.3}", trim_start_sec));
-
-        // Input file
-        command.arg("-i").arg(&clip.file_path);
-
-        // Set duration (trim length)
-        command.arg("-t").arg(format!("{:.3}", trim_duration_sec));
-
-        // Story 3.10: Apply audio fade filters if clip has fade properties
-        let mut audio_filters = Vec::new();
-
-        // Fade-in filter (applied at clip start, relative to trimmed segment)
-        if let Some(fade_in_ms) = clip.fade_in {
-            if fade_in_ms > 0 {
-                let fade_in_sec = fade_in_ms as f64 / 1000.0;
-                audio_filters.push(format!("afade=t=in:st=0:d={:.3}", fade_in_sec));
-            }
-        }
-
-        // Fade-out filter (applied at clip end, relative to trimmed segment)
-        if let Some(fade_out_ms) = clip.fade_out {
-            if fade_out_ms > 0 {
-                let fade_out_sec = fade_out_ms as f64 / 1000.0;
-                let fade_out_start = trim_duration_sec - fade_out_sec;
-                audio_filters.push(format!("afade=t=out:st={:.3}:d={:.3}", fade_out_start, fade_out_sec));
-            }
-        }
-
-        // Apply audio filters if any exist
-        if !audio_filters.is_empty() {
-            let audio_filter_str = audio_filters.join(",");
-            command.arg("-af").arg(&audio_filter_str);
-
-            tracing::debug!(
-                event = "audio_filters_applied",
-                filters = %audio_filter_str,
-                "Applied audio fade filters to single clip export"
-            );
-        }
-
-        // Apply encoding settings
-        self.add_encoding_params(command, config);
-
-        // Output file
-        command.arg(&config.output_path);
-
-        Ok(())
-    }
-
-    /// Add FFmpeg parameters for multi-clip export using concat filter
-    fn add_multi_clip_encoding(
-        &self,
-        command: &mut FfmpegCommand,
-        clips: &[Clip],
-        config: &ExportConfig,
-    ) -> Result<()> {
-        // Build filter_complex for concatenation with trim support
-        // Format: [0:v]trim=start=X:duration=Y,setpts=PTS-STARTPTS[v0]; ... concat=n=N:v=1:a=1[outv][outa]
-
-        let mut filter_parts = Vec::new();
-
-        for (idx, clip) in clips.iter().enumerate() {
-            // Validate clip file exists
-            if !Path::new(&clip.file_path).exists() {
-                return Err(anyhow::anyhow!("Clip file not found: {}", clip.file_path));
-            }
-
-            // Add input file
-            command.arg("-i").arg(&clip.file_path);
-
-            // Calculate trim points in seconds
-            let trim_start_sec = clip.trim_in as f64 / 1000.0;
-            let trim_end_sec = clip.trim_out as f64 / 1000.0;
-
-            // Video filter: trim and reset timestamps
-            let video_filter = format!(
-                "[{}:v]trim=start={:.3}:end={:.3},setpts=PTS-STARTPTS[v{}]",
-                idx, trim_start_sec, trim_end_sec, idx
-            );
-            filter_parts.push(video_filter);
-
-            // Story 3.10: Build audio filter chain with fade support
-            let trim_duration_sec = trim_end_sec - trim_start_sec;
-            let mut audio_filter_chain = vec![
-                format!("atrim=start={:.3}:end={:.3}", trim_start_sec, trim_end_sec),
-                "asetpts=PTS-STARTPTS".to_string(),
-            ];
-
-            // Add fade-in if clip has fade_in property
-            if let Some(fade_in_ms) = clip.fade_in {
-                if fade_in_ms > 0 {
-                    let fade_in_sec = fade_in_ms as f64 / 1000.0;
-                    audio_filter_chain.push(format!("afade=t=in:st=0:d={:.3}", fade_in_sec));
-                }
-            }
-
-            // Add fade-out if clip has fade_out property
-            if let Some(fade_out_ms) = clip.fade_out {
-                if fade_out_ms > 0 {
-                    let fade_out_sec = fade_out_ms as f64 / 1000.0;
-                    let fade_out_start = trim_duration_sec - fade_out_sec;
-                    audio_filter_chain.push(format!("afade=t=out:st={:.3}:d={:.3}", fade_out_start, fade_out_sec));
-                }
-            }
-
-            let audio_filter = format!(
-                "[{}:a]{}[a{}]",
-                idx,
-                audio_filter_chain.join(","),
-                idx
-            );
-            filter_parts.push(audio_filter);
-        }
-
-        // Build concat inputs
-        let mut concat_video_inputs = String::new();
-        let mut concat_audio_inputs = String::new();
-        for i in 0..clips.len() {
-            concat_video_inputs.push_str(&format!("[v{}]", i));
-            concat_audio_inputs.push_str(&format!("[a{}]", i));
-        }
-
-        // Concat filter
-        let concat_filter = format!(
-            "{}{}concat=n={}:v=1:a=1[outv][outa]",
-            concat_video_inputs,
-            concat_audio_inputs,
-            clips.len()
-        );
-        filter_parts.push(concat_filter);
-
-        // Join all filter parts with semicolons
-        let filter_complex = filter_parts.join(";");
-
-        tracing::debug!(
-            event = "multi_clip_export",
-            clip_count = clips.len(),
-            filter_complex_length = filter_complex.len(),
-            "Configuring multi-clip export with concat filter"
-        );
-
-        // Add filter_complex
-        command.arg("-filter_complex").arg(filter_complex);
-
-        // Map output streams
-        command.arg("-map").arg("[outv]");
-        command.arg("-map").arg("[outa]");
-
-        // Apply encoding settings
-        self.add_encoding_params(command, config);
-
-        // Output file
-        command.arg(&config.output_path);
-
-        Ok(())
     }
 
     /// Add encoding parameters (codec, bitrate, etc.)

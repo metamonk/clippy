@@ -302,6 +302,7 @@ impl TimelineRenderer {
 
         // Generate filter_complex
         let filter_complex = self.generate_filter_complex(timeline, &input_map)?;
+        info!("[TimelineRenderer] filter_complex: {}", filter_complex);
         args.push("-filter_complex".to_string());
         args.push(filter_complex);
         args.push("-map".to_string());
